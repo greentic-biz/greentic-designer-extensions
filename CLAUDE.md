@@ -29,7 +29,7 @@ permission gates.
 
 ## Conventions (once implementation begins)
 
-- **Rust 1.91.0**, edition 2024 (match other greentic projects)
+- **Rust 1.94.0**, edition 2024 (match other greentic projects)
 - **WASM target:** `wasm32-wasip2`
 - **Max 500 lines per source file.** Split modules before exceeding.
 - **English only** in source, tests, comments, commit messages, tracing logs.

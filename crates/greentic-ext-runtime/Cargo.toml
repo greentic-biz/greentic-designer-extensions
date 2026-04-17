@@ -1,0 +1,34 @@
+[package]
+name = "greentic-ext-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Wasmtime-based runtime for Greentic Designer Extensions"
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+arc-swap = { workspace = true }
+greentic-ext-contract = { path = "../greentic-ext-contract" }
+notify = { workspace = true }
+notify-debouncer-full = { workspace = true }
+semver = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+wasmtime = { workspace = true }
+wasmtime-wasi = { workspace = true }
+
+[dev-dependencies]
+greentic-ext-testing = { path = "../greentic-ext-testing" }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+tracing-subscriber = { workspace = true }
+wat = "1"
+
+[lints]
+workspace = true

@@ -9,19 +9,23 @@
 
 ## Vision
 
-> "You could have extension packs to the designer, where you say: hey, this
-> extension pack teaches you about Digital Workers, this one teaches you
-> about Green Tech X." — Maarten
-
-> "When you click deploy, you basically don't have to hardcode AWS or this
-> or that. You just ask: which deploy extensions are installed?" — Maarten
-
-> "Make the system bonds and let thousands of people fill the store with
-> extensions. It does things we never imagined possible." — Maarten
-
-**The goal:** Greentic Designer stops knowing anything domain-specific. Instead,
-it learns at runtime from extensions that anyone can write, publish, and
+Greentic Designer stops knowing anything domain-specific. Instead, it
+learns at runtime from extensions that anyone can write, publish, and
 share via the Greentic Store.
+
+Three flavours of extension cover the lifecycle:
+
+- **design-extension** teaches the designer to author new content types
+  (Adaptive Cards, Digital Workers, Green Tech X / Telco X schemas, ...).
+- **bundle-extension** packages the designer's output into deployable
+  Application Packs, with a recipe per target scenario.
+- **deploy-extension** ships the Application Pack to its target — desktop,
+  AWS, GCP, on-prem Kubernetes, Cisco box — without the designer needing
+  any hardcoded knowledge of that target.
+
+A capability registry resolves dependencies and degrades gracefully when
+something is missing. A host broker lets extensions compose with each
+other under explicit permission gates.
 
 ---
 
