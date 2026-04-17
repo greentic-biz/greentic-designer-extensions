@@ -220,6 +220,72 @@ impl ExtensionRuntime {
     }
 }
 
+impl ExtensionRuntime {
+    /// Invoke a named tool on a loaded extension.
+    ///
+    /// Builds a fresh wasmtime Store + Instance, calls
+    /// `greentic:extension-design/tools@0.1.0::invoke-tool`, and returns the
+    /// JSON result string.
+    pub fn invoke_tool(
+        &self,
+        ext_id: &str,
+        tool_name: &str,
+        args_json: &str,
+    ) -> Result<String, RuntimeError> {
+        use crate::host_bindings::greentic::extension_base::types::ExtensionError;
+
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine)
+            .map_err(RuntimeError::Wasmtime)?;
+
+        // Resolve the nested export: first the interface instance, then the function.
+        // This is the wasmtime 43 pattern: get_export_index(store, parent, name).
+        let iface_name = "greentic:extension-design/tools@0.1.0";
+        let iface_idx = instance
+            .get_export_index(&mut store, None, iface_name)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{iface_name}'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "invoke-tool")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'invoke-tool'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(String, String), (Result<String, ExtensionError>,)>(
+                &mut store,
+                &func_idx,
+            )
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (result,) = func
+            .call(
+                &mut store,
+                (tool_name.to_string(), args_json.to_string()),
+            )
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+        // post_return is deprecated/no-op in wasmtime 43 — not called.
+
+        result.map_err(|e| {
+            RuntimeError::Wasmtime(anyhow::anyhow!(
+                "extension returned error for tool '{tool_name}': {e:?}"
+            ))
+        })
+    }
+}
+
 fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut cur = p;
     loop {
