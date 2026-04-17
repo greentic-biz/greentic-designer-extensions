@@ -1,5 +1,7 @@
 /target
+**/target
 /*.gtxpack
 **/*.gtxpack
 .cargo/credentials.toml
 .greentic/
+Cargo.lock.bak
