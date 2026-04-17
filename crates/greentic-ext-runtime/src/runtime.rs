@@ -5,10 +5,10 @@ use arc_swap::ArcSwap;
 use tokio::sync::broadcast;
 use wasmtime::Engine;
 
-use crate::capability::CapabilityRegistry;
+use crate::capability::{CapabilityRegistry, OfferedBinding};
 use crate::discovery::DiscoveryPaths;
 use crate::error::RuntimeError;
-use crate::loaded::{ExtensionId, LoadedExtensionRef};
+use crate::loaded::{ExtensionId, LoadedExtension, LoadedExtensionRef};
 
 #[derive(Clone, Debug)]
 pub struct RuntimeConfig {
@@ -79,5 +79,40 @@ impl ExtensionRuntime {
     #[must_use]
     pub fn capability_registry(&self) -> Arc<CapabilityRegistry> {
         self.capability_registry.load_full()
+    }
+
+    pub async fn register_loaded_from_dir(
+        &mut self,
+        dir: &std::path::Path,
+    ) -> Result<(), RuntimeError> {
+        let loaded = LoadedExtension::load_from_dir(&self.engine, dir)?;
+        let id = loaded.id.clone();
+
+        // Build new registry: clone existing offerings, add new extension's offerings.
+        let mut new_registry = CapabilityRegistry::new();
+        for existing in self.capability_registry.load().offerings() {
+            new_registry.add_offering(existing.clone());
+        }
+        for cap in &loaded.describe.capabilities.offered {
+            let version: semver::Version = cap.version.parse().map_err(|e: semver::Error| {
+                RuntimeError::Wasmtime(anyhow::anyhow!("bad offered version: {e}"))
+            })?;
+            new_registry.add_offering(OfferedBinding {
+                extension_id: id.as_str().to_string(),
+                cap_id: cap.id.clone(),
+                version,
+                kind: loaded.kind,
+                export_path: String::new(),
+            });
+        }
+
+        // Atomically swap in new loaded map and registry.
+        let mut new_map = (**self.loaded.load()).clone();
+        new_map.insert(id.clone(), Arc::new(loaded));
+        self.loaded.store(Arc::new(new_map));
+        self.capability_registry.store(Arc::new(new_registry));
+
+        let _ = self.events.send(RuntimeEvent::ExtensionInstalled(id));
+        Ok(())
     }
 }
