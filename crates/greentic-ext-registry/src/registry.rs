@@ -1,0 +1,1 @@
+//! ExtensionRegistry trait.

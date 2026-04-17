@@ -1,0 +1,34 @@
+[package]
+name = "greentic-ext-registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Registry client + install lifecycle for Greentic Designer Extensions"
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+dialoguer = { workspace = true }
+greentic-ext-contract = { path = "../greentic-ext-contract" }
+oci-client = { workspace = true }
+reqwest = { workspace = true }
+semver = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+zip = { workspace = true }
+
+[dev-dependencies]
+greentic-ext-testing = { path = "../greentic-ext-testing" }
+wiremock = "0.6"
+
+[lints]
+workspace = true
