@@ -2,4 +2,19 @@
 name = "greentic-ext-testing"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Test utilities for Greentic Designer Extensions"
 publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+greentic-ext-contract = { path = "../greentic-ext-contract" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[lints]
+workspace = true
