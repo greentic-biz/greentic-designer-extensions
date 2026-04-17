@@ -16,4 +16,4 @@ pub use self::discovery::DiscoveryPaths;
 pub use self::error::RuntimeError;
 pub use self::health::{ExtensionHealth, HealthReason};
 pub use self::loaded::{ExtensionId, LoadedExtension, LoadedExtensionRef};
-pub use self::runtime::{ExtensionRuntime, RuntimeConfig, RuntimeEvent};
+pub use self::runtime::{ExtensionRuntime, RuntimeConfig, RuntimeEvent, WatcherGuard};
