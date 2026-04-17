@@ -3,7 +3,10 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use notify::RecursiveMode;
-use notify_debouncer_full::{new_debouncer, DebounceEventResult};
+use notify_debouncer_full::{
+    new_debouncer, DebounceEventResult, Debouncer, RecommendedCache,
+};
+use notify::RecommendedWatcher;
 
 use crate::error::RuntimeError;
 
@@ -14,13 +17,16 @@ pub enum FsEvent {
     Removed(PathBuf),
 }
 
+/// RAII handle that keeps the debouncer alive. Drop this to stop watching.
+pub struct WatchHandle {
+    _debouncer: Debouncer<RecommendedWatcher, RecommendedCache>,
+}
+
 /// Start watching `paths` recursively. Returns a channel receiver emitting
-/// coalesced FS events. The watcher runs in a background thread owned by
-/// `notify-debouncer-full` — we intentionally leak it so the channel stays
-/// open for the lifetime of the caller.
-pub fn watch(paths: &[PathBuf]) -> Result<mpsc::Receiver<FsEvent>, RuntimeError> {
+/// coalesced FS events and a `WatchHandle` that owns the debouncer — drop
+/// the handle to stop watching and close the channel.
+pub fn watch(paths: &[PathBuf]) -> Result<(mpsc::Receiver<FsEvent>, WatchHandle), RuntimeError> {
     let (tx, rx) = mpsc::channel();
-    let tx_clone = tx.clone();
     let mut debouncer = new_debouncer(
         Duration::from_millis(500),
         None,
@@ -34,7 +40,7 @@ pub fn watch(paths: &[PathBuf]) -> Result<mpsc::Receiver<FsEvent>, RuntimeError>
                             notify::EventKind::Remove(_) => FsEvent::Removed(p.clone()),
                             _ => continue,
                         };
-                        let _ = tx_clone.send(out);
+                        let _ = tx.send(out);
                     }
                 }
             }
@@ -49,8 +55,5 @@ pub fn watch(paths: &[PathBuf]) -> Result<mpsc::Receiver<FsEvent>, RuntimeError>
                 .map_err(|e| RuntimeError::Watcher(e.to_string()))?;
         }
     }
-    // Keep the debouncer alive — drop(tx) would close the channel prematurely.
-    std::mem::forget(debouncer);
-    drop(tx);
-    Ok(rx)
+    Ok((rx, WatchHandle { _debouncer: debouncer }))
 }

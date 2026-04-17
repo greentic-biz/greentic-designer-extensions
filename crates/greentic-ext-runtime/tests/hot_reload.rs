@@ -9,7 +9,7 @@ use tempfile::TempDir;
 fn watcher_detects_new_file() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().to_path_buf();
-    let rx = watch(&[root.clone()]).unwrap();
+    let (rx, _handle) = watch(&[root.clone()]).unwrap();
 
     sleep(Duration::from_millis(300));
     let new_file = root.join("newfile.txt");
