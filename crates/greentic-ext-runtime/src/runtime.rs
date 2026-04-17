@@ -282,6 +282,63 @@ impl ExtensionRuntime {
     }
 }
 
+impl ExtensionRuntime {
+    /// List all tools exposed by a loaded design extension.
+    ///
+    /// Calls `greentic:extension-design/tools@0.1.0::list-tools`.
+    pub fn list_tools(
+        &self,
+        ext_id: &str,
+    ) -> Result<Vec<crate::types::ToolDefinition>, RuntimeError> {
+        use crate::host_bindings::exports::greentic::extension_design::tools::ToolDefinition as WitToolDef;
+
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine)
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_name = "greentic:extension-design/tools@0.1.0";
+        let iface_idx = instance
+            .get_export_index(&mut store, None, iface_name)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{iface_name}'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "list-tools")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'list-tools'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(), (Vec<WitToolDef>,)>(&mut store, &func_idx)
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (defs,) = func
+            .call(&mut store, ())
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        Ok(defs
+            .into_iter()
+            .map(|d| crate::types::ToolDefinition {
+                name: d.name,
+                description: d.description,
+                input_schema_json: d.input_schema_json,
+                output_schema_json: d.output_schema_json,
+            })
+            .collect())
+    }
+}
+
 fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut cur = p;
     loop {
