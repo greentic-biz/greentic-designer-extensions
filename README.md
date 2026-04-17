@@ -7,11 +7,18 @@ Greentic Store.
 
 Three extension kinds share one foundation:
 
-| Kind | Teaches the designer to... | Example |
+| Kind | Teaches the designer to... | Example reference impls |
 |---|---|---|
-| **design-extension** | Author content (cards, flows, digital workers, telco-x schemas) | `greentic.adaptive-cards`, `greentic.flows-ygtc-v2` |
+| **design-extension** | Author content (cards, flows, digital workers, telco-x schemas) | [`greentic.adaptive-cards`](https://github.com/greentic-biz/greentic-adaptive-card-mcp), `greentic.flows-ygtc-v2` |
 | **bundle-extension** | Package designer output into deployable Application Packs | `greentic.hosted-webchat`, `greentic.openshift-bundle` |
 | **deploy-extension** | Ship Application Packs to a target environment | `greentic.aws-eks`, `greentic.cisco-onprem` |
+
+Reference extensions live with their domain library — e.g. the AC
+extension lives in
+[`greentic-biz/greentic-adaptive-card-mcp`](https://github.com/greentic-biz/greentic-adaptive-card-mcp)
+next to `adaptive-card-core`. This repo ships the **infrastructure**:
+the WIT contract, runtime, capability engine, registry clients, and
+`gtdx` CLI. It is **domain-agnostic** by design.
 
 ---
 
@@ -21,13 +28,9 @@ Three extension kinds share one foundation:
 |---|---|---|
 | Foundation | [`v0.1.0`](https://github.com/greentic-biz/greentic-designer-extensions/releases/tag/v0.1.0) | WIT contracts, contract crate, runtime core, capability registry, broker, hot reload |
 | CLI + Registry | [`v0.2.0`](https://github.com/greentic-biz/greentic-designer-extensions/releases/tag/v0.2.0) | `gtdx` 11 subcommands · 3 registry impls (Local / Store / OCI) · install lifecycle · OpenAPI spec |
-| AC Reference Extension | [`v0.3.0`](https://github.com/greentic-biz/greentic-designer-extensions/releases/tag/v0.3.0) | First canonical design-extension shipping as `greentic.adaptive-cards@1.6.0` |
+| AC Reference Extension (since moved) | [`v0.3.0`](https://github.com/greentic-biz/greentic-designer-extensions/releases/tag/v0.3.0) | First canonical design-extension shipping as `greentic.adaptive-cards@1.6.0` (now lives in `greentic-adaptive-card-mcp`) |
 | Documentation | [`v0.4.0`](https://github.com/greentic-biz/greentic-designer-extensions/releases/tag/v0.4.0) | 11 docs (~3,600 lines): references, tutorials, guides |
 | Runtime WASM Dispatch | [`v0.5.0`](https://github.com/greentic-biz/greentic-designer-extensions/releases/tag/v0.5.0) | Wasmtime Linker + 5 host imports + `invoke_tool` working end-to-end |
-
-End-to-end proof: `cargo test -p greentic-ext-runtime --test ac_invoke` loads the
-real `.gtxpack`, instantiates the WASM Component, and gets back live
-`adaptive-card-core` output (a11y score, schema errors, host-compat).
 
 ---
 
@@ -57,14 +60,14 @@ real `.gtxpack`, instantiates the WASM Component, and gets back live
                 └────────────────────────┬──────────────────────┘
                                          │
                               gtdx CLI for users
-                              cargo binstall greentic-ext-cli
+                              cargo install greentic-ext-cli
 ```
 
 ---
 
 ## Install `gtdx`
 
-From source (private repo today; `cargo binstall` once published):
+From source:
 
 ```bash
 git clone git@github.com:greentic-biz/greentic-designer-extensions.git
@@ -83,33 +86,27 @@ gtdx --help
 
 ## Quickstart
 
-### 1. Build the AC reference extension
+### 1. Build the AC reference extension (from its own repo)
+
+The AC extension lives in
+[`greentic-biz/greentic-adaptive-card-mcp`](https://github.com/greentic-biz/greentic-adaptive-card-mcp)
+next to `adaptive-card-core`:
 
 ```bash
-./reference-extensions/adaptive-cards/build.sh
-# → reference-extensions/adaptive-cards/greentic.adaptive-cards-1.6.0.gtxpack (~1.1 MB)
+git clone git@github.com:greentic-biz/greentic-adaptive-card-mcp.git
+cd greentic-adaptive-card-mcp
+crates/adaptive-card-extension/build.sh
+# → crates/adaptive-card-extension/greentic.adaptive-cards-1.6.0.gtxpack (~1 MB)
 ```
 
-### 2. Validate the manifest
+### 2. Validate, install, list
 
 ```bash
-gtdx validate reference-extensions/adaptive-cards
-# ✓ reference-extensions/adaptive-cards/describe.json valid
-```
+GTXPACK=$(pwd)/crates/adaptive-card-extension/greentic.adaptive-cards-1.6.0.gtxpack
 
-### 3. Install into your local home
-
-```bash
-gtdx install ./reference-extensions/adaptive-cards/greentic.adaptive-cards-1.6.0.gtxpack \
-  -y --trust loose
+gtdx install "$GTXPACK" -y --trust loose
 # ✓ installed greentic.adaptive-cards@1.6.0
-```
 
-Files land at `~/.greentic/extensions/design/greentic.adaptive-cards-1.6.0/`.
-
-### 4. List + diagnose
-
-```bash
 gtdx list
 # [design]
 #   greentic.adaptive-cards@1.6.0  Design and validate Microsoft Adaptive Cards v1.6
@@ -119,7 +116,7 @@ gtdx doctor
 # 1 total, 0 bad
 ```
 
-### 5. Search the store (when live)
+### 3. Search the store (when live)
 
 ```bash
 gtdx search digital-workers --kind design
@@ -142,59 +139,22 @@ greentic-designer-extensions/
 │   └── runtime-side.wit              # Host-side world (bindgen target)
 │
 ├── crates/
-│   ├── greentic-ext-contract/        # Types, describe.json schema, signatures (15 tests)
-│   ├── greentic-ext-runtime/         # Wasmtime loader, capability registry, broker (29 tests)
-│   ├── greentic-ext-registry/        # 3 registry impls + lifecycle (14 tests)
-│   ├── greentic-ext-cli/             # `gtdx` binary, 11 subcommands (5 e2e tests)
+│   ├── greentic-ext-contract/        # Types, describe.json schema, signatures
+│   ├── greentic-ext-runtime/         # Wasmtime loader, capability registry, broker
+│   ├── greentic-ext-registry/        # 3 registry impls + lifecycle
+│   ├── greentic-ext-cli/             # `gtdx` binary, 11 subcommands
 │   ├── greentic-ext-testing/         # Test utilities for extension authors
-│   └── _wit-lint/                    # WIT parser lint test (1 test)
+│   └── _wit-lint/                    # WIT parser lint test
 │
-├── reference-extensions/
-│   └── adaptive-cards/               # First canonical design-extension
-│       ├── describe.json
-│       ├── src/lib.rs                # WIT exports → adaptive-card-core
-│       ├── schemas/, prompts/, knowledge/, i18n/
-│       └── build.sh                  # cargo component build → .gtxpack
-│
-├── docs/                             # 11 docs (~3,600 lines), see docs/README.md
+├── docs/                             # docs (see docs/README.md for index)
 └── ci/local_check.sh                 # fmt + clippy + test + release build
 ```
 
-**Stats:** 64 tests passing · 5 milestones tagged · ~80 commits · 1 working WASM Component
+Reference extensions live with their domain library, in their own repos:
 
----
-
-## How Adaptive Cards reference extension works
-
-The `greentic.adaptive-cards@1.6.0` extension is built as a `cdylib` targeting
-`wasm32-wasip1` via `cargo-component`. Its 8 tools delegate to
-[`adaptive-card-core`](https://github.com/greentic-biz/greentic-adaptive-card-mcp)
-(MIT, embedded as a git dep):
-
-| Tool | Backed by |
-|---|---|
-| `validate_card` | `core::validate_card` (schema v1.6 + a11y + optional host compat) |
-| `analyze_card` | `core::analyze_card` (CardAnalysis: elements, actions, depth, dup IDs) |
-| `check_accessibility` | `core::check_accessibility` (WCAG-style score 0-100) |
-| `optimize_card` | `core::optimize_card` (a11y / perf / modernize transforms) |
-| `transform_card` | `core::transform_card` (version downgrade + host adapt) |
-| `template_card` | `core::template_card` (`${expr}` bindings + sample data) |
-| `data_to_card` | `core::data_to_card` (table / factset / list / chart) |
-| `check_host_compat` | `core::check_compatibility` (HostCompatReport) |
-
-Live invocation example (from the runtime e2e test):
-
-```jsonc
-// runtime.invoke_tool("greentic.adaptive-cards", "validate_card",
-//                     r#"{"card":{"type":"AdaptiveCard","version":"1.6"}}"#)
-{
-  "valid": true,
-  "accessibility": { "score": 95, "issues": [{"rule": "missing-speak", ...}] },
-  "card_version": "1.6",
-  "schema_errors": [],
-  "suggestions": ["[a11y/missing-speak] Add a 'speak' field at the root..."]
-}
-```
+- [`greentic-biz/greentic-adaptive-card-mcp`](https://github.com/greentic-biz/greentic-adaptive-card-mcp) — `crates/adaptive-card-extension/` ships `greentic.adaptive-cards@1.6.0`
+- (future) `greentic-biz/greentic-digital-workers` — would ship `greentic.digital-workers@*`
+- (future) `greentic-biz/greentic-telco-x` — would ship Telco X extensions
 
 ---
 
@@ -243,7 +203,8 @@ let result_json = state.runtime.invoke_tool(
 ```
 
 For first-run UX, designer can `include_bytes!` the bundled
-`greentic.adaptive-cards-1.6.0.gtxpack` and auto-install on startup if no AC
+`greentic.adaptive-cards-1.6.0.gtxpack` (built from
+`greentic-adaptive-card-mcp`) and auto-install on startup if no AC
 extension is detected. See
 [`docs/superpowers/plans/2026-04-17-docs-and-designer-refactor.md`](docs/superpowers/plans/2026-04-17-docs-and-designer-refactor.md)
 Part B for the full migration plan.
@@ -287,65 +248,27 @@ Full index at [docs/README.md](docs/README.md). Quick links:
 
 ## Building from source
 
-Prerequisites: Rust 1.94, `cargo-component`, `wasm32-wasip1` + `wasm32-wasip2` targets.
+Prerequisites: Rust 1.94, no extra targets needed (this repo ships only host-side crates).
 
 ```bash
 rustup install 1.94.0
 rustup component add rustfmt clippy --toolchain 1.94.0
-rustup target add wasm32-wasip1 wasm32-wasip2 --toolchain 1.94.0
-cargo install cargo-component --locked --version '^0.20'
 ```
-
-Build + test the host-side workspace (excludes the wasm cdylib):
 
 ```bash
 bash ci/local_check.sh
 ```
 
-Build the AC reference extension as a WASM Component + package as `.gtxpack`:
+To run the optional end-to-end WASM dispatch test, build the AC
+extension from `greentic-adaptive-card-mcp` first and point
+`GTDX_TEST_GTXPACK` at the resulting `.gtxpack`:
 
 ```bash
-./reference-extensions/adaptive-cards/build.sh
-```
-
-Run the end-to-end WASM dispatch test (loads the `.gtxpack`, invokes
-`validate_card`, asserts on the real `adaptive-card-core` output):
-
-```bash
+export GTDX_TEST_GTXPACK=/path/to/greentic.adaptive-cards-1.6.0.gtxpack
 cargo test -p greentic-ext-runtime --test ac_invoke -- --nocapture
 ```
 
----
-
-## CI auth setup (one-time, repo admin)
-
-`reference-extensions/adaptive-cards` depends on `adaptive-card-core` from
-the private `greentic-biz/greentic-adaptive-card-mcp` repo. CI runners need
-auth to fetch it. The `greentic-biz` org disables deploy keys, so we use a
-**fine-grained Personal Access Token**.
-
-1. Generate a fine-grained PAT at
-   https://github.com/settings/personal-access-tokens/new:
-   - **Resource owner**: `greentic-biz`
-   - **Repository access**: only select `greentic-biz/greentic-adaptive-card-mcp`
-   - **Repository permissions**: `Contents: Read-only`
-   - Expiration: long-lived (e.g. 1 year — set a calendar reminder to rotate)
-
-2. On this repo:
-   - https://github.com/greentic-biz/greentic-designer-extensions/settings/secrets/actions/new
-   - Name: `AC_CORE_PAT`
-   - Value: paste the token
-
-3. Re-run the failing CI job from the PR page.
-
-The workflow uses `git config --global url.insteadOf` to rewrite the
-`ssh://git@github.com/greentic-biz/...` URL Cargo sees into an HTTPS
-URL with the PAT embedded, so Cargo can fetch the dep without further
-configuration.
-
-**Alternative**: make `greentic-biz/greentic-adaptive-card-mcp` public —
-it's MIT licensed already — drop the auth step from the workflow, and
-no secret is needed.
+The test self-skips if the env var is unset.
 
 ---
 
@@ -361,8 +284,6 @@ no secret is needed.
   `greentic.aws-eks`, ...).
 - **Plan 7** — `greentic-store-server` (Greentic Store HTTP backend) — see
   the OpenAPI spec for the contract.
-- **AC v2** — Integrate `adaptive-card-core` even more deeply (richer
-  knowledge base, transform rule expansions).
 
 ---
 
@@ -387,6 +308,3 @@ Conventions:
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
-`adaptive-card-core` (consumed as a git dep) is also MIT — see
-[greentic-biz/greentic-adaptive-card-mcp](https://github.com/greentic-biz/greentic-adaptive-card-mcp).
