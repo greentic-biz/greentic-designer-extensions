@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct DiscoveryPaths {
@@ -29,4 +29,25 @@ impl DiscoveryPaths {
         }
         v
     }
+}
+
+/// Scan a single kind directory (e.g. `~/.greentic/extensions/design/`).
+/// Returns absolute paths to each extension subdirectory that contains a
+/// `describe.json`. Returns empty vec if the directory doesn't exist.
+pub fn scan_kind_dir(kind_dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+    if !kind_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(kind_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        if entry.path().join("describe.json").exists() {
+            out.push(entry.path());
+        }
+    }
+    out.sort();
+    Ok(out)
 }
