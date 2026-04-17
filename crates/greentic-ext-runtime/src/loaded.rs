@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use greentic_ext_contract::{DescribeJson, ExtensionKind};
 use wasmtime::Store;
-use wasmtime::component::{Component, Instance, Linker};
+use wasmtime::component::{Component, HasSelf, Instance, Linker};
 
 use crate::health::ExtensionHealth;
 use crate::host_state::HostState;
@@ -72,13 +72,15 @@ impl LoadedExtension {
 }
 
 impl LoadedExtension {
-    /// Build a fresh wasmtime Store with HostState and instantiate the component.
+    /// Build a fresh wasmtime Store with [`HostState`] and instantiate the component.
     /// Each call creates a new instance (no pooling yet — pooling is future work).
     pub fn build_store_and_instance(
         &self,
         engine: &wasmtime::Engine,
     ) -> anyhow::Result<(Store<HostState>, Instance)> {
-        use crate::host_bindings::greentic::extension_host::{broker, http, i18n, logging, secrets};
+        use crate::host_bindings::greentic::extension_host::{
+            broker, http, i18n, logging, secrets,
+        };
 
         let mut linker: Linker<HostState> = Linker::new(engine);
 
@@ -87,7 +89,6 @@ impl LoadedExtension {
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
 
         // HasSelf<T> wraps T and implements HasData — required for wasmtime 43 bindgen add_to_linker.
-        use wasmtime::component::HasSelf;
         logging::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         i18n::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         secrets::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;

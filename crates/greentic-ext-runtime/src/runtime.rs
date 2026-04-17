@@ -265,16 +265,12 @@ impl ExtensionRuntime {
 
         let func = instance
             .get_typed_func::<(String, String), (Result<String, ExtensionError>,)>(
-                &mut store,
-                &func_idx,
+                &mut store, &func_idx,
             )
             .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
 
         let (result,) = func
-            .call(
-                &mut store,
-                (tool_name.to_string(), args_json.to_string()),
-            )
+            .call(&mut store, (tool_name.to_string(), args_json.to_string()))
             .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
         // post_return is deprecated/no-op in wasmtime 43 — not called.
 

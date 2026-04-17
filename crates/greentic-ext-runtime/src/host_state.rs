@@ -14,6 +14,7 @@ pub struct HostState {
 }
 
 impl HostState {
+    #[must_use]
     pub fn new(extension_id: String, permissions: Permissions) -> Self {
         let wasi = WasiCtxBuilder::new().build();
         let table = ResourceTable::new();
@@ -26,7 +27,7 @@ impl HostState {
     }
 }
 
-/// Implement WasiView so that wasmtime_wasi::p2::add_to_linker_sync can wire
+/// Implement [`WasiView`] so that `wasmtime_wasi::p2::add_to_linker_sync` can wire
 /// WASI host functions. cargo-component adds WASI imports to every component it
 /// builds, even if the Rust source never calls them.
 impl WasiView for HostState {
@@ -123,10 +124,7 @@ impl http::Host for HostState {
             req.url.starts_with(base)
         });
         if !allowed {
-            return Err(format!(
-                "network permission denied for url: {}",
-                req.url
-            ));
+            return Err(format!("network permission denied for url: {}", req.url));
         }
         Err("http fetch not implemented in 4B.0".into())
     }
