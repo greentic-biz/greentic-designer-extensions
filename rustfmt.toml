@@ -1,5 +1,5 @@
 edition = "2024"
 max_width = 100
-imports_granularity = "Crate"
-group_imports = "StdExternalCrate"
 reorder_imports = true
+# `imports_granularity` + `group_imports` require nightly rustfmt. Tracked in
+# follow-up; on stable we accept whatever ordering rustc produces.
