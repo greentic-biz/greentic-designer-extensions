@@ -1,11 +1,12 @@
+use std::sync::LazyLock;
+
 use jsonschema::{Draft, Validator};
-use once_cell::sync::Lazy;
 
 use crate::error::ContractError;
 
 const SCHEMA_V1: &str = include_str!("../schemas/describe-v1.json");
 
-static SCHEMA: Lazy<Validator> = Lazy::new(|| {
+static SCHEMA: LazyLock<Validator> = LazyLock::new(|| {
     let schema: serde_json::Value =
         serde_json::from_str(SCHEMA_V1).expect("embedded schema must parse");
     jsonschema::options()

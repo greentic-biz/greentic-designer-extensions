@@ -422,7 +422,6 @@ dependencies = [
  "base64",
  "ed25519-dalek",
  "jsonschema",
- "once_cell",
  "rand",
  "semver",
  "serde",

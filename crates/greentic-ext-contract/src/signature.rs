@@ -12,6 +12,7 @@ pub fn artifact_sha256(bytes: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+#[must_use]
 pub fn sign_ed25519(key: &SigningKey, payload: &[u8]) -> String {
     use ed25519_dalek::Signer;
     let sig: Signature = key.sign(payload);
