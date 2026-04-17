@@ -12,7 +12,7 @@ dependencies = [
 [[package]]
 name = "adaptive-card-core"
 version = "0.1.0"
-source = "git+ssh://git@github.com/greenticai/greentic-adaptive-card-mcp?rev=ee268d7b67aee515914edc9c34daf7824bc09809#ee268d7b67aee515914edc9c34daf7824bc09809"
+source = "git+ssh://git@github.com/greentic-biz/greentic-adaptive-card-mcp?rev=ee268d7b67aee515914edc9c34daf7824bc09809#ee268d7b67aee515914edc9c34daf7824bc09809"
 dependencies = [
  "jsonschema 0.46.0",
  "once_cell",

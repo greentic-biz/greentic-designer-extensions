@@ -15,6 +15,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      # Cargo's git dep on greentic-biz/greentic-adaptive-card-mcp (private)
+      # requires SSH access. Add a deploy key on that repo (read-only) and
+      # paste its private half into AC_CORE_DEPLOY_KEY secret on this repo.
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.AC_CORE_DEPLOY_KEY }}
       - uses: dtolnay/rust-toolchain@1.94.0
         with:
           components: rustfmt, clippy

@@ -14,7 +14,7 @@ wit-bindgen = { workspace = true }
 wit-bindgen-rt = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-adaptive-card-core = { git = "ssh://git@github.com/greenticai/greentic-adaptive-card-mcp", rev = "ee268d7b67aee515914edc9c34daf7824bc09809" }
+adaptive-card-core = { git = "ssh://git@github.com/greentic-biz/greentic-adaptive-card-mcp", rev = "ee268d7b67aee515914edc9c34daf7824bc09809" }
 
 [package.metadata.component]
 package = "greentic:adaptive-cards-extension"
