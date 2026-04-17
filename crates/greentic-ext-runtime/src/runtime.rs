@@ -395,6 +395,178 @@ impl ExtensionRuntime {
     }
 }
 
+impl ExtensionRuntime {
+    /// List knowledge entries, optionally filtered by category.
+    ///
+    /// Calls `greentic:extension-design/knowledge@0.1.0::list-entries`.
+    pub fn knowledge_list(
+        &self,
+        ext_id: &str,
+        category_filter: Option<&str>,
+    ) -> Result<Vec<crate::types::KnowledgeEntrySummary>, RuntimeError> {
+        use crate::host_bindings::exports::greentic::extension_design::knowledge::EntrySummary as WitSummary;
+
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine)
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_name = "greentic:extension-design/knowledge@0.1.0";
+        let iface_idx = instance
+            .get_export_index(&mut store, None, iface_name)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{iface_name}'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "list-entries")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'list-entries'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(Option<String>,), (Vec<WitSummary>,)>(&mut store, &func_idx)
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (entries,) = func
+            .call(&mut store, (category_filter.map(String::from),))
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        Ok(entries.into_iter().map(wit_summary_to_host).collect())
+    }
+
+    /// Retrieve a single knowledge entry by ID.
+    ///
+    /// Calls `greentic:extension-design/knowledge@0.1.0::get-entry`.
+    pub fn knowledge_get(
+        &self,
+        ext_id: &str,
+        entry_id: &str,
+    ) -> Result<crate::types::KnowledgeEntry, RuntimeError> {
+        use crate::host_bindings::exports::greentic::extension_design::knowledge::Entry as WitEntry;
+        use crate::host_bindings::exports::greentic::extension_design::knowledge::ExtensionError;
+
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine)
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_name = "greentic:extension-design/knowledge@0.1.0";
+        let iface_idx = instance
+            .get_export_index(&mut store, None, iface_name)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{iface_name}'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "get-entry")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'get-entry'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(String,), (Result<WitEntry, ExtensionError>,)>(&mut store, &func_idx)
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (result,) = func
+            .call(&mut store, (entry_id.to_string(),))
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        result
+            .map(|e| crate::types::KnowledgeEntry {
+                id: e.id,
+                title: e.title,
+                category: e.category,
+                tags: e.tags,
+                content_json: e.content_json,
+            })
+            .map_err(|e| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension returned error for get-entry '{entry_id}': {e:?}"
+                ))
+            })
+    }
+
+    /// Suggest knowledge entries matching a query.
+    ///
+    /// Calls `greentic:extension-design/knowledge@0.1.0::suggest-entries`.
+    pub fn knowledge_suggest(
+        &self,
+        ext_id: &str,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<crate::types::KnowledgeEntrySummary>, RuntimeError> {
+        use crate::host_bindings::exports::greentic::extension_design::knowledge::EntrySummary as WitSummary;
+
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine)
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_name = "greentic:extension-design/knowledge@0.1.0";
+        let iface_idx = instance
+            .get_export_index(&mut store, None, iface_name)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{iface_name}'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "suggest-entries")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'suggest-entries'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(String, u32), (Vec<WitSummary>,)>(&mut store, &func_idx)
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (entries,) = func
+            .call(&mut store, (query.to_string(), limit))
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        Ok(entries.into_iter().map(wit_summary_to_host).collect())
+    }
+}
+
+/// Convert a bindgen `EntrySummary` to the host-side type.
+fn wit_summary_to_host(
+    s: crate::host_bindings::exports::greentic::extension_design::knowledge::EntrySummary,
+) -> crate::types::KnowledgeEntrySummary {
+    crate::types::KnowledgeEntrySummary {
+        id: s.id,
+        title: s.title,
+        category: s.category,
+        tags: s.tags,
+    }
+}
+
 fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut cur = p;
     loop {
