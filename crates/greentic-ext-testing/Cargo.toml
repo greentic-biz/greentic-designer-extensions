@@ -1,0 +1,5 @@
+[package]
+name = "greentic-ext-testing"
+version.workspace = true
+edition.workspace = true
+publish = false

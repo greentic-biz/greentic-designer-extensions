@@ -1,0 +1,8 @@
+[package]
+name = "_wit-lint"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dev-dependencies]
+wit-parser = { workspace = true }

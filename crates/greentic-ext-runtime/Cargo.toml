@@ -1,0 +1,5 @@
+[package]
+name = "greentic-ext-runtime"
+version.workspace = true
+edition.workspace = true
+publish = false

@@ -1,8 +1,7 @@
 package greentic:extension-design@0.1.0;
 
-use greentic:extension-base@0.1.0/types.{diagnostic, extension-error};
-
 interface tools {
+  use greentic:extension-base/types@0.1.0.{extension-error};
   record tool-definition {
     name: string,
     description: string,
@@ -14,6 +13,7 @@ interface tools {
 }
 
 interface validation {
+  use greentic:extension-base/types@0.1.0.{diagnostic};
   record validate-result {
     valid: bool,
     diagnostics: list<diagnostic>,
@@ -31,6 +31,7 @@ interface prompting {
 }
 
 interface knowledge {
+  use greentic:extension-base/types@0.1.0.{extension-error};
   record entry-summary {
     id: string,
     title: string,
@@ -50,15 +51,15 @@ interface knowledge {
 }
 
 world design-extension {
-  import greentic:extension-base@0.1.0/types;
-  import greentic:extension-host@0.1.0/logging;
-  import greentic:extension-host@0.1.0/i18n;
-  import greentic:extension-host@0.1.0/secrets;
-  import greentic:extension-host@0.1.0/broker;
-  import greentic:extension-host@0.1.0/http;
+  import greentic:extension-base/types@0.1.0;
+  import greentic:extension-host/logging@0.1.0;
+  import greentic:extension-host/i18n@0.1.0;
+  import greentic:extension-host/secrets@0.1.0;
+  import greentic:extension-host/broker@0.1.0;
+  import greentic:extension-host/http@0.1.0;
 
-  export greentic:extension-base@0.1.0/manifest;
-  export greentic:extension-base@0.1.0/lifecycle;
+  export greentic:extension-base/manifest@0.1.0;
+  export greentic:extension-base/lifecycle@0.1.0;
   export tools;
   export validation;
   export prompting;
