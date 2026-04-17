@@ -14,6 +14,7 @@ impl Storage {
         Self { root: root.into() }
     }
 
+    #[must_use]
     pub fn clone_shallow(&self) -> Self {
         Self {
             root: self.root.clone(),

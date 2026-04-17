@@ -139,11 +139,7 @@ impl ExtensionRegistry for LocalFilesystemRegistry {
         })
     }
 
-    async fn fetch(
-        &self,
-        name: &str,
-        version: &str,
-    ) -> Result<ExtensionArtifact, RegistryError> {
+    async fn fetch(&self, name: &str, version: &str) -> Result<ExtensionArtifact, RegistryError> {
         let path = self.pack_path(name, version);
         if !path.exists() {
             return Err(RegistryError::NotFound {

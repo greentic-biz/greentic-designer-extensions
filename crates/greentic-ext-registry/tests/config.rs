@@ -1,4 +1,4 @@
-use greentic_ext_registry::config::{load, save, GtdxConfig, RegistryEntry};
+use greentic_ext_registry::config::{GtdxConfig, RegistryEntry, load, save};
 use tempfile::TempDir;
 
 #[test]
@@ -24,5 +24,8 @@ fn save_and_reload_preserves_registries() {
     let reloaded = load(&path).unwrap();
     assert_eq!(reloaded.registries.len(), 1);
     assert_eq!(reloaded.registries[0].name, "custom");
-    assert_eq!(reloaded.registries[0].token_env.as_deref(), Some("MY_TOKEN"));
+    assert_eq!(
+        reloaded.registries[0].token_env.as_deref(),
+        Some("MY_TOKEN")
+    );
 }

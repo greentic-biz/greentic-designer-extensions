@@ -11,7 +11,11 @@ pub fn run(_args: Args, home: &Path) -> anyhow::Result<()> {
     let storage = Storage::new(home);
     let mut total = 0;
     let mut bad = 0;
-    for kind in [ExtensionKind::Design, ExtensionKind::Bundle, ExtensionKind::Deploy] {
+    for kind in [
+        ExtensionKind::Design,
+        ExtensionKind::Bundle,
+        ExtensionKind::Deploy,
+    ] {
         let dir = storage.kind_dir(kind);
         if !dir.exists() {
             continue;

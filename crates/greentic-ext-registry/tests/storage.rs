@@ -35,14 +35,22 @@ fn remove_extension_deletes_dir() {
     let tmp = TempDir::new().unwrap();
     let storage = Storage::new(tmp.path());
     let (staging, final_dir) = storage
-        .begin_install(greentic_ext_contract::ExtensionKind::Bundle, "greentic.y", "2.0.0")
+        .begin_install(
+            greentic_ext_contract::ExtensionKind::Bundle,
+            "greentic.y",
+            "2.0.0",
+        )
         .unwrap();
     std::fs::write(staging.join("f"), "x").unwrap();
     storage.commit_install(&staging, &final_dir).unwrap();
     assert!(final_dir.exists());
 
     storage
-        .remove_extension(greentic_ext_contract::ExtensionKind::Bundle, "greentic.y", "2.0.0")
+        .remove_extension(
+            greentic_ext_contract::ExtensionKind::Bundle,
+            "greentic.y",
+            "2.0.0",
+        )
         .unwrap();
     assert!(!final_dir.exists());
 }

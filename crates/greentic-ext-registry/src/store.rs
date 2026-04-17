@@ -140,9 +140,10 @@ impl ExtensionRegistry for GreenticStoreRegistry {
     async fn fetch(&self, name: &str, version: &str) -> Result<ExtensionArtifact, RegistryError> {
         let metadata = self.metadata(name, version).await?;
         let bytes = self
-            .with_auth(self.client.get(self.url(&format!(
-                "/api/v1/extensions/{name}/{version}/artifact"
-            ))))
+            .with_auth(
+                self.client
+                    .get(self.url(&format!("/api/v1/extensions/{name}/{version}/artifact"))),
+            )
             .send()
             .await?
             .error_for_status()?

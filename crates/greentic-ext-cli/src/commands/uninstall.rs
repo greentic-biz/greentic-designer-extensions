@@ -14,7 +14,11 @@ pub struct Args {
 pub fn run(args: &Args, home: &Path) -> anyhow::Result<()> {
     let storage = Storage::new(home);
     let mut removed_any = false;
-    for kind in [ExtensionKind::Design, ExtensionKind::Bundle, ExtensionKind::Deploy] {
+    for kind in [
+        ExtensionKind::Design,
+        ExtensionKind::Bundle,
+        ExtensionKind::Deploy,
+    ] {
         let dir = storage.kind_dir(kind);
         if !dir.exists() {
             continue;

@@ -18,6 +18,5 @@ pub fn load_config(home: &Path) -> Result<config::GtdxConfig> {
 }
 
 pub fn save_config(home: &Path, cfg: &config::GtdxConfig) -> Result<()> {
-    config::save(&home.join("config.toml"), cfg)
-        .map_err(|e| anyhow::anyhow!("config save: {e}"))
+    config::save(&home.join("config.toml"), cfg).map_err(|e| anyhow::anyhow!("config save: {e}"))
 }

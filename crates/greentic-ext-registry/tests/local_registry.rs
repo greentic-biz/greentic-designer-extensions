@@ -1,7 +1,7 @@
 use greentic_ext_contract::ExtensionKind;
 use greentic_ext_registry::local::LocalFilesystemRegistry;
 use greentic_ext_registry::{ExtensionRegistry, SearchQuery};
-use greentic_ext_testing::{pack_directory, ExtensionFixtureBuilder};
+use greentic_ext_testing::{ExtensionFixtureBuilder, pack_directory};
 use tempfile::TempDir;
 
 #[tokio::test]
@@ -9,15 +9,12 @@ async fn local_registry_finds_and_fetches_packed_extension() {
     let tmp = TempDir::new().unwrap();
     let reg_root = tmp.path().to_path_buf();
 
-    let fixture = ExtensionFixtureBuilder::new(
-        ExtensionKind::Design,
-        "greentic.local-demo",
-        "0.1.0",
-    )
-    .offer("greentic:demo/hi", "1.0.0")
-    .with_wasm(b"not-a-real-wasm".to_vec())
-    .build()
-    .unwrap();
+    let fixture =
+        ExtensionFixtureBuilder::new(ExtensionKind::Design, "greentic.local-demo", "0.1.0")
+            .offer("greentic:demo/hi", "1.0.0")
+            .with_wasm(b"not-a-real-wasm".to_vec())
+            .build()
+            .unwrap();
     let pack_path = reg_root.join("greentic.local-demo-0.1.0.gtxpack");
     pack_directory(fixture.root(), &pack_path).unwrap();
 

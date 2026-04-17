@@ -44,14 +44,12 @@ async fn store_registry_fetch_downloads_artifact() {
 
     Mock::given(method("GET"))
         .and(path("/api/v1/extensions/greentic.ac/1.6.0"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "describe": describe_json,
-                "artifactSha256": "deadbeef",
-                "publishedAt": "2026-04-17T00:00:00Z",
-                "yanked": false
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "describe": describe_json,
+            "artifactSha256": "deadbeef",
+            "publishedAt": "2026-04-17T00:00:00Z",
+            "yanked": false
+        })))
         .mount(&server)
         .await;
 

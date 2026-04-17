@@ -54,9 +54,9 @@ impl<'a, R: ExtensionRegistry + ?Sized> Installer<'a, R> {
         _opts: InstallOptions,
     ) -> Result<(), RegistryError> {
         let kind = artifact.describe.kind;
-        let (staging, final_dir) = self
-            .storage
-            .begin_install(kind, &artifact.name, &artifact.version)?;
+        let (staging, final_dir) =
+            self.storage
+                .begin_install(kind, &artifact.name, &artifact.version)?;
 
         let result = Self::extract_to_staging(artifact, &staging);
         if result.is_err() {
@@ -106,9 +106,7 @@ impl<'a, R: ExtensionRegistry + ?Sized> Installer<'a, R> {
             TrustPolicy::Loose => Ok(()),
             TrustPolicy::Strict | TrustPolicy::Normal => {
                 let Some(sig) = &artifact.describe.signature else {
-                    return Err(RegistryError::SignatureInvalid(
-                        "missing signature".into(),
-                    ));
+                    return Err(RegistryError::SignatureInvalid("missing signature".into()));
                 };
                 let payload = serde_json::to_vec(&artifact.describe)?;
                 greentic_ext_contract::verify_ed25519(&sig.public_key, &sig.value, &payload)

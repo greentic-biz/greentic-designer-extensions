@@ -9,7 +9,11 @@ pub struct Args;
 
 pub fn run(_args: Args, home: &Path) -> anyhow::Result<()> {
     let storage = Storage::new(home);
-    for kind in [ExtensionKind::Design, ExtensionKind::Bundle, ExtensionKind::Deploy] {
+    for kind in [
+        ExtensionKind::Design,
+        ExtensionKind::Bundle,
+        ExtensionKind::Deploy,
+    ] {
         let dir = storage.kind_dir(kind);
         if !dir.exists() {
             continue;
@@ -31,7 +35,10 @@ pub fn run(_args: Args, home: &Path) -> anyhow::Result<()> {
                 println!("[{}]", kind.dir_name());
                 any = true;
             }
-            println!("  {}@{}  {}", d.metadata.id, d.metadata.version, d.metadata.summary);
+            println!(
+                "  {}@{}  {}",
+                d.metadata.id, d.metadata.version, d.metadata.summary
+            );
         }
     }
     Ok(())

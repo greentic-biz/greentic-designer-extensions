@@ -11,17 +11,10 @@ pub trait ExtensionRegistry: Send + Sync {
 
     async fn search(&self, query: SearchQuery) -> Result<Vec<ExtensionSummary>, RegistryError>;
 
-    async fn metadata(
-        &self,
-        name: &str,
-        version: &str,
-    ) -> Result<ExtensionMetadata, RegistryError>;
+    async fn metadata(&self, name: &str, version: &str)
+    -> Result<ExtensionMetadata, RegistryError>;
 
-    async fn fetch(
-        &self,
-        name: &str,
-        version: &str,
-    ) -> Result<ExtensionArtifact, RegistryError>;
+    async fn fetch(&self, name: &str, version: &str) -> Result<ExtensionArtifact, RegistryError>;
 
     async fn publish(
         &self,

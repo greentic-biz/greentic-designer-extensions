@@ -24,7 +24,9 @@ pub fn run_login(args: &Args, home: &Path) -> anyhow::Result<()> {
     let creds_path = home.join("credentials.toml");
     let mut creds = Credentials::load(&creds_path).unwrap_or_default();
     creds.set(reg_name, &token);
-    creds.save(&creds_path).map_err(|e| anyhow::anyhow!("{e}"))?;
+    creds
+        .save(&creds_path)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     println!("✓ logged in to {reg_name}");
     Ok(())
 }
@@ -35,7 +37,9 @@ pub fn run_logout(args: &LogoutArgs, home: &Path) -> anyhow::Result<()> {
     let creds_path = home.join("credentials.toml");
     let mut creds = Credentials::load(&creds_path).unwrap_or_default();
     if creds.remove(reg_name).is_some() {
-        creds.save(&creds_path).map_err(|e| anyhow::anyhow!("{e}"))?;
+        creds
+            .save(&creds_path)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
         println!("✓ logged out of {reg_name}");
     } else {
         println!("no credentials for {reg_name}");

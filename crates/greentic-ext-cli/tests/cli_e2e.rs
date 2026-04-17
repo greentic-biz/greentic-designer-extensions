@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use greentic_ext_contract::ExtensionKind;
-use greentic_ext_testing::{pack_directory, ExtensionFixtureBuilder};
+use greentic_ext_testing::{ExtensionFixtureBuilder, pack_directory};
 use tempfile::TempDir;
 
 fn gtdx_bin() -> std::path::PathBuf {
@@ -10,15 +10,11 @@ fn gtdx_bin() -> std::path::PathBuf {
 
 #[test]
 fn validate_command_accepts_valid_extension() {
-    let fixture = ExtensionFixtureBuilder::new(
-        ExtensionKind::Design,
-        "greentic.cli-test",
-        "0.1.0",
-    )
-    .offer("greentic:cli/y", "1.0.0")
-    .with_wasm(b"wasm".to_vec())
-    .build()
-    .unwrap();
+    let fixture = ExtensionFixtureBuilder::new(ExtensionKind::Design, "greentic.cli-test", "0.1.0")
+        .offer("greentic:cli/y", "1.0.0")
+        .with_wasm(b"wasm".to_vec())
+        .build()
+        .unwrap();
 
     let output = Command::new(gtdx_bin())
         .arg("validate")
@@ -39,15 +35,12 @@ fn install_from_local_pack_copies_into_home() {
     let pack_dir = tmp.path().join("packs");
     std::fs::create_dir_all(&pack_dir).unwrap();
 
-    let fixture = ExtensionFixtureBuilder::new(
-        ExtensionKind::Design,
-        "greentic.cli-install",
-        "0.1.0",
-    )
-    .offer("greentic:ci/y", "1.0.0")
-    .with_wasm(b"wasm".to_vec())
-    .build()
-    .unwrap();
+    let fixture =
+        ExtensionFixtureBuilder::new(ExtensionKind::Design, "greentic.cli-install", "0.1.0")
+            .offer("greentic:ci/y", "1.0.0")
+            .with_wasm(b"wasm".to_vec())
+            .build()
+            .unwrap();
     let pack = pack_dir.join("greentic.cli-install-0.1.0.gtxpack");
     pack_directory(fixture.root(), &pack).unwrap();
 
@@ -67,9 +60,10 @@ fn install_from_local_pack_copies_into_home() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    assert!(home
-        .join("extensions/design/greentic.cli-install-0.1.0/describe.json")
-        .exists());
+    assert!(
+        home.join("extensions/design/greentic.cli-install-0.1.0/describe.json")
+            .exists()
+    );
 }
 
 #[test]
@@ -79,14 +73,10 @@ fn list_shows_installed_extensions() {
     let design_dir = home.join("extensions/design/greentic.demo-0.1.0");
     std::fs::create_dir_all(&design_dir).unwrap();
 
-    let fixture = ExtensionFixtureBuilder::new(
-        ExtensionKind::Design,
-        "greentic.demo",
-        "0.1.0",
-    )
-    .offer("greentic:d/y", "1.0.0")
-    .build()
-    .unwrap();
+    let fixture = ExtensionFixtureBuilder::new(ExtensionKind::Design, "greentic.demo", "0.1.0")
+        .offer("greentic:d/y", "1.0.0")
+        .build()
+        .unwrap();
     std::fs::copy(
         fixture.root().join("describe.json"),
         design_dir.join("describe.json"),
@@ -101,10 +91,7 @@ fn list_shows_installed_extensions() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(
-        stdout.contains("greentic.demo@0.1.0"),
-        "got: {stdout}"
-    );
+    assert!(stdout.contains("greentic.demo@0.1.0"), "got: {stdout}");
 }
 
 #[test]

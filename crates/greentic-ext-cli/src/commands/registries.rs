@@ -35,7 +35,11 @@ pub fn run(args: Args, home: &Path) -> anyhow::Result<()> {
                 println!("  {}  {}", r.name, r.url);
             }
         }
-        Op::Add { name, url, token_env } => {
+        Op::Add {
+            name,
+            url,
+            token_env,
+        } => {
             cfg.registries.push(RegistryEntry {
                 name: name.clone(),
                 url,

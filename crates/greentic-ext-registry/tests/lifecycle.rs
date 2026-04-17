@@ -2,7 +2,7 @@ use greentic_ext_contract::ExtensionKind;
 use greentic_ext_registry::lifecycle::{InstallOptions, Installer, TrustPolicy};
 use greentic_ext_registry::local::LocalFilesystemRegistry;
 use greentic_ext_registry::storage::Storage;
-use greentic_ext_testing::{pack_directory, ExtensionFixtureBuilder};
+use greentic_ext_testing::{ExtensionFixtureBuilder, pack_directory};
 use tempfile::TempDir;
 
 #[tokio::test]
@@ -10,15 +10,12 @@ async fn installs_from_local_registry() {
     let tmp_reg = TempDir::new().unwrap();
     let tmp_home = TempDir::new().unwrap();
 
-    let fixture = ExtensionFixtureBuilder::new(
-        ExtensionKind::Design,
-        "greentic.install-me",
-        "0.1.0",
-    )
-    .offer("greentic:im/hi", "1.0.0")
-    .with_wasm(b"wasm".to_vec())
-    .build()
-    .unwrap();
+    let fixture =
+        ExtensionFixtureBuilder::new(ExtensionKind::Design, "greentic.install-me", "0.1.0")
+            .offer("greentic:im/hi", "1.0.0")
+            .with_wasm(b"wasm".to_vec())
+            .build()
+            .unwrap();
     let pack = tmp_reg.path().join("greentic.install-me-0.1.0.gtxpack");
     pack_directory(fixture.root(), &pack).unwrap();
 

@@ -26,9 +26,7 @@ pub fn confirm_install(describe: &DescribeJson, auto_accept: bool) -> bool {
             perms.call_extension_kinds.join(", ")
         );
     }
-    if perms.network.is_empty()
-        && perms.secrets.is_empty()
-        && perms.call_extension_kinds.is_empty()
+    if perms.network.is_empty() && perms.secrets.is_empty() && perms.call_extension_kinds.is_empty()
     {
         eprintln!("  (no special permissions)");
     }
