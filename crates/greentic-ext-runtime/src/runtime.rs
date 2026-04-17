@@ -157,11 +157,11 @@ impl ExtensionRuntime {
                 }
                 match rx.recv_timeout(std::time::Duration::from_millis(200)) {
                     Ok(event) => {
-                        if let Err(e) = this.handle_fs_event(event) {
+                        if let Err(e) = this.handle_fs_event(&event) {
                             tracing::warn!(error = %e, "hot reload failed");
                         }
                     }
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
             }
@@ -169,9 +169,9 @@ impl ExtensionRuntime {
         Ok(WatcherGuard { stop_tx: Some(stop_tx), join: Some(join) })
     }
 
-    fn handle_fs_event(&self, event: crate::watcher::FsEvent) -> Result<(), RuntimeError> {
+    fn handle_fs_event(&self, event: &crate::watcher::FsEvent) -> Result<(), RuntimeError> {
         use crate::watcher::FsEvent;
-        let path = match &event {
+        let path = match event {
             FsEvent::Added(p) | FsEvent::Modified(p) | FsEvent::Removed(p) => p.clone(),
         };
         let ext_dir = find_extension_dir(&path);
