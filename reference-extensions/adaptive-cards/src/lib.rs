@@ -1,4 +1,5 @@
 //! Greentic Adaptive Cards design-extension — WIT export layer.
+#![allow(clippy::used_underscore_items)] // triggered by wit-bindgen macro expansion in bindings.rs
 
 #[allow(warnings)]
 mod bindings;
@@ -63,7 +64,7 @@ fn validate_adaptive_card(card: &Value) -> (bool, Vec<types::Diagnostic>) {
         diagnostics.push(types::Diagnostic {
             severity: types::Severity::Error,
             code: "wrong-type".into(),
-            message: format!("expected type='AdaptiveCard', got {:?}", type_val),
+            message: format!("expected type='AdaptiveCard', got {type_val:?}"),
             path: Some("/type".into()),
         });
     }
@@ -93,25 +94,25 @@ fn validate_adaptive_card(card: &Value) -> (bool, Vec<types::Diagnostic>) {
         }
     }
 
-    if let Some(body) = card.get("body") {
-        if !body.is_array() {
-            diagnostics.push(types::Diagnostic {
-                severity: types::Severity::Error,
-                code: "body-must-be-array".into(),
-                message: "body must be an array".into(),
-                path: Some("/body".into()),
-            });
-        }
+    if let Some(body) = card.get("body")
+        && !body.is_array()
+    {
+        diagnostics.push(types::Diagnostic {
+            severity: types::Severity::Error,
+            code: "body-must-be-array".into(),
+            message: "body must be an array".into(),
+            path: Some("/body".into()),
+        });
     }
-    if let Some(actions) = card.get("actions") {
-        if !actions.is_array() {
-            diagnostics.push(types::Diagnostic {
-                severity: types::Severity::Error,
-                code: "actions-must-be-array".into(),
-                message: "actions must be an array".into(),
-                path: Some("/actions".into()),
-            });
-        }
+    if let Some(actions) = card.get("actions")
+        && !actions.is_array()
+    {
+        diagnostics.push(types::Diagnostic {
+            severity: types::Severity::Error,
+            code: "actions-must-be-array".into(),
+            message: "actions must be an array".into(),
+            path: Some("/actions".into()),
+        });
     }
 
     (diagnostics.is_empty(), diagnostics)
@@ -141,20 +142,41 @@ fn diagnostics_to_json(diagnostics: &[types::Diagnostic]) -> Vec<Value> {
 impl tools::Guest for Component {
     fn list_tools() -> Vec<tools::ToolDefinition> {
         let defs = [
-            ("validate_card", "Validate an Adaptive Card against v1.6 schema",
-             r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#),
-            ("analyze_card", "Count elements, actions, and depth of a card",
-             r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#),
-            ("check_accessibility", "Return an a11y score (0-100) and issue list",
-             r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#),
-            ("optimize_card", "Apply accessibility + performance improvements (stub)",
-             r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#),
-            ("transform_card", "Apply a named transform (stub)",
-             r#"{"type":"object","properties":{"card":{"type":"object"},"transform":{"type":"string"}},"required":["card","transform"]}"#),
-            ("template_card", "Convert card to data-bound template (stub)",
-             r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#),
-            ("data_to_card", "Infer a card from data (stub)",
-             r#"{"type":"object","properties":{"data":{}},"required":["data"]}"#),
+            (
+                "validate_card",
+                "Validate an Adaptive Card against v1.6 schema",
+                r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#,
+            ),
+            (
+                "analyze_card",
+                "Count elements, actions, and depth of a card",
+                r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#,
+            ),
+            (
+                "check_accessibility",
+                "Return an a11y score (0-100) and issue list",
+                r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#,
+            ),
+            (
+                "optimize_card",
+                "Apply accessibility + performance improvements (stub)",
+                r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#,
+            ),
+            (
+                "transform_card",
+                "Apply a named transform (stub)",
+                r#"{"type":"object","properties":{"card":{"type":"object"},"transform":{"type":"string"}},"required":["card","transform"]}"#,
+            ),
+            (
+                "template_card",
+                "Convert card to data-bound template (stub)",
+                r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#,
+            ),
+            (
+                "data_to_card",
+                "Infer a card from data (stub)",
+                r#"{"type":"object","properties":{"data":{}},"required":["data"]}"#,
+            ),
         ];
         defs.iter()
             .map(|(name, desc, schema)| tools::ToolDefinition {
@@ -181,8 +203,14 @@ impl tools::Guest for Component {
             }
             "analyze_card" => {
                 let card = &args["card"];
-                let body_len = card.get("body").and_then(Value::as_array).map(Vec::len).unwrap_or(0);
-                let actions_len = card.get("actions").and_then(Value::as_array).map(Vec::len).unwrap_or(0);
+                let body_len = card
+                    .get("body")
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len);
+                let actions_len = card
+                    .get("actions")
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len);
                 serde_json::json!({
                     "body_elements": body_len,
                     "actions": actions_len,
@@ -201,8 +229,11 @@ impl tools::Guest for Component {
                         }
                     }
                 }
-                let score = if issues.is_empty() { 100i64 } else {
-                    100i64 - (issues.len() as i64 * 20).min(100)
+                let penalty = i64::try_from(issues.len()).unwrap_or(5) * 20;
+                let score = if issues.is_empty() {
+                    100i64
+                } else {
+                    100i64 - penalty.min(100)
                 };
                 serde_json::json!({ "score": score, "issues": issues })
             }
@@ -213,7 +244,9 @@ impl tools::Guest for Component {
                 })
             }
             other => {
-                return Err(types::ExtensionError::InvalidInput(format!("unknown tool: {other}")));
+                return Err(types::ExtensionError::InvalidInput(format!(
+                    "unknown tool: {other}"
+                )));
             }
         };
         Ok(result.to_string())
@@ -222,10 +255,7 @@ impl tools::Guest for Component {
 
 // ===== design::validation =====
 impl validation::Guest for Component {
-    fn validate_content(
-        content_type: String,
-        content_json: String,
-    ) -> validation::ValidateResult {
+    fn validate_content(content_type: String, content_json: String) -> validation::ValidateResult {
         if content_type != "adaptive-card" {
             return validation::ValidateResult {
                 valid: false,
@@ -282,7 +312,9 @@ impl knowledge::Guest for Component {
         vec![]
     }
     fn get_entry(id: String) -> Result<knowledge::Entry, types::ExtensionError> {
-        Err(types::ExtensionError::InvalidInput(format!("no entry: {id}")))
+        Err(types::ExtensionError::InvalidInput(format!(
+            "no entry: {id}"
+        )))
     }
     fn suggest_entries(_query: String, _limit: u32) -> Vec<knowledge::EntrySummary> {
         vec![]
