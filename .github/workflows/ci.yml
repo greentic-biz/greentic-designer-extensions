@@ -19,6 +19,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        # Don't leave the runner repo's GITHUB_TOKEN as a global git
+        # extraheader — it conflicts with the AC_CORE_PAT we configure
+        # below for the private adaptive-card-core dep clone.
+        with:
+          persist-credentials: false
       # Cargo's git dep on greentic-biz/greentic-adaptive-card-mcp (private)
       # needs auth. Org policy disables deploy keys, so we use a fine-grained
       # PAT with `Contents: Read` scope on that repo, stored as the
