@@ -11,3 +11,8 @@ pub mod registry;
 pub mod storage;
 pub mod store;
 pub mod types;
+
+pub use self::error::RegistryError;
+pub use self::types::{
+    ArtifactBytes, AuthToken, ExtensionArtifact, ExtensionMetadata, ExtensionSummary, SearchQuery,
+};
