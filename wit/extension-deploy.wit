@@ -1,0 +1,58 @@
+package greentic:extension-deploy@0.1.0;
+
+use greentic:extension-base@0.1.0/types.{diagnostic, extension-error};
+
+interface targets {
+  record target-summary {
+    id: string,
+    display-name: string,
+    description: string,
+    icon-path: option<string>,
+    supports-rollback: bool,
+  }
+  list-targets: func() -> list<target-summary>;
+  credential-schema: func(target-id: string) -> result<string, extension-error>;
+  config-schema: func(target-id: string) -> result<string, extension-error>;
+  validate-credentials: func(target-id: string, credentials-json: string) -> list<diagnostic>;
+}
+
+interface deployment {
+  record deploy-request {
+    target-id: string,
+    artifact-bytes: list<u8>,
+    credentials-json: string,
+    config-json: string,
+    deployment-name: string,
+  }
+  enum deploy-status {
+    pending,
+    provisioning,
+    configuring,
+    starting,
+    running,
+    failed,
+    rolled-back,
+  }
+  record deploy-job {
+    id: string,
+    status: deploy-status,
+    message: string,
+    endpoints: list<string>,
+  }
+  deploy: func(req: deploy-request) -> result<deploy-job, extension-error>;
+  poll: func(job-id: string) -> result<deploy-job, extension-error>;
+  rollback: func(job-id: string) -> result<_, extension-error>;
+}
+
+world deploy-extension {
+  import greentic:extension-base@0.1.0/types;
+  import greentic:extension-host@0.1.0/logging;
+  import greentic:extension-host@0.1.0/i18n;
+  import greentic:extension-host@0.1.0/secrets;
+  import greentic:extension-host@0.1.0/http;
+
+  export greentic:extension-base@0.1.0/manifest;
+  export greentic:extension-base@0.1.0/lifecycle;
+  export targets;
+  export deployment;
+}
