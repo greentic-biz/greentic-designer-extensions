@@ -1,16 +1,19 @@
 //! Greentic Adaptive Cards design-extension — WIT export layer.
+//!
+//! Wraps `adaptive-card-core` (from `greenticai/greentic-adaptive-card-mcp`)
+//! and exposes its 8 tools through the design sub-WIT interfaces.
 #![allow(clippy::used_underscore_items)] // triggered by wit-bindgen macro expansion in bindings.rs
 
 #[allow(warnings)]
 mod bindings;
 
+use adaptive_card_core as core;
 use bindings::exports::greentic::extension_base::{lifecycle, manifest};
 use bindings::exports::greentic::extension_design::{knowledge, prompting, tools, validation};
 use bindings::greentic::extension_base::types;
-
+use core::types::{CardVersion, DataToCardOpts, Host, OptimizeOpts, TransformTarget};
 use serde_json::Value;
 
-const SCHEMA_V16: &str = include_str!("../schemas/adaptive-card-v1.6.json");
 const PROMPT_RULES: &str = include_str!("../prompts/rules.md");
 const PROMPT_EXAMPLES: &str = include_str!("../prompts/examples.md");
 
@@ -39,6 +42,10 @@ impl manifest::Guest for Component {
                 id: "greentic:adaptive-cards/transform".into(),
                 version: "1.0.0".into(),
             },
+            types::CapabilityRef {
+                id: "greentic:adaptive-cards/host-compat".into(),
+                version: "1.0.0".into(),
+            },
         ]
     }
     fn get_required() -> Vec<types::CapabilityRef> {
@@ -54,88 +61,54 @@ impl lifecycle::Guest for Component {
     fn shutdown() {}
 }
 
-// Manual schema validation — jsonschema doesn't cross-compile to wasm32-wasip2 cleanly.
-// This checks top-level AC structure per the embedded schema. Sufficient for MVP.
-fn validate_adaptive_card(card: &Value) -> (bool, Vec<types::Diagnostic>) {
-    let mut diagnostics = Vec::new();
-
-    let type_val = card.get("type").and_then(Value::as_str);
-    if type_val != Some("AdaptiveCard") {
-        diagnostics.push(types::Diagnostic {
-            severity: types::Severity::Error,
-            code: "wrong-type".into(),
-            message: format!("expected type='AdaptiveCard', got {type_val:?}"),
-            path: Some("/type".into()),
-        });
-    }
-
-    let version_val = card.get("version").and_then(Value::as_str);
-    match version_val {
-        None => diagnostics.push(types::Diagnostic {
-            severity: types::Severity::Error,
-            code: "missing-version".into(),
-            message: "version is required".into(),
-            path: Some("/version".into()),
-        }),
-        Some(v) => {
-            let valid_version = v.starts_with("1.") && {
-                let rest = &v[2..];
-                let digit = rest.chars().next().and_then(|c| c.to_digit(10));
-                matches!(digit, Some(0..=6))
-            };
-            if !valid_version {
-                diagnostics.push(types::Diagnostic {
-                    severity: types::Severity::Error,
-                    code: "unsupported-version".into(),
-                    message: format!("unsupported version: {v} (supported: 1.0-1.6)"),
-                    path: Some("/version".into()),
-                });
-            }
-        }
-    }
-
-    if let Some(body) = card.get("body")
-        && !body.is_array()
-    {
-        diagnostics.push(types::Diagnostic {
-            severity: types::Severity::Error,
-            code: "body-must-be-array".into(),
-            message: "body must be an array".into(),
-            path: Some("/body".into()),
-        });
-    }
-    if let Some(actions) = card.get("actions")
-        && !actions.is_array()
-    {
-        diagnostics.push(types::Diagnostic {
-            severity: types::Severity::Error,
-            code: "actions-must-be-array".into(),
-            message: "actions must be an array".into(),
-            path: Some("/actions".into()),
-        });
-    }
-
-    (diagnostics.is_empty(), diagnostics)
+fn parse_host_opt(v: &Value) -> Option<Host> {
+    v.as_str().and_then(Host::from_str)
 }
 
-fn diagnostics_to_json(diagnostics: &[types::Diagnostic]) -> Vec<Value> {
-    diagnostics
+fn parse_card_version(s: &str) -> Option<CardVersion> {
+    CardVersion::parse(s)
+}
+
+fn diagnostics_from_validation(report: &core::types::ValidationReport) -> Vec<types::Diagnostic> {
+    let mut out: Vec<types::Diagnostic> = report
+        .schema_errors
         .iter()
-        .map(|d| {
-            let severity = match d.severity {
-                types::Severity::Error => "error",
-                types::Severity::Warning => "warning",
-                types::Severity::Info => "info",
-                types::Severity::Hint => "hint",
-            };
-            serde_json::json!({
-                "severity": severity,
-                "code": d.code,
-                "message": d.message,
-                "path": d.path,
-            })
+        .map(|e| types::Diagnostic {
+            severity: types::Severity::Error,
+            code: e.keyword.clone(),
+            message: e.message.clone(),
+            path: Some(e.path.clone()),
         })
-        .collect()
+        .collect();
+    for issue in &report.accessibility.issues {
+        out.push(types::Diagnostic {
+            severity: types::Severity::Warning,
+            code: format!("a11y:{}", issue.rule),
+            message: issue.message.clone(),
+            path: Some(issue.path.clone()),
+        });
+    }
+    if let Some(hc) = &report.host_compat
+        && !hc.compatible
+    {
+        for el in &hc.unsupported_elements {
+            out.push(types::Diagnostic {
+                severity: types::Severity::Warning,
+                code: "host-compat:unsupported-element".into(),
+                message: format!("element {el} not supported by {:?}", hc.host),
+                path: None,
+            });
+        }
+        for action in &hc.unsupported_actions {
+            out.push(types::Diagnostic {
+                severity: types::Severity::Warning,
+                code: "host-compat:unsupported-action".into(),
+                message: format!("action {action} not supported by {:?}", hc.host),
+                path: None,
+            });
+        }
+    }
+    out
 }
 
 // ===== design::tools =====
@@ -144,38 +117,43 @@ impl tools::Guest for Component {
         let defs = [
             (
                 "validate_card",
-                "Validate an Adaptive Card against v1.6 schema",
-                r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#,
+                "Validate an Adaptive Card against v1.6 schema + a11y + optional host compat",
+                r#"{"type":"object","properties":{"card":{"type":"object"},"host":{"type":"string","description":"generic|teams|outlook|webchat|windows|viva|webex"}},"required":["card"]}"#,
             ),
             (
                 "analyze_card",
-                "Count elements, actions, and depth of a card",
+                "Element / action / depth counts + duplicate ID detection",
                 r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#,
             ),
             (
                 "check_accessibility",
-                "Return an a11y score (0-100) and issue list",
+                "WCAG-style a11y score (0-100) + issue list",
                 r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#,
             ),
             (
                 "optimize_card",
-                "Apply accessibility + performance improvements (stub)",
-                r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#,
+                "Apply accessibility / performance / modernize transforms",
+                r#"{"type":"object","properties":{"card":{"type":"object"},"opts":{"type":"object","properties":{"accessibility":{"type":"boolean"},"performance":{"type":"boolean"},"modernize":{"type":"boolean"},"target_host":{"type":"string"}}}},"required":["card"]}"#,
             ),
             (
                 "transform_card",
-                "Apply a named transform (stub)",
-                r#"{"type":"object","properties":{"card":{"type":"object"},"transform":{"type":"string"}},"required":["card","transform"]}"#,
+                "Apply version downgrade and/or host adaptation",
+                r#"{"type":"object","properties":{"card":{"type":"object"},"version":{"type":"string","description":"1.0..1.6"},"host":{"type":"string"},"strict":{"type":"boolean"}},"required":["card"]}"#,
             ),
             (
                 "template_card",
-                "Convert card to data-bound template (stub)",
+                "Convert static card into data-bound template with ${expr} bindings",
                 r#"{"type":"object","properties":{"card":{"type":"object"}},"required":["card"]}"#,
             ),
             (
                 "data_to_card",
-                "Infer a card from data (stub)",
-                r#"{"type":"object","properties":{"data":{}},"required":["data"]}"#,
+                "Infer a card from input data (table / factset / list / chart / auto)",
+                r#"{"type":"object","properties":{"data":{},"opts":{"type":"object"}},"required":["data"]}"#,
+            ),
+            (
+                "check_host_compat",
+                "Check whether a card is compatible with a target host",
+                r#"{"type":"object","properties":{"card":{"type":"object"},"host":{"type":"string"}},"required":["card","host"]}"#,
             ),
         ];
         defs.iter()
@@ -192,56 +170,81 @@ impl tools::Guest for Component {
         let args: Value = serde_json::from_str(&args_json)
             .map_err(|e| types::ExtensionError::InvalidInput(e.to_string()))?;
 
-        let result = match name.as_str() {
+        let result: Value = match name.as_str() {
             "validate_card" => {
-                let card = &args["card"];
-                let (valid, diagnostics) = validate_adaptive_card(card);
-                serde_json::json!({
-                    "valid": valid,
-                    "diagnostics": diagnostics_to_json(&diagnostics),
-                })
+                let card = args.get("card").cloned().unwrap_or(Value::Null);
+                let host = args.get("host").and_then(parse_host_opt);
+                let report = core::validate_card(&card, host);
+                serde_json::to_value(&report)
+                    .map_err(|e| types::ExtensionError::Internal(e.to_string()))?
             }
             "analyze_card" => {
-                let card = &args["card"];
-                let body_len = card
-                    .get("body")
-                    .and_then(Value::as_array)
-                    .map_or(0, Vec::len);
-                let actions_len = card
-                    .get("actions")
-                    .and_then(Value::as_array)
-                    .map_or(0, Vec::len);
-                serde_json::json!({
-                    "body_elements": body_len,
-                    "actions": actions_len,
-                    "depth": 1,
-                })
+                let card = args.get("card").cloned().unwrap_or(Value::Null);
+                let analysis = core::analyze_card(&card);
+                serde_json::to_value(&analysis)
+                    .map_err(|e| types::ExtensionError::Internal(e.to_string()))?
             }
             "check_accessibility" => {
-                let card = &args["card"];
-                let mut issues: Vec<String> = vec![];
-                if let Some(body) = card.get("body").and_then(Value::as_array) {
-                    for el in body {
-                        if el.get("type") == Some(&Value::String("Image".into()))
-                            && el.get("altText").is_none()
-                        {
-                            issues.push("Image missing altText".into());
-                        }
-                    }
-                }
-                let penalty = i64::try_from(issues.len()).unwrap_or(5) * 20;
-                let score = if issues.is_empty() {
-                    100i64
-                } else {
-                    100i64 - penalty.min(100)
-                };
-                serde_json::json!({ "score": score, "issues": issues })
+                let card = args.get("card").cloned().unwrap_or(Value::Null);
+                let report = core::check_accessibility(&card);
+                serde_json::to_value(&report)
+                    .map_err(|e| types::ExtensionError::Internal(e.to_string()))?
             }
-            "optimize_card" | "transform_card" | "template_card" | "data_to_card" => {
-                serde_json::json!({
-                    "status": "not_implemented_in_v1_6",
-                    "note": "Schema-level MVP; full logic lands in follow-up."
-                })
+            "optimize_card" => {
+                let card = args.get("card").cloned().unwrap_or(Value::Null);
+                let opts: OptimizeOpts = args
+                    .get("opts")
+                    .cloned()
+                    .map(serde_json::from_value)
+                    .transpose()
+                    .map_err(|e| types::ExtensionError::InvalidInput(format!("opts: {e}")))?
+                    .unwrap_or_default();
+                let report = core::optimize_card(card, &opts);
+                serde_json::to_value(&report)
+                    .map_err(|e| types::ExtensionError::Internal(e.to_string()))?
+            }
+            "transform_card" => {
+                let card = args.get("card").cloned().unwrap_or(Value::Null);
+                let version = args.get("version").and_then(Value::as_str).and_then(parse_card_version);
+                let host = args.get("host").and_then(parse_host_opt);
+                let strict = args.get("strict").and_then(Value::as_bool).unwrap_or(false);
+                let target = TransformTarget { version, host, strict };
+                let report = core::transform_card(card, &target)
+                    .map_err(|e| types::ExtensionError::Internal(e.to_string()))?;
+                serde_json::to_value(&report)
+                    .map_err(|e| types::ExtensionError::Internal(e.to_string()))?
+            }
+            "template_card" => {
+                let card = args.get("card").cloned().unwrap_or(Value::Null);
+                let result = core::template_card(card);
+                serde_json::to_value(&result)
+                    .map_err(|e| types::ExtensionError::Internal(e.to_string()))?
+            }
+            "data_to_card" => {
+                let data = args.get("data").cloned().unwrap_or(Value::Null);
+                let opts: DataToCardOpts = args
+                    .get("opts")
+                    .cloned()
+                    .map(serde_json::from_value)
+                    .transpose()
+                    .map_err(|e| types::ExtensionError::InvalidInput(format!("opts: {e}")))?
+                    .unwrap_or(DataToCardOpts {
+                        title: None,
+                        presentation: None,
+                        host: Host::Generic,
+                    });
+                core::data_to_card(&data, &opts)
+                    .map_err(|e| types::ExtensionError::Internal(e.to_string()))?
+            }
+            "check_host_compat" => {
+                let card = args.get("card").cloned().unwrap_or(Value::Null);
+                let host = args
+                    .get("host")
+                    .and_then(parse_host_opt)
+                    .unwrap_or(Host::Generic);
+                let report = core::check_compatibility(&card, host);
+                serde_json::to_value(&report)
+                    .map_err(|e| types::ExtensionError::Internal(e.to_string()))?
             }
             other => {
                 return Err(types::ExtensionError::InvalidInput(format!(
@@ -283,8 +286,12 @@ impl validation::Guest for Component {
                 };
             }
         };
-        let (valid, diagnostics) = validate_adaptive_card(&card);
-        validation::ValidateResult { valid, diagnostics }
+        let report = core::validate_card(&card, None);
+        let diagnostics = diagnostics_from_validation(&report);
+        validation::ValidateResult {
+            valid: report.valid,
+            diagnostics,
+        }
     }
 }
 
@@ -307,6 +314,7 @@ impl prompting::Guest for Component {
 }
 
 // ===== design::knowledge =====
+// Knowledge base ships empty in v1; advanced samples curated separately.
 impl knowledge::Guest for Component {
     fn list_entries(_category_filter: Option<String>) -> Vec<knowledge::EntrySummary> {
         vec![]
@@ -320,10 +328,5 @@ impl knowledge::Guest for Component {
         vec![]
     }
 }
-
-// Suppress unused const warnings — SCHEMA_V16 is embedded for future reference
-// but not read in the manual validator above.
-#[allow(dead_code)]
-const _: &str = SCHEMA_V16;
 
 bindings::export!(Component with_types_in bindings);

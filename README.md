@@ -88,7 +88,7 @@ See [docs/README.md](docs/README.md) for a full index. Quick links:
 ## Contributing
 
 Read [CLAUDE.md](CLAUDE.md) for the project conventions before starting.
-Key points: Rust 1.91, edition 2024, max 500 lines per file, English only
+Key points: Rust 1.94, edition 2024, max 500 lines per file, English only
 in source and commits, feature branches + PRs.
 
 Run the full CI check before opening a PR:

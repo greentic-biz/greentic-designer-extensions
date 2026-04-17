@@ -19,7 +19,7 @@ packaging). This document focuses on the parts specific to bundle extensions.
 
 Same as the design extension tutorial:
 
-- Rust 1.91+
+- Rust 1.94+
 - `cargo-component`
 - `wasm32-wasip2` target
 - `gtdx`

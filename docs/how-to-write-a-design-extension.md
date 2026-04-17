@@ -11,7 +11,7 @@ The canonical source for everything shown here lives in
 
 ## Prerequisites
 
-- **Rust 1.91 or later** (`rustup update stable`)
+- **Rust 1.94 or later** (`rustup update stable`)
 - **`cargo-component`** — the WIT-aware build tool for WASM components:
   ```
   cargo install cargo-component --locked

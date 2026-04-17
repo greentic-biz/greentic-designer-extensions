@@ -18,7 +18,7 @@ first if you are new to extension authoring.
 
 Same as the design extension tutorial:
 
-- Rust 1.91+
+- Rust 1.94+
 - `cargo-component`
 - `wasm32-wasip2` target
 - `gtdx`
