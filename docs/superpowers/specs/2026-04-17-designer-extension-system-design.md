@@ -435,7 +435,7 @@ First install only; subsequent updates re-prompt only for new permissions.
 ```wit
 package greentic:extension-design@0.1.0;
 
-use greentic:extension-base@0.1.0/types.{diagnostic, extension-error};
+use greentic:extension-base/types@0.1.0.{diagnostic, extension-error};
 
 interface tools {
   record tool-definition {
@@ -475,15 +475,15 @@ interface knowledge {
 }
 
 world design-extension {
-  import greentic:extension-base@0.1.0/types;
-  import greentic:extension-host@0.1.0/logging;
-  import greentic:extension-host@0.1.0/i18n;
-  import greentic:extension-host@0.1.0/secrets;
-  import greentic:extension-host@0.1.0/broker;
-  import greentic:extension-host@0.1.0/http;
+  import greentic:extension-base/types@0.1.0;
+  import greentic:extension-host/logging@0.1.0;
+  import greentic:extension-host/i@0.1.018n;
+  import greentic:extension-host/secrets@0.1.0;
+  import greentic:extension-host/broker@0.1.0;
+  import greentic:extension-host/http@0.1.0;
 
-  export greentic:extension-base@0.1.0/manifest;
-  export greentic:extension-base@0.1.0/lifecycle;
+  export greentic:extension-base/manifest@0.1.0;
+  export greentic:extension-base/lifecycle@0.1.0;
   export tools;
   export validation;
   export prompting;
@@ -507,7 +507,7 @@ world design-extension {
 ```wit
 package greentic:extension-bundle@0.1.0;
 
-use greentic:extension-base@0.1.0/types.{diagnostic, extension-error};
+use greentic:extension-base/types@0.1.0.{diagnostic, extension-error};
 
 interface recipes {
   record recipe-summary {
@@ -539,13 +539,13 @@ interface bundling {
 }
 
 world bundle-extension {
-  import greentic:extension-base@0.1.0/types;
-  import greentic:extension-host@0.1.0/logging;
-  import greentic:extension-host@0.1.0/i18n;
-  import greentic:extension-host@0.1.0/broker;
+  import greentic:extension-base/types@0.1.0;
+  import greentic:extension-host/logging@0.1.0;
+  import greentic:extension-host/i@0.1.018n;
+  import greentic:extension-host/broker@0.1.0;
 
-  export greentic:extension-base@0.1.0/manifest;
-  export greentic:extension-base@0.1.0/lifecycle;
+  export greentic:extension-base/manifest@0.1.0;
+  export greentic:extension-base/lifecycle@0.1.0;
   export recipes;
   export bundling;
 }
@@ -568,7 +568,7 @@ bundle-ext reference implementation is shipped (Cycle 3).
 ```wit
 package greentic:extension-deploy@0.1.0;
 
-use greentic:extension-base@0.1.0/types.{diagnostic, extension-error};
+use greentic:extension-base/types@0.1.0.{diagnostic, extension-error};
 
 interface targets {
   record target-summary {
@@ -607,14 +607,14 @@ interface deployment {
 }
 
 world deploy-extension {
-  import greentic:extension-base@0.1.0/types;
-  import greentic:extension-host@0.1.0/logging;
-  import greentic:extension-host@0.1.0/i18n;
-  import greentic:extension-host@0.1.0/secrets;
-  import greentic:extension-host@0.1.0/http;
+  import greentic:extension-base/types@0.1.0;
+  import greentic:extension-host/logging@0.1.0;
+  import greentic:extension-host/i@0.1.018n;
+  import greentic:extension-host/secrets@0.1.0;
+  import greentic:extension-host/http@0.1.0;
 
-  export greentic:extension-base@0.1.0/manifest;
-  export greentic:extension-base@0.1.0/lifecycle;
+  export greentic:extension-base/manifest@0.1.0;
+  export greentic:extension-base/lifecycle@0.1.0;
   export targets;
   export deployment;
 }
