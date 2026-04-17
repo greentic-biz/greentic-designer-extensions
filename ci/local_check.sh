@@ -6,7 +6,12 @@ set -euo pipefail
 WASM_CRATE="greentic-adaptive-cards-extension"
 
 echo "==> cargo fmt"
-cargo fmt --all -- --check
+# Exclude the wasm32 cdylib — its auto-generated bindings.rs (wit-bindgen)
+# has cfg(target_arch = "wasm32")-gated code that rustfmt cannot normalize
+# on a host build and would otherwise fail the check.
+cargo fmt -p greentic-ext-contract -p greentic-ext-runtime \
+          -p greentic-ext-cli -p greentic-ext-testing \
+          -p _wit-lint -p greentic-ext-registry -- --check
 
 echo "==> cargo clippy"
 cargo clippy --workspace --all-targets --all-features --locked \
