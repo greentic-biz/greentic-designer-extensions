@@ -8,6 +8,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # libgit2 (Cargo's default) ignores `git config insteadOf`. Force git CLI
+  # so the PAT-rewrite below applies when fetching the private adaptive-
+  # card-core dep.
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
   check:
