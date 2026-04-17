@@ -16,11 +16,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # Cargo's git dep on greentic-biz/greentic-adaptive-card-mcp (private)
-      # requires SSH access. Add a deploy key on that repo (read-only) and
-      # paste its private half into AC_CORE_DEPLOY_KEY secret on this repo.
-      - uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.AC_CORE_DEPLOY_KEY }}
+      # needs auth. Org policy disables deploy keys, so we use a fine-grained
+      # PAT with `Contents: Read` scope on that repo, stored as the
+      # AC_CORE_PAT secret. The git insteadOf rewrite makes Cargo's HTTPS
+      # clone use the token transparently.
+      - name: Configure git auth for private cargo dep
+        run: |
+          git config --global \
+            url."https://x-access-token:${AC_CORE_PAT}@github.com/greentic-biz/greentic-adaptive-card-mcp".insteadOf \
+            "ssh://git@github.com/greentic-biz/greentic-adaptive-card-mcp"
+        env:
+          AC_CORE_PAT: ${{ secrets.AC_CORE_PAT }}
       - uses: dtolnay/rust-toolchain@1.94.0
         with:
           components: rustfmt, clippy

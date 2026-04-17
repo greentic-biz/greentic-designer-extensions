@@ -317,25 +317,35 @@ cargo test -p greentic-ext-runtime --test ac_invoke -- --nocapture
 
 ---
 
-## CI auth setup (one-time, for new contributors)
+## CI auth setup (one-time, repo admin)
 
 `reference-extensions/adaptive-cards` depends on `adaptive-card-core` from
 the private `greentic-biz/greentic-adaptive-card-mcp` repo. CI runners need
-SSH access to clone it.
+auth to fetch it. The `greentic-biz` org disables deploy keys, so we use a
+**fine-grained Personal Access Token**.
 
-1. **On `greentic-biz/greentic-adaptive-card-mcp`** (the source):
-   - Generate SSH keypair: `ssh-keygen -t ed25519 -f ac-core-deploy -C "ac-core-readonly" -N ""`
-   - Settings → Deploy keys → **Add deploy key** (read-only)
-   - Paste the public key (`ac-core-deploy.pub`)
+1. Generate a fine-grained PAT at
+   https://github.com/settings/personal-access-tokens/new:
+   - **Resource owner**: `greentic-biz`
+   - **Repository access**: only select `greentic-biz/greentic-adaptive-card-mcp`
+   - **Repository permissions**: `Contents: Read-only`
+   - Expiration: long-lived (e.g. 1 year — set a calendar reminder to rotate)
 
-2. **On this repo**:
-   - Settings → Secrets and variables → Actions → **New repository secret**
-   - Name: `AC_CORE_DEPLOY_KEY`
-   - Value: the private key (`ac-core-deploy`)
+2. On this repo:
+   - https://github.com/greentic-biz/greentic-designer-extensions/settings/secrets/actions/new
+   - Name: `AC_CORE_PAT`
+   - Value: paste the token
 
-(Alternative: make `greentic-biz/greentic-adaptive-card-mcp` public — it's MIT
-licensed already — and remove the `webfactory/ssh-agent` step from the
-workflow.)
+3. Re-run the failing CI job from the PR page.
+
+The workflow uses `git config --global url.insteadOf` to rewrite the
+`ssh://git@github.com/greentic-biz/...` URL Cargo sees into an HTTPS
+URL with the PAT embedded, so Cargo can fetch the dep without further
+configuration.
+
+**Alternative**: make `greentic-biz/greentic-adaptive-card-mcp` public —
+it's MIT licensed already — drop the auth step from the workflow, and
+no secret is needed.
 
 ---
 
