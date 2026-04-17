@@ -339,6 +339,62 @@ impl ExtensionRuntime {
     }
 }
 
+impl ExtensionRuntime {
+    /// Retrieve system prompt fragments from a loaded design extension.
+    ///
+    /// Calls `greentic:extension-design/prompting@0.1.0::system-prompt-fragments`.
+    pub fn prompt_fragments(
+        &self,
+        ext_id: &str,
+    ) -> Result<Vec<crate::types::PromptFragment>, RuntimeError> {
+        use crate::host_bindings::exports::greentic::extension_design::prompting::PromptFragment as WitFrag;
+
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine)
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_name = "greentic:extension-design/prompting@0.1.0";
+        let iface_idx = instance
+            .get_export_index(&mut store, None, iface_name)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{iface_name}'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "system-prompt-fragments")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'system-prompt-fragments'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(), (Vec<WitFrag>,)>(&mut store, &func_idx)
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (frags,) = func
+            .call(&mut store, ())
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        Ok(frags
+            .into_iter()
+            .map(|f| crate::types::PromptFragment {
+                section: f.section,
+                content_markdown: f.content_markdown,
+                priority: f.priority,
+            })
+            .collect())
+    }
+}
+
 fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut cur = p;
     loop {
