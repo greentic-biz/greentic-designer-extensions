@@ -1,9 +1,5 @@
 # greentic-designer-extensions
 
-> *"You could have extension packs to the designer, where you say: hey, this
-> extension pack teaches you about Digital Workers, this one teaches you
-> about Green Tech X."* — Maarten Ectors
-
 WASM-based extension system for [Greentic Designer](https://github.com/greentic-biz/greentic-designer).
 Teaches the designer new capabilities at runtime through signed
 WebAssembly Component Model artifacts (`.gtxpack`) distributed via the
