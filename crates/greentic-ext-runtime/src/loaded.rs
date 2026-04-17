@@ -81,6 +81,11 @@ impl LoadedExtension {
         use crate::host_bindings::greentic::extension_host::{broker, http, i18n, logging, secrets};
 
         let mut linker: Linker<HostState> = Linker::new(engine);
+
+        // Wire WASI host functions. cargo-component always adds WASI imports to
+        // its output even when the Rust source never calls them directly.
+        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
+
         // HasSelf<T> wraps T and implements HasData — required for wasmtime 43 bindgen add_to_linker.
         use wasmtime::component::HasSelf;
         logging::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;

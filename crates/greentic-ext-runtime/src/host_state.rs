@@ -1,16 +1,39 @@
+use wasmtime::component::ResourceTable;
+use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
+
 use crate::host_bindings::greentic::extension_host::{broker, http, i18n, logging, secrets};
 use greentic_ext_contract::describe::Permissions;
 
 pub struct HostState {
     pub extension_id: String,
     pub permissions: Permissions,
+    // WASI state — required because cargo-component-built WASM components
+    // implicitly import WASI interfaces (wasi:cli/environment etc.).
+    wasi: WasiCtx,
+    table: ResourceTable,
 }
 
 impl HostState {
     pub fn new(extension_id: String, permissions: Permissions) -> Self {
+        let wasi = WasiCtxBuilder::new().build();
+        let table = ResourceTable::new();
         Self {
             extension_id,
             permissions,
+            wasi,
+            table,
+        }
+    }
+}
+
+/// Implement WasiView so that wasmtime_wasi::p2::add_to_linker_sync can wire
+/// WASI host functions. cargo-component adds WASI imports to every component it
+/// builds, even if the Rust source never calls them.
+impl WasiView for HostState {
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.wasi,
+            table: &mut self.table,
         }
     }
 }
