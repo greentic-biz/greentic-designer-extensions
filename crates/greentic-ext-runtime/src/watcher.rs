@@ -2,11 +2,9 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use notify::RecursiveMode;
-use notify_debouncer_full::{
-    new_debouncer, DebounceEventResult, Debouncer, RecommendedCache,
-};
 use notify::RecommendedWatcher;
+use notify::RecursiveMode;
+use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 
 use crate::error::RuntimeError;
 
@@ -55,5 +53,10 @@ pub fn watch(paths: &[PathBuf]) -> Result<(mpsc::Receiver<FsEvent>, WatchHandle)
                 .map_err(|e| RuntimeError::Watcher(e.to_string()))?;
         }
     }
-    Ok((rx, WatchHandle { _debouncer: debouncer }))
+    Ok((
+        rx,
+        WatchHandle {
+            _debouncer: debouncer,
+        },
+    ))
 }

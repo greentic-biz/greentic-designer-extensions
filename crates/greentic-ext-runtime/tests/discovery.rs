@@ -11,15 +11,11 @@ fn scans_kind_directory_and_returns_extension_paths() {
     let design_dir = tmp.path().join("design");
     fs::create_dir_all(&design_dir).unwrap();
 
-    let fixture = ExtensionFixtureBuilder::new(
-        ExtensionKind::Design,
-        "greentic.first",
-        "0.1.0",
-    )
-    .offer("greentic:first/y", "1.0.0")
-    .with_wasm(wat::parse_str("(component)").unwrap())
-    .build()
-    .unwrap();
+    let fixture = ExtensionFixtureBuilder::new(ExtensionKind::Design, "greentic.first", "0.1.0")
+        .offer("greentic:first/y", "1.0.0")
+        .with_wasm(wat::parse_str("(component)").unwrap())
+        .build()
+        .unwrap();
 
     let target = design_dir.join("greentic.first-0.1.0");
     fs::create_dir_all(&target).unwrap();

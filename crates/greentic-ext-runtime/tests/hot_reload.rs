@@ -2,7 +2,7 @@ use std::fs;
 use std::thread::sleep;
 use std::time::Duration;
 
-use greentic_ext_runtime::watcher::{watch, FsEvent};
+use greentic_ext_runtime::watcher::{FsEvent, watch};
 use tempfile::TempDir;
 
 #[test]

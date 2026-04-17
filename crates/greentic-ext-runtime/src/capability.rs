@@ -74,10 +74,7 @@ impl CapabilityRegistry {
     /// Returns extension IDs that participate in a dependency cycle.
     /// Empty vec if acyclic.
     #[must_use]
-    pub fn detect_cycle(
-        &self,
-        extensions: &[(String, Vec<CapabilityRef>)],
-    ) -> Vec<String> {
+    pub fn detect_cycle(&self, extensions: &[(String, Vec<CapabilityRef>)]) -> Vec<String> {
         let ext_map: HashMap<&str, &Vec<CapabilityRef>> = extensions
             .iter()
             .map(|(id, reqs)| (id.as_str(), reqs))

@@ -98,10 +98,7 @@ impl ExtensionRuntime {
         self.capability_registry.load_full()
     }
 
-    pub fn register_loaded_from_dir(
-        &mut self,
-        dir: &std::path::Path,
-    ) -> Result<(), RuntimeError> {
+    pub fn register_loaded_from_dir(&mut self, dir: &std::path::Path) -> Result<(), RuntimeError> {
         let loaded = LoadedExtension::load_from_dir(&self.engine, dir)?;
         let id = loaded.id.clone();
 
@@ -137,11 +134,8 @@ impl ExtensionRuntime {
     /// affected extension's directory. Returns a stop sender — dropping or
     /// sending on it signals the watcher thread to exit. Also returns the
     /// thread `JoinHandle` for callers that want to wait for clean shutdown.
-    pub fn start_watcher(
-        self: Arc<Self>,
-    ) -> Result<WatcherGuard, RuntimeError> {
-        let paths: Vec<std::path::PathBuf> =
-            self.config.paths.all().into_iter().cloned().collect();
+    pub fn start_watcher(self: Arc<Self>) -> Result<WatcherGuard, RuntimeError> {
+        let paths: Vec<std::path::PathBuf> = self.config.paths.all().into_iter().cloned().collect();
         let (rx, watch_handle) = crate::watcher::watch(&paths)?;
         let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
         let this = self.clone();
@@ -166,7 +160,10 @@ impl ExtensionRuntime {
                 }
             }
         });
-        Ok(WatcherGuard { stop_tx: Some(stop_tx), join: Some(join) })
+        Ok(WatcherGuard {
+            stop_tx: Some(stop_tx),
+            join: Some(join),
+        })
     }
 
     fn handle_fs_event(&self, event: &crate::watcher::FsEvent) -> Result<(), RuntimeError> {
@@ -206,7 +203,9 @@ impl ExtensionRuntime {
         let loaded = crate::loaded::LoadedExtension::load_from_dir(&self.engine, dir)?;
         let id = loaded.id.clone();
         let mut new_map = (**self.loaded.load()).clone();
-        let prev_version = new_map.get(&id).map(|e| e.describe.metadata.version.clone());
+        let prev_version = new_map
+            .get(&id)
+            .map(|e| e.describe.metadata.version.clone());
         new_map.insert(id.clone(), Arc::new(loaded));
         self.loaded.store(Arc::new(new_map));
         let event = match prev_version {

@@ -21,15 +21,11 @@ async fn hot_reload_picks_up_new_extension() {
     // Give the watcher time to settle before writing files.
     tokio::time::sleep(Duration::from_millis(400)).await;
 
-    let fixture = ExtensionFixtureBuilder::new(
-        ExtensionKind::Design,
-        "greentic.hot",
-        "0.1.0",
-    )
-    .offer("greentic:hot/ping", "1.0.0")
-    .with_wasm(wat::parse_str("(component)").unwrap())
-    .build()
-    .unwrap();
+    let fixture = ExtensionFixtureBuilder::new(ExtensionKind::Design, "greentic.hot", "0.1.0")
+        .offer("greentic:hot/ping", "1.0.0")
+        .with_wasm(wat::parse_str("(component)").unwrap())
+        .build()
+        .unwrap();
 
     let target = design_dir.join("greentic.hot-0.1.0");
     fs::create_dir_all(&target).unwrap();

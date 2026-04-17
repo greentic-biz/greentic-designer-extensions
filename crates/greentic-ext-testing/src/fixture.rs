@@ -102,10 +102,7 @@ impl ExtensionFixtureBuilder {
                 greentic_designer: "*".into(),
                 ext_runtime: "*".into(),
             },
-            capabilities: greentic_ext_contract::describe::Capabilities {
-                offered,
-                required,
-            },
+            capabilities: greentic_ext_contract::describe::Capabilities { offered, required },
             runtime: greentic_ext_contract::describe::Runtime {
                 component: "extension.wasm".into(),
                 memory_limit_mb: 64,
@@ -117,9 +114,6 @@ impl ExtensionFixtureBuilder {
         let describe_path = dir.path().join("describe.json");
         std::fs::write(&describe_path, serde_json::to_vec_pretty(&describe)?)?;
         std::fs::write(dir.path().join("extension.wasm"), &self.wasm_bytes)?;
-        Ok(ExtensionFixture {
-            dir,
-            describe_path,
-        })
+        Ok(ExtensionFixture { dir, describe_path })
     }
 }
