@@ -30,8 +30,7 @@ impl OciRegistry {
             registry_host: registry_host.into(),
             namespace: namespace.into(),
             auth: auth
-                .map(|(u, p)| RegistryAuth::Basic(u, p))
-                .unwrap_or(RegistryAuth::Anonymous),
+                .map_or(RegistryAuth::Anonymous, |(u, p)| RegistryAuth::Basic(u, p)),
             client,
         }
     }
