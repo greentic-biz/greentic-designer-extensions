@@ -81,7 +81,7 @@ impl ExtensionRuntime {
         self.capability_registry.load_full()
     }
 
-    pub async fn register_loaded_from_dir(
+    pub fn register_loaded_from_dir(
         &mut self,
         dir: &std::path::Path,
     ) -> Result<(), RuntimeError> {

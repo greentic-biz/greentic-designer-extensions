@@ -41,8 +41,7 @@ impl Broker {
             Ok(())
         } else {
             Err(BrokerError::PermissionDenied(format!(
-                "{caller_id} may not call {:?} extensions",
-                target_kind
+                "{caller_id} may not call {target_kind:?} extensions"
             )))
         }
     }

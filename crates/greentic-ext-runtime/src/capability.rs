@@ -73,6 +73,7 @@ impl CapabilityRegistry {
 
     /// Returns extension IDs that participate in a dependency cycle.
     /// Empty vec if acyclic.
+    #[must_use]
     pub fn detect_cycle(
         &self,
         extensions: &[(String, Vec<CapabilityRef>)],
@@ -105,7 +106,7 @@ impl CapabilityRegistry {
             visited.remove(ext_id);
             return false;
         };
-        for req in reqs.iter() {
+        for req in *reqs {
             let vr = VersionReq::parse(&req.version).unwrap_or(VersionReq::STAR);
             let Some(offers) = self.offerings.get(&req.id) else {
                 continue;
