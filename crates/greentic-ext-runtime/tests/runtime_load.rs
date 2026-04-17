@@ -6,7 +6,7 @@ use greentic_ext_testing::ExtensionFixtureBuilder;
 
 #[tokio::test]
 async fn loads_extension_and_registers_caps() {
-    let minimal_wasm = wat::parse_str(r#"(component)"#).expect("component must compile");
+    let minimal_wasm = wat::parse_str(r"(component)").expect("component must compile");
     let fixture = ExtensionFixtureBuilder::new(ExtensionKind::Design, "greentic.test-ext", "0.1.0")
         .offer("greentic:test/ping", "1.0.0")
         .with_wasm(minimal_wasm)

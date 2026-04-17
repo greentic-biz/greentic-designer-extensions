@@ -9,7 +9,7 @@ use tempfile::TempDir;
 fn watcher_detects_new_file() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().to_path_buf();
-    let (rx, _handle) = watch(&[root.clone()]).unwrap();
+    let (rx, _handle) = watch(std::slice::from_ref(&root)).unwrap();
 
     sleep(Duration::from_millis(300));
     let new_file = root.join("newfile.txt");
@@ -18,11 +18,11 @@ fn watcher_detects_new_file() {
     let mut saw_event = false;
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     while std::time::Instant::now() < deadline {
-        if let Ok(ev) = rx.recv_timeout(Duration::from_millis(200)) {
-            if matches!(ev, FsEvent::Added(_) | FsEvent::Modified(_)) {
-                saw_event = true;
-                break;
-            }
+        if let Ok(ev) = rx.recv_timeout(Duration::from_millis(200))
+            && matches!(ev, FsEvent::Added(_) | FsEvent::Modified(_))
+        {
+            saw_event = true;
+            break;
         }
     }
     assert!(saw_event, "expected FsEvent::Added/Modified");

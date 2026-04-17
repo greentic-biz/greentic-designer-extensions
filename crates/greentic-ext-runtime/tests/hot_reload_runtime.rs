@@ -16,7 +16,7 @@ async fn hot_reload_picks_up_new_extension() {
 
     let config = RuntimeConfig::from_paths(DiscoveryPaths::new(user_root));
     let rt = Arc::new(ExtensionRuntime::new(config).unwrap());
-    let _guard = rt.clone().start_watcher().unwrap();
+    let guard = rt.clone().start_watcher().unwrap();
 
     // Give the watcher time to settle before writing files.
     tokio::time::sleep(Duration::from_millis(400)).await;
@@ -38,8 +38,8 @@ async fn hot_reload_picks_up_new_extension() {
     tokio::time::sleep(Duration::from_millis(2000)).await;
 
     let loaded = rt.loaded();
-    // _guard drops here, cleanly stopping the watcher thread.
-    drop(_guard);
+    // guard drops here, cleanly stopping the watcher thread.
+    drop(guard);
 
     assert!(
         loaded.values().any(|e| e.id.as_str() == "greentic.hot"),
