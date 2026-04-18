@@ -1,1 +1,133 @@
 //! Preflight checks before scaffolding.
+
+use std::path::Path;
+
+#[allow(dead_code)]
+#[derive(Debug, PartialEq, Eq)]
+pub enum Check {
+    Pass { name: String, detail: String },
+    Warn { name: String, hint: String },
+    Fail { name: String, hint: String },
+}
+
+#[allow(dead_code)]
+pub fn check_cargo_available() -> Check {
+    match which::which("cargo") {
+        Ok(path) => Check::Pass {
+            name: "cargo".into(),
+            detail: path.display().to_string(),
+        },
+        Err(_) => Check::Fail {
+            name: "cargo".into(),
+            hint: "install Rust toolchain from https://rustup.rs/".into(),
+        },
+    }
+}
+
+#[allow(dead_code)]
+pub fn check_cargo_component_available() -> Check {
+    match which::which("cargo-component") {
+        Ok(path) => Check::Pass {
+            name: "cargo-component".into(),
+            detail: path.display().to_string(),
+        },
+        Err(_) => Check::Warn {
+            name: "cargo-component".into(),
+            hint: "install with: cargo install --locked cargo-component".into(),
+        },
+    }
+}
+
+#[allow(dead_code)]
+pub fn check_target_dir(path: &Path, force: bool) -> Check {
+    if !path.exists() {
+        return Check::Pass {
+            name: "target directory".into(),
+            detail: format!("{} (will be created)", path.display()),
+        };
+    }
+    match std::fs::read_dir(path) {
+        Ok(mut entries) => {
+            if entries.next().is_none() {
+                Check::Pass {
+                    name: "target directory".into(),
+                    detail: format!("{} (empty)", path.display()),
+                }
+            } else if force {
+                Check::Warn {
+                    name: "target directory".into(),
+                    hint: format!(
+                        "{} is not empty; --force will overwrite existing files",
+                        path.display()
+                    ),
+                }
+            } else {
+                Check::Fail {
+                    name: "target directory".into(),
+                    hint: format!(
+                        "{} already exists and is not empty; pass --force to overwrite",
+                        path.display()
+                    ),
+                }
+            }
+        }
+        Err(e) => Check::Fail {
+            name: "target directory".into(),
+            hint: format!("cannot read {}: {}", path.display(), e),
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cargo_check_is_pass_on_this_dev_env() {
+        match check_cargo_available() {
+            Check::Pass { .. } => {}
+            other => panic!("expected Pass, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn target_dir_missing_is_pass() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("nope");
+        match check_target_dir(&missing, false) {
+            Check::Pass { .. } => {}
+            other => panic!("expected Pass, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn target_dir_empty_is_pass() {
+        let tmp = tempfile::tempdir().unwrap();
+        match check_target_dir(tmp.path(), false) {
+            Check::Pass { .. } => {}
+            other => panic!("expected Pass, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn target_dir_nonempty_no_force_is_fail() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("something"), "x").unwrap();
+        match check_target_dir(tmp.path(), false) {
+            Check::Fail { hint, .. } => {
+                assert!(hint.contains("--force"));
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn target_dir_nonempty_with_force_is_warn() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("something"), "x").unwrap();
+        match check_target_dir(tmp.path(), true) {
+            Check::Warn { .. } => {}
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+}
