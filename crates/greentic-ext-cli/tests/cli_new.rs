@@ -67,3 +67,43 @@ fn scaffolds_design_extension_and_lock_file_matches_bytes() {
         "lock file hash did not match on-disk WIT bytes"
     );
 }
+
+#[test]
+fn scaffolds_bundle_extension_with_correct_wit_deps() {
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = tmp.path().join("b");
+    let (ok, _o, e) = run(Command::new(gtdx_bin())
+        .arg("new")
+        .arg("b")
+        .arg("--kind")
+        .arg("bundle")
+        .arg("--dir")
+        .arg(&proj)
+        .arg("-y")
+        .arg("--no-git"));
+    assert!(ok, "gtdx new bundle failed: {e}");
+    assert!(proj.join("wit/deps/greentic/extension-bundle/world.wit").exists());
+    assert!(!proj.join("wit/deps/greentic/extension-design/world.wit").exists());
+    let describe = std::fs::read_to_string(proj.join("describe.json")).unwrap();
+    assert!(describe.contains("\"kind\": \"bundle\""));
+}
+
+#[test]
+fn scaffolds_deploy_extension_with_correct_wit_deps() {
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = tmp.path().join("d");
+    let (ok, _o, e) = run(Command::new(gtdx_bin())
+        .arg("new")
+        .arg("d")
+        .arg("--kind")
+        .arg("deploy")
+        .arg("--dir")
+        .arg(&proj)
+        .arg("-y")
+        .arg("--no-git"));
+    assert!(ok, "gtdx new deploy failed: {e}");
+    assert!(proj.join("wit/deps/greentic/extension-deploy/world.wit").exists());
+    assert!(!proj.join("wit/deps/greentic/extension-bundle/world.wit").exists());
+    let describe = std::fs::read_to_string(proj.join("describe.json")).unwrap();
+    assert!(describe.contains("\"kind\": \"deploy\""));
+}
