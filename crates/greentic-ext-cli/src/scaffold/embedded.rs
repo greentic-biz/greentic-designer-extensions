@@ -2,18 +2,15 @@
 
 use include_dir::{Dir, include_dir};
 
-#[allow(dead_code)] // consumed by Task 16 (orchestration) for contract-lock metadata
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 static EMBEDDED: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/embedded-wit/$CARGO_PKG_VERSION");
 
-#[allow(dead_code)] // consumed by Task 16 (orchestration) via files_for_kind
 pub struct WitFile {
     pub name: &'static str,
     pub bytes: &'static [u8],
 }
 
-#[allow(dead_code)] // consumed by files_for_kind and Task 16
 pub fn wit_files() -> Vec<WitFile> {
     EMBEDDED
         .files()
@@ -30,7 +27,6 @@ pub fn wit_files() -> Vec<WitFile> {
 
 /// Returns the subset of WIT files needed to scaffold an extension of the given kind.
 /// Always includes `extension-base.wit` and `extension-host.wit`.
-#[allow(dead_code)] // consumed by Task 16 (orchestration) when scaffold command is wired
 pub fn files_for_kind(kind: &str) -> Vec<WitFile> {
     let kind_file = format!("extension-{kind}.wit");
     wit_files()
@@ -41,7 +37,6 @@ pub fn files_for_kind(kind: &str) -> Vec<WitFile> {
         .collect()
 }
 
-#[allow(dead_code)] // consumed by Task 6 (contract lock writer) and Task 16
 pub fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(bytes);

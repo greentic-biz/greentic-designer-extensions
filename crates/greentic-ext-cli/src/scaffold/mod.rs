@@ -14,7 +14,6 @@ pub enum Kind {
 }
 
 impl Kind {
-    #[allow(dead_code)] // used by subsequent scaffolding tasks (T5, T12-T14)
     pub fn as_str(self) -> &'static str {
         match self {
             Kind::Design => "design",

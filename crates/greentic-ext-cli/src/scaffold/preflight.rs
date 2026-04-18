@@ -2,7 +2,6 @@
 
 use std::path::Path;
 
-#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum Check {
     Pass { name: String, detail: String },
@@ -10,7 +9,6 @@ pub enum Check {
     Fail { name: String, hint: String },
 }
 
-#[allow(dead_code)]
 pub fn check_cargo_available() -> Check {
     match which::which("cargo") {
         Ok(path) => Check::Pass {
@@ -24,7 +22,6 @@ pub fn check_cargo_available() -> Check {
     }
 }
 
-#[allow(dead_code)]
 pub fn check_cargo_component_available() -> Check {
     match which::which("cargo-component") {
         Ok(path) => Check::Pass {
@@ -38,7 +35,6 @@ pub fn check_cargo_component_available() -> Check {
     }
 }
 
-#[allow(dead_code)]
 pub fn check_target_dir(path: &Path, force: bool) -> Check {
     if !path.exists() {
         return Check::Pass {
@@ -78,7 +74,6 @@ pub fn check_target_dir(path: &Path, force: bool) -> Check {
     }
 }
 
-#[allow(dead_code)]
 pub fn check_wasm32_wasip2_target() -> Check {
     let output = std::process::Command::new("rustup")
         .args(["target", "list", "--installed"])

@@ -9,8 +9,6 @@ static TEMPLATES_DESIGN: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/d
 static TEMPLATES_BUNDLE: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/bundle");
 static TEMPLATES_DEPLOY: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/deploy");
 
-// used by scaffold::commands::new::run in Task 16
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TemplateEntry {
     pub src_bytes: &'static [u8],
@@ -49,14 +47,10 @@ fn translate_dst(rel: &str) -> String {
     dst
 }
 
-// used by scaffold::commands::new::run in Task 16
-#[allow(dead_code)]
 pub fn load_templates_common() -> Vec<TemplateEntry> {
     collect(&TEMPLATES_COMMON)
 }
 
-// used by scaffold::commands::new::run in Task 16
-#[allow(dead_code)]
 pub fn load_templates_kind(kind: &str) -> Vec<TemplateEntry> {
     match kind {
         "design" => collect(&TEMPLATES_DESIGN),
@@ -66,14 +60,10 @@ pub fn load_templates_kind(kind: &str) -> Vec<TemplateEntry> {
     }
 }
 
-// used by scaffold::commands::new::run in Task 16
-#[allow(dead_code)]
 pub struct Context {
     values: HashMap<&'static str, String>,
 }
 
-// used by scaffold::commands::new::run in Task 16
-#[allow(dead_code)]
 impl Context {
     pub fn new() -> Self {
         Self {
@@ -114,8 +104,6 @@ impl Default for Context {
     }
 }
 
-// used by scaffold::commands::new::run in Task 16
-#[allow(dead_code)]
 pub fn write_file(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -124,8 +112,7 @@ pub fn write_file(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     Ok(())
 }
 
-// used by scaffold::commands::new::run in Task 16
-#[allow(dead_code)]
+#[allow(dead_code)] // test-only helper; kept for API ergonomics
 pub fn render_and_write(ctx: &Context, template: &str, path: &Path) -> anyhow::Result<()> {
     let rendered = ctx.render(template)?;
     write_file(path, rendered.as_bytes())
@@ -186,7 +173,11 @@ mod tests {
     #[test]
     fn load_common_returns_gitignore_template() {
         let entries = load_templates_common();
-        assert!(entries.iter().any(|e| e.dst_rel == "gitignore.tmpl" || e.dst_rel == ".gitignore"));
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.dst_rel == "gitignore.tmpl" || e.dst_rel == ".gitignore")
+        );
     }
 
     #[test]

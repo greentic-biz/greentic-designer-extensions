@@ -4,8 +4,6 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-// used by scaffold::commands::new::run in Task 16
-#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct ContractLock {
     pub contract_version: String,
@@ -15,7 +13,6 @@ pub struct ContractLock {
 }
 
 impl ContractLock {
-    #[allow(dead_code)] // used by scaffold::commands::new::run in Task 16
     pub fn to_toml(&self) -> anyhow::Result<String> {
         toml::to_string_pretty(self).map_err(Into::into)
     }
