@@ -1,6 +1,6 @@
 //! Template rendering and file writing.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fs, path::Path};
 
 // used by scaffold::commands::new::run in Task 16
 #[allow(dead_code)]
@@ -50,6 +50,23 @@ impl Default for Context {
     }
 }
 
+// used by scaffold::commands::new::run in Task 16
+#[allow(dead_code)]
+pub fn write_file(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
+// used by scaffold::commands::new::run in Task 16
+#[allow(dead_code)]
+pub fn render_and_write(ctx: &Context, template: &str, path: &Path) -> anyhow::Result<()> {
+    let rendered = ctx.render(template)?;
+    write_file(path, rendered.as_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,5 +99,23 @@ mod tests {
         let ctx = Context::new();
         let out = ctx.render("plain text no braces").unwrap();
         assert_eq!(out, "plain text no braces");
+    }
+
+    #[test]
+    fn write_file_creates_parent_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dst = tmp.path().join("a/b/c/file.txt");
+        write_file(&dst, b"hello").unwrap();
+        assert_eq!(std::fs::read(&dst).unwrap(), b"hello");
+    }
+
+    #[test]
+    fn render_and_write_substitutes_before_writing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dst = tmp.path().join("out.txt");
+        let mut ctx = Context::new();
+        ctx.set("who", "world");
+        render_and_write(&ctx, "hello {{who}}", &dst).unwrap();
+        assert_eq!(std::fs::read_to_string(&dst).unwrap(), "hello world");
     }
 }
