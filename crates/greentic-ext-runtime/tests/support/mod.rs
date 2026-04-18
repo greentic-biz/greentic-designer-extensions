@@ -2,6 +2,7 @@
 //!
 //! Tests must not run in parallel when mutating process environment.
 //! The `EnvGuard::set` guard serializes via a global Mutex.
+#![allow(dead_code)]
 
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -20,7 +21,7 @@ impl EnvGuard {
     pub fn set(key: &str, value: &str) -> Self {
         let lock = env_mutex()
             .lock()
-            .unwrap_or_else(|e| e.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let prev = std::env::var(key).ok();
         // SAFETY: serialized via global mutex; we hold the lock for guard lifetime.
         #[allow(unsafe_code)]
@@ -37,7 +38,9 @@ impl EnvGuard {
     /// Remove an env var for the lifetime of the guard, holding the global
     /// mutex for exclusive access. On drop, restore the previous value (if any).
     pub fn remove(key: &str) -> Self {
-        let lock = env_mutex().lock().unwrap_or_else(|e| e.into_inner());
+        let lock = env_mutex()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let prev = std::env::var(key).ok();
         // SAFETY: serialized via global mutex; we hold the lock for guard lifetime.
         #[allow(unsafe_code)]
@@ -71,12 +74,14 @@ pub fn signed_fixture(
     kind: greentic_ext_contract::ExtensionKind,
     id: &str,
     version: &str,
-) -> (greentic_ext_testing::ExtensionFixture, ed25519_dalek::SigningKey) {
+) -> (
+    greentic_ext_testing::ExtensionFixture,
+    ed25519_dalek::SigningKey,
+) {
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
 
-    let minimal_wasm =
-        wat::parse_str(r"(component)").expect("wat component must compile");
+    let minimal_wasm = wat::parse_str(r"(component)").expect("wat component must compile");
     let fixture = greentic_ext_testing::ExtensionFixtureBuilder::new(kind, id, version)
         .offer("greentic:test/ping", "1.0.0")
         .with_wasm(minimal_wasm)
@@ -86,8 +91,7 @@ pub fn signed_fixture(
     // Read, sign, write back.
     let describe_path = fixture.root().join("describe.json");
     let raw = std::fs::read_to_string(&describe_path).unwrap();
-    let mut describe: greentic_ext_contract::DescribeJson =
-        serde_json::from_str(&raw).unwrap();
+    let mut describe: greentic_ext_contract::DescribeJson = serde_json::from_str(&raw).unwrap();
     let sk = SigningKey::generate(&mut OsRng);
     greentic_ext_contract::sign_describe(&mut describe, &sk).expect("sign");
     let out = serde_json::to_string_pretty(&describe).unwrap();
@@ -100,8 +104,7 @@ pub fn signed_fixture(
 pub fn tamper_fixture(fixture: &greentic_ext_testing::ExtensionFixture) {
     let path = fixture.root().join("describe.json");
     let raw = std::fs::read_to_string(&path).unwrap();
-    let mut describe: greentic_ext_contract::DescribeJson =
-        serde_json::from_str(&raw).unwrap();
+    let mut describe: greentic_ext_contract::DescribeJson = serde_json::from_str(&raw).unwrap();
     describe.metadata.version = "99.99.99".into();
     std::fs::write(&path, serde_json::to_string_pretty(&describe).unwrap()).unwrap();
 }
@@ -113,8 +116,7 @@ pub fn unsigned_fixture(
     id: &str,
     version: &str,
 ) -> greentic_ext_testing::ExtensionFixture {
-    let minimal_wasm =
-        wat::parse_str(r"(component)").expect("wat component must compile");
+    let minimal_wasm = wat::parse_str(r"(component)").expect("wat component must compile");
     greentic_ext_testing::ExtensionFixtureBuilder::new(kind, id, version)
         .offer("greentic:test/ping", "1.0.0")
         .with_wasm(minimal_wasm)

@@ -18,7 +18,10 @@ pub fn run(args: &Args, _home: &Path) -> Result<()> {
     let describe = load_describe(&args.path)?;
     greentic_ext_contract::verify_describe(&describe)
         .map_err(|e| anyhow::anyhow!("signature invalid: {e}"))?;
-    let sig = describe.signature.as_ref().expect("verify passed → signature present");
+    let sig = describe
+        .signature
+        .as_ref()
+        .expect("verify passed → signature present");
     println!(
         "OK  {} v{} signed by {}",
         describe.metadata.id,
@@ -33,10 +36,10 @@ fn load_describe(path: &Path) -> Result<DescribeJson> {
         let ext = path.extension().and_then(|s| s.to_str());
         match ext {
             Some("json") => load_describe_file(path),
-            Some("gtxpack") | Some("zip") => load_describe_from_archive(path),
-            other => anyhow::bail!(
-                "unsupported file extension: {other:?} (expected .json or .gtxpack)"
-            ),
+            Some("gtxpack" | "zip") => load_describe_from_archive(path),
+            other => {
+                anyhow::bail!("unsupported file extension: {other:?} (expected .json or .gtxpack)")
+            }
         }
     } else if path.is_dir() {
         load_describe_file(&path.join("describe.json"))
@@ -46,20 +49,20 @@ fn load_describe(path: &Path) -> Result<DescribeJson> {
 }
 
 fn load_describe_file(path: &Path) -> Result<DescribeJson> {
-    let raw = std::fs::read_to_string(path)
-        .with_context(|| format!("read {}", path.display()))?;
-    serde_json::from_str(&raw)
-        .with_context(|| format!("parse {}", path.display()))
+    let raw = std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    serde_json::from_str(&raw).with_context(|| format!("parse {}", path.display()))
 }
 
 fn load_describe_from_archive(pack_path: &Path) -> Result<DescribeJson> {
-    let file = std::fs::File::open(pack_path)
-        .with_context(|| format!("open {}", pack_path.display()))?;
+    let file =
+        std::fs::File::open(pack_path).with_context(|| format!("open {}", pack_path.display()))?;
     let mut zip = zip::ZipArchive::new(file).context("open zip")?;
     let mut entry = zip
         .by_name("describe.json")
         .context("describe.json missing from archive")?;
     let mut buf = String::new();
-    entry.read_to_string(&mut buf).context("read describe.json")?;
+    entry
+        .read_to_string(&mut buf)
+        .context("read describe.json")?;
     serde_json::from_str(&buf).context("parse describe.json")
 }
