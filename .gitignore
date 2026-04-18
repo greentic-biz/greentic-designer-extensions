@@ -5,3 +5,4 @@
 .cargo/credentials.toml
 .greentic/
 Cargo.lock.bak
+.worktrees/
