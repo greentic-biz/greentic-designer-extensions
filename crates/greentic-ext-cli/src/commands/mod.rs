@@ -1,6 +1,7 @@
 pub mod doctor;
 pub mod info;
 pub mod install;
+pub mod keygen;
 pub mod list;
 pub mod login;
 pub mod registries;
