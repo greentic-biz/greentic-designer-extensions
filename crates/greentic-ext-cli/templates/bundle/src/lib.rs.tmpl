@@ -1,0 +1,26 @@
+// Bundle extension guest for {{id}}.
+// Edit `list_recipes` and `build_pack` to assemble application packs.
+
+wit_bindgen::generate!({
+    world: "extension",
+    path: "wit",
+});
+
+struct Component;
+
+impl exports::greentic::extension_bundle::bundle::Guest for Component {
+    fn list_recipes() -> Vec<exports::greentic::extension_bundle::bundle::Recipe> {
+        vec![exports::greentic::extension_bundle::bundle::Recipe {
+            id: "{{id}}.default".to_string(),
+            title: "Default recipe".to_string(),
+            description: "Edit list_recipes in src/lib.rs".to_string(),
+        }]
+    }
+
+    fn build_pack(_recipe_id: String, _input: String) -> Result<Vec<u8>, String> {
+        // TODO: implement. Return application pack bytes (ZIP/SquashFS).
+        Ok(vec![])
+    }
+}
+
+export!(Component);

@@ -1,0 +1,19 @@
+// Design extension guest for {{id}}.
+// Edit `validate_flow_node` to implement your authoring logic.
+
+wit_bindgen::generate!({
+    world: "extension",
+    path: "wit",
+});
+
+struct Component;
+
+impl exports::greentic::extension_design::design::Guest for Component {
+    fn validate_flow_node(_input: String) -> Result<String, String> {
+        // TODO: implement. Return JSON string shaped like
+        //   { "ok": true, "errors": [] }
+        Ok(r#"{"ok":true,"errors":[]}"#.to_string())
+    }
+}
+
+export!(Component);
