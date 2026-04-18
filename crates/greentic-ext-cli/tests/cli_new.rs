@@ -152,3 +152,30 @@ fn target_dir_conflict_with_force_succeeds() {
     assert!(!proj.join("something").exists(), "old file should be gone after --force");
     assert!(proj.join("Cargo.toml").exists());
 }
+
+/// Slow smoke test: generate a project and confirm `cargo check --quiet`
+/// succeeds. Gated behind `GTDX_RUN_CARGO_CHECK=1` because it needs network
+/// for dep resolution (unless an offline lockfile exists).
+#[test]
+fn generated_project_passes_cargo_check() {
+    if std::env::var("GTDX_RUN_CARGO_CHECK").ok().as_deref() != Some("1") {
+        eprintln!("skip: set GTDX_RUN_CARGO_CHECK=1 to run this test");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = tmp.path().join("demo");
+    let (ok, _o, e) = run(Command::new(gtdx_bin())
+        .arg("new")
+        .arg("demo")
+        .arg("--dir")
+        .arg(&proj)
+        .arg("-y")
+        .arg("--no-git"));
+    assert!(ok, "gtdx new failed: {e}");
+
+    let (ok, stdout, stderr) = run(Command::new("cargo")
+        .arg("check")
+        .arg("--quiet")
+        .current_dir(&proj));
+    assert!(ok, "cargo check failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+}
