@@ -78,6 +78,33 @@ pub fn check_target_dir(path: &Path, force: bool) -> Check {
     }
 }
 
+#[allow(dead_code)]
+pub fn check_wasm32_wasip2_target() -> Check {
+    let output = std::process::Command::new("rustup")
+        .args(["target", "list", "--installed"])
+        .output();
+    match output {
+        Ok(o) if o.status.success() => {
+            let list = String::from_utf8_lossy(&o.stdout);
+            if list.lines().any(|l| l.trim() == "wasm32-wasip2") {
+                Check::Pass {
+                    name: "wasm32-wasip2 target".into(),
+                    detail: "installed".into(),
+                }
+            } else {
+                Check::Warn {
+                    name: "wasm32-wasip2 target".into(),
+                    hint: "install with: rustup target add wasm32-wasip2".into(),
+                }
+            }
+        }
+        _ => Check::Warn {
+            name: "wasm32-wasip2 target".into(),
+            hint: "rustup not available; install wasm32-wasip2 manually before first build".into(),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,5 +156,11 @@ mod tests {
             Check::Warn { .. } => {}
             other => panic!("expected Warn, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn wasm_target_check_returns_some_variant() {
+        let out = check_wasm32_wasip2_target();
+        assert!(matches!(out, Check::Pass { .. } | Check::Warn { .. }));
     }
 }
