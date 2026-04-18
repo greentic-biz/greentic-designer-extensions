@@ -1,0 +1,23 @@
+// Deploy extension guest for {{id}}.
+// Edit `plan` and `apply` to implement deployment lifecycle.
+
+wit_bindgen::generate!({
+    world: "extension",
+    path: "wit",
+});
+
+struct Component;
+
+impl exports::greentic::extension_deploy::deploy::Guest for Component {
+    fn plan(_input: String) -> Result<String, String> {
+        // TODO: return a JSON plan description.
+        Ok(r#"{"actions":[]}"#.to_string())
+    }
+
+    fn apply(_plan_json: String) -> Result<String, String> {
+        // TODO: execute the plan and return a JSON result.
+        Ok(r#"{"ok":true}"#.to_string())
+    }
+}
+
+export!(Component);
