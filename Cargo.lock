@@ -1302,6 +1302,7 @@ dependencies = [
  "greentic-ext-testing",
  "include_dir",
  "semver",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",

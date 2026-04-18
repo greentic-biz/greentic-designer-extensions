@@ -23,6 +23,7 @@ greentic-ext-registry = { path = "../greentic-ext-registry" }
 greentic-ext-runtime = { path = "../greentic-ext-runtime" }
 include_dir = { workspace = true }
 semver = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 tokio = { workspace = true }
