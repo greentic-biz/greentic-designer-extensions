@@ -55,6 +55,29 @@ pub fn canonical_signing_payload(describe: &DescribeJson) -> Result<Vec<u8>, Con
     serde_jcs::to_vec(&clone).map_err(|e| ContractError::Canonicalize(e.to_string()))
 }
 
+/// Sign describe.json in-place. Strips any existing `.signature` field,
+/// canonicalizes via JCS, signs the canonical bytes, and injects a fresh
+/// `.signature` object. Safe to call on already-signed describe (produces
+/// identical bytes regardless of prior sig).
+pub fn sign_describe(
+    describe: &mut DescribeJson,
+    signing_key: &ed25519_dalek::SigningKey,
+) -> Result<(), ContractError> {
+    use ed25519_dalek::Signer;
+    // Defensive: strip before canonicalize so the sig is computed on clean payload.
+    describe.signature = None;
+    let payload = canonical_signing_payload(describe)?;
+    let sig = signing_key.sign(&payload);
+    let pubkey_b64 = B64.encode(signing_key.verifying_key().to_bytes());
+    let sig_b64 = B64.encode(sig.to_bytes());
+    describe.signature = Some(crate::describe::Signature {
+        algorithm: "ed25519".into(),
+        public_key: pubkey_b64,
+        value: sig_b64,
+    });
+    Ok(())
+}
+
 fn strip_prefix(s: &str) -> &str {
     s.strip_prefix("ed25519:").unwrap_or(s)
 }

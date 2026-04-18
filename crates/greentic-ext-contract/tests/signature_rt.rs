@@ -1,5 +1,5 @@
 use ed25519_dalek::SigningKey;
-use greentic_ext_contract::{artifact_sha256, canonical_signing_payload, sign_ed25519, verify_ed25519, DescribeJson};
+use greentic_ext_contract::{artifact_sha256, canonical_signing_payload, sign_describe, sign_ed25519, verify_ed25519, DescribeJson};
 use rand::rngs::OsRng;
 
 #[test]
@@ -70,4 +70,33 @@ fn canonical_payload_is_deterministic_across_serde_round_trip() {
     let b1 = canonical_signing_payload(&d1).unwrap();
     let b2 = canonical_signing_payload(&d2).unwrap();
     assert_eq!(b1, b2, "canonical form must survive serde round trip");
+}
+
+#[test]
+fn sign_describe_populates_signature_field() {
+    let sk = SigningKey::generate(&mut OsRng);
+    let mut d = sample_describe_with_sig(None);
+    assert!(d.signature.is_none());
+    sign_describe(&mut d, &sk).expect("sign");
+    let sig = d.signature.as_ref().expect("signature populated");
+    assert_eq!(sig.algorithm, "ed25519");
+    assert_eq!(sig.public_key.len(), 44, "base64 of 32 bytes is 44 chars");
+    assert_eq!(sig.value.len(), 88, "base64 of 64 bytes is 88 chars");
+}
+
+#[test]
+fn sign_describe_strips_preexisting_signature_before_signing() {
+    // If caller passes a describe that already has a stale signature,
+    // sign_describe should canonicalize as-if signature was None so the
+    // new sig is not computed over a signed payload.
+    let sk = SigningKey::generate(&mut OsRng);
+    let mut d_preexisting = sample_describe_with_sig(Some("STALE"));
+    let mut d_fresh = sample_describe_with_sig(None);
+    sign_describe(&mut d_preexisting, &sk).expect("sign");
+    sign_describe(&mut d_fresh, &sk).expect("sign");
+    assert_eq!(
+        d_preexisting.signature.as_ref().unwrap().value,
+        d_fresh.signature.as_ref().unwrap().value,
+        "signing a stale-signed describe must produce same signature as signing clean",
+    );
 }
