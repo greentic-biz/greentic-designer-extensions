@@ -133,7 +133,7 @@ $ gtdx dev
 4. Watcher filters exclude `target/` (the single biggest source of noise).
 5. Use `cargo component build --offline` if lockfile is pinned and registry not reachable.
 
-Target: single-file source edit → reinstall complete in **< 3 s** (debug, incremental, warm cache).
+Target: single-file source edit → reinstall complete in **≤ 5 s** (debug, incremental, warm cache). Stretch goal: < 3 s.
 
 ## 9. Hot-Reload Chain
 
