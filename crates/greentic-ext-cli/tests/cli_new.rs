@@ -107,3 +107,48 @@ fn scaffolds_deploy_extension_with_correct_wit_deps() {
     let describe = std::fs::read_to_string(proj.join("describe.json")).unwrap();
     assert!(describe.contains("\"kind\": \"deploy\""));
 }
+
+#[test]
+fn target_dir_conflict_without_force_fails() {
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = tmp.path().join("demo");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::write(proj.join("something"), "x").unwrap();
+
+    let (ok, _o, e) = run(Command::new(gtdx_bin())
+        .arg("new")
+        .arg("demo")
+        .arg("--dir")
+        .arg(&proj)
+        .arg("-y")
+        .arg("--no-git"));
+    assert!(!ok);
+    assert!(
+        e.contains("--force") || e.contains("already exists"),
+        "stderr:\n{e}"
+    );
+
+    // Pre-existing file must remain untouched.
+    let kept = std::fs::read_to_string(proj.join("something")).unwrap();
+    assert_eq!(kept, "x");
+}
+
+#[test]
+fn target_dir_conflict_with_force_succeeds() {
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = tmp.path().join("demo");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::write(proj.join("something"), "x").unwrap();
+
+    let (ok, _o, e) = run(Command::new(gtdx_bin())
+        .arg("new")
+        .arg("demo")
+        .arg("--dir")
+        .arg(&proj)
+        .arg("--force")
+        .arg("-y")
+        .arg("--no-git"));
+    assert!(ok, "stderr:\n{e}");
+    assert!(!proj.join("something").exists(), "old file should be gone after --force");
+    assert!(proj.join("Cargo.toml").exists());
+}
