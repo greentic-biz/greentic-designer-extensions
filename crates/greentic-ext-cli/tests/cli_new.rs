@@ -82,8 +82,15 @@ fn scaffolds_bundle_extension_with_correct_wit_deps() {
         .arg("-y")
         .arg("--no-git"));
     assert!(ok, "gtdx new bundle failed: {e}");
-    assert!(proj.join("wit/deps/greentic/extension-bundle/world.wit").exists());
-    assert!(!proj.join("wit/deps/greentic/extension-design/world.wit").exists());
+    assert!(
+        proj.join("wit/deps/greentic/extension-bundle/world.wit")
+            .exists()
+    );
+    assert!(
+        !proj
+            .join("wit/deps/greentic/extension-design/world.wit")
+            .exists()
+    );
     let describe = std::fs::read_to_string(proj.join("describe.json")).unwrap();
     assert!(describe.contains("\"kind\": \"bundle\""));
 }
@@ -102,8 +109,15 @@ fn scaffolds_deploy_extension_with_correct_wit_deps() {
         .arg("-y")
         .arg("--no-git"));
     assert!(ok, "gtdx new deploy failed: {e}");
-    assert!(proj.join("wit/deps/greentic/extension-deploy/world.wit").exists());
-    assert!(!proj.join("wit/deps/greentic/extension-bundle/world.wit").exists());
+    assert!(
+        proj.join("wit/deps/greentic/extension-deploy/world.wit")
+            .exists()
+    );
+    assert!(
+        !proj
+            .join("wit/deps/greentic/extension-bundle/world.wit")
+            .exists()
+    );
     let describe = std::fs::read_to_string(proj.join("describe.json")).unwrap();
     assert!(describe.contains("\"kind\": \"deploy\""));
 }
@@ -149,7 +163,10 @@ fn target_dir_conflict_with_force_succeeds() {
         .arg("-y")
         .arg("--no-git"));
     assert!(ok, "stderr:\n{e}");
-    assert!(!proj.join("something").exists(), "old file should be gone after --force");
+    assert!(
+        !proj.join("something").exists(),
+        "old file should be gone after --force"
+    );
     assert!(proj.join("Cargo.toml").exists());
 }
 
@@ -177,5 +194,8 @@ fn generated_project_passes_cargo_check() {
         .arg("check")
         .arg("--quiet")
         .current_dir(&proj));
-    assert!(ok, "cargo check failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+    assert!(
+        ok,
+        "cargo check failed\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
 }
