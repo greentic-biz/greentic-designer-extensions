@@ -1,6 +1,11 @@
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use clap::Args as ClapArgs;
+
+use crate::dev::builder::Profile;
+use crate::dev::event::{Format, StdoutEmitter};
+use crate::dev::{DevConfig, project_dir_from_manifest, run_once, run_watch};
 
 #[derive(ClapArgs, Debug, Clone)]
 pub struct Args {
@@ -12,7 +17,7 @@ pub struct Args {
     #[arg(long)]
     pub watch: bool,
 
-    /// Target registry dir; defaults to $GREENTIC_HOME (installs via Installer)
+    /// Override target registry dir (currently informational; install uses home)
     #[arg(long)]
     pub install_to: Option<PathBuf>,
 
@@ -24,11 +29,11 @@ pub struct Args {
     #[arg(long)]
     pub release: bool,
 
-    /// Override describe.json id for this run (multi-variant dev)
+    /// Override describe.json id for this run (reserved for future multi-variant dev)
     #[arg(long)]
     pub ext_id: Option<String>,
 
-    /// File-watch debounce window
+    /// File-watch debounce window (ms)
     #[arg(long, default_value_t = default_debounce_ms())]
     pub debounce_ms: u64,
 
@@ -40,7 +45,7 @@ pub struct Args {
     #[arg(long, default_value = "./Cargo.toml")]
     pub manifest: PathBuf,
 
-    /// Force a full rebuild by ignoring cargo cache (`--offline` off; does `cargo clean -p <crate>` first)
+    /// Force a full rebuild by running `cargo clean -p <crate>` first
     #[arg(long)]
     pub force_rebuild: bool,
 
@@ -53,6 +58,22 @@ fn default_debounce_ms() -> u64 {
     if cfg!(windows) { 1000 } else { 500 }
 }
 
-pub async fn run(_args: Args, _home: &Path) -> anyhow::Result<()> {
-    anyhow::bail!("gtdx dev is not yet implemented")
+pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
+    let project_dir = project_dir_from_manifest(&args.manifest)?;
+    let profile = if args.release { Profile::Release } else { Profile::Debug };
+    let cfg = DevConfig {
+        project_dir,
+        home: home.to_path_buf(),
+        profile,
+        install: !args.no_install,
+        debounce: Duration::from_millis(args.debounce_ms),
+    };
+    let format = Format::parse(&args.format)?;
+    let mut emitter = StdoutEmitter { format };
+
+    if args.once {
+        run_once(&cfg, &mut emitter).await
+    } else {
+        run_watch(&cfg, &mut emitter).await
+    }
 }
