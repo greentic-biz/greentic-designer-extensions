@@ -78,6 +78,25 @@ pub fn sign_describe(
     Ok(())
 }
 
+/// Verify the inline `.signature` field of a describe.json. Returns
+/// `Ok(())` iff signature is present, algorithm is `ed25519`, and the
+/// signature matches the canonical payload (describe with `.signature`
+/// stripped, serialized via JCS).
+pub fn verify_describe(describe: &DescribeJson) -> Result<(), ContractError> {
+    let sig = describe
+        .signature
+        .as_ref()
+        .ok_or_else(|| ContractError::SignatureInvalid("missing signature field".into()))?;
+    if sig.algorithm != "ed25519" {
+        return Err(ContractError::SignatureInvalid(format!(
+            "unsupported algorithm: {}",
+            sig.algorithm
+        )));
+    }
+    let payload = canonical_signing_payload(describe)?;
+    verify_ed25519(&sig.public_key, &sig.value, &payload)
+}
+
 fn strip_prefix(s: &str) -> &str {
     s.strip_prefix("ed25519:").unwrap_or(s)
 }

@@ -1,5 +1,8 @@
 use ed25519_dalek::SigningKey;
-use greentic_ext_contract::{artifact_sha256, canonical_signing_payload, sign_describe, sign_ed25519, verify_ed25519, DescribeJson};
+use greentic_ext_contract::{
+    artifact_sha256, canonical_signing_payload, sign_describe, sign_ed25519, verify_describe,
+    verify_ed25519, DescribeJson,
+};
 use rand::rngs::OsRng;
 
 #[test]
@@ -99,4 +102,52 @@ fn sign_describe_strips_preexisting_signature_before_signing() {
         d_fresh.signature.as_ref().unwrap().value,
         "signing a stale-signed describe must produce same signature as signing clean",
     );
+}
+
+#[test]
+fn sign_describe_then_verify_describe_roundtrip() {
+    let sk = SigningKey::generate(&mut OsRng);
+    let mut d = sample_describe_with_sig(None);
+    sign_describe(&mut d, &sk).expect("sign");
+    verify_describe(&d).expect("verify");
+}
+
+#[test]
+fn verify_describe_missing_signature_fails() {
+    let d = sample_describe_with_sig(None);
+    let err = verify_describe(&d).unwrap_err();
+    assert!(matches!(err, greentic_ext_contract::ContractError::SignatureInvalid(_)));
+    assert!(format!("{err}").contains("missing signature"));
+}
+
+#[test]
+fn verify_describe_rejects_tampered_metadata() {
+    let sk = SigningKey::generate(&mut OsRng);
+    let mut d = sample_describe_with_sig(None);
+    sign_describe(&mut d, &sk).expect("sign");
+    d.metadata.version = "99.99.99".into();
+    let err = verify_describe(&d).unwrap_err();
+    assert!(matches!(err, greentic_ext_contract::ContractError::SignatureInvalid(_)));
+}
+
+#[test]
+fn verify_describe_rejects_non_ed25519_algorithm() {
+    let sk = SigningKey::generate(&mut OsRng);
+    let mut d = sample_describe_with_sig(None);
+    sign_describe(&mut d, &sk).expect("sign");
+    d.signature.as_mut().unwrap().algorithm = "sha256-hmac".into();
+    let err = verify_describe(&d).unwrap_err();
+    assert!(format!("{err}").contains("unsupported algorithm"));
+}
+
+#[test]
+fn verify_describe_survives_serde_round_trip() {
+    // Field-order-independence test: sign, re-serialize through serde_json,
+    // re-parse, verify still passes. Proves JCS canonicalization is stable.
+    let sk = SigningKey::generate(&mut OsRng);
+    let mut d1 = sample_describe_with_sig(None);
+    sign_describe(&mut d1, &sk).expect("sign");
+    let json = serde_json::to_string(&d1).unwrap();
+    let d2: DescribeJson = serde_json::from_str(&json).unwrap();
+    verify_describe(&d2).expect("verify after serde roundtrip");
 }
