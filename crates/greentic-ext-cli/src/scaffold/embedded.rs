@@ -1,0 +1,1 @@
+//! Embedded WIT resources accessor.

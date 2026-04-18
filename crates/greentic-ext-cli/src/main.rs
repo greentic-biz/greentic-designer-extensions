@@ -1,4 +1,5 @@
 mod commands;
+mod scaffold;
 
 use clap::{Parser, Subcommand};
 
@@ -27,6 +28,8 @@ enum Command {
     Search(commands::search::Args),
     /// Show metadata for an extension
     Info(commands::info::Args),
+    /// Scaffold a new extension project
+    New(commands::new::Args),
     /// Log in to a registry (stores token at ~/.greentic/credentials.toml)
     Login(commands::login::Args),
     /// Log out of a registry
@@ -55,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Uninstall(args) => commands::uninstall::run(&args, &home),
         Command::Search(args) => commands::search::run(args, &home).await,
         Command::Info(args) => commands::info::run(args, &home).await,
+        Command::New(args) => commands::new::run(&args, &home),
         Command::Login(args) => commands::login::run_login(&args, &home),
         Command::Logout(args) => commands::login::run_logout(&args, &home),
         Command::Registries(args) => commands::registries::run(args, &home),

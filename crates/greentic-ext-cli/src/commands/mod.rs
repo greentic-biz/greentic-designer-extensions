@@ -3,6 +3,7 @@ pub mod info;
 pub mod install;
 pub mod list;
 pub mod login;
+pub mod new;
 pub mod registries;
 pub mod search;
 pub mod uninstall;
