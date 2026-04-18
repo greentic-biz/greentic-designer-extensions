@@ -2,6 +2,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 
+use crate::describe::DescribeJson;
 use crate::error::ContractError;
 
 /// Compute SHA256 of artifact bytes as hex string.
@@ -43,6 +44,15 @@ pub fn verify_ed25519(
     let signature = Signature::from_bytes(&sig_array);
     key.verify(payload, &signature)
         .map_err(|e| ContractError::SignatureInvalid(format!("verify: {e}")))
+}
+
+/// Canonicalize describe.json for signing — strip the `.signature` field
+/// and emit RFC 8785 JCS bytes. Output is deterministic across languages
+/// and serde versions.
+pub fn canonical_signing_payload(describe: &DescribeJson) -> Result<Vec<u8>, ContractError> {
+    let mut clone = describe.clone();
+    clone.signature = None;
+    serde_jcs::to_vec(&clone).map_err(|e| ContractError::Canonicalize(e.to_string()))
 }
 
 fn strip_prefix(s: &str) -> &str {
