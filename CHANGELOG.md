@@ -5,3 +5,9 @@
 ### Added
 - `gtdx new <name>` — scaffold a new design/bundle/deploy extension with
   vendored WIT contract and `.gtdx-contract.lock` (Phase 1 Track A, S1).
+- `gtdx dev` subcommand: inner-loop build + pack + install for extension authors.
+  Supports `--once` (CI-friendly one-shot), `--watch` (default continuous mode),
+  `--no-install` (pack only), `--release`, `--debounce-ms`, and `--format json`
+  for IDE integrations. File watcher filters `target/`, VCS dirs, editor swap
+  files, and backup files automatically. Skip-unchanged logic avoids redundant
+  installs when the pack's sha256 has not changed.
