@@ -8,9 +8,7 @@ fn main() -> anyhow::Result<()> {
         .and_then(Path::parent)
         .expect("crate is under workspace root");
     let src_dir = workspace_root.join("wit");
-    let dst_dir = Path::new(manifest_dir)
-        .join("embedded-wit")
-        .join(version);
+    let dst_dir = Path::new(manifest_dir).join("embedded-wit").join(version);
 
     if dst_dir.exists() {
         fs::remove_dir_all(&dst_dir)?;
@@ -30,6 +28,6 @@ fn main() -> anyhow::Result<()> {
     }
 
     println!("cargo:rerun-if-changed={}", src_dir.display());
-    println!("cargo:warning=embedded {} WIT files at version {}", count, version);
+    println!("cargo:warning=embedded {count} WIT files at version {version}");
     Ok(())
 }
