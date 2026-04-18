@@ -2,6 +2,70 @@
 
 use std::{collections::HashMap, fs, path::Path};
 
+use include_dir::{Dir, include_dir};
+
+static TEMPLATES_COMMON: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/common");
+static TEMPLATES_DESIGN: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/design");
+static TEMPLATES_BUNDLE: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/bundle");
+static TEMPLATES_DEPLOY: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/deploy");
+
+// used by scaffold::commands::new::run in Task 16
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct TemplateEntry {
+    pub src_bytes: &'static [u8],
+    /// Destination relative path inside the project (with `.tmpl` stripped and
+    /// `gitignore` renamed to `.gitignore`).
+    pub dst_rel: String,
+}
+
+fn collect(dir: &'static Dir<'static>) -> Vec<TemplateEntry> {
+    let mut out = Vec::new();
+    collect_rec(dir, &mut out);
+    out
+}
+
+fn collect_rec(dir: &'static Dir<'static>, out: &mut Vec<TemplateEntry>) {
+    for entry in dir.entries() {
+        match entry {
+            include_dir::DirEntry::File(f) => {
+                let rel = f.path().to_string_lossy().to_string();
+                let dst = translate_dst(&rel);
+                out.push(TemplateEntry {
+                    src_bytes: f.contents(),
+                    dst_rel: dst,
+                });
+            }
+            include_dir::DirEntry::Dir(d) => collect_rec(d, out),
+        }
+    }
+}
+
+fn translate_dst(rel: &str) -> String {
+    let mut dst = rel.trim_end_matches(".tmpl").to_string();
+    if dst == "gitignore" {
+        dst = ".gitignore".to_string();
+    }
+    dst
+}
+
+// used by scaffold::commands::new::run in Task 16
+#[allow(dead_code)]
+pub fn load_templates_common() -> Vec<TemplateEntry> {
+    collect(&TEMPLATES_COMMON)
+}
+
+// used by scaffold::commands::new::run in Task 16
+#[allow(dead_code)]
+pub fn load_templates_kind(kind: &str) -> Vec<TemplateEntry> {
+    match kind {
+        "design" => collect(&TEMPLATES_DESIGN),
+        "bundle" => collect(&TEMPLATES_BUNDLE),
+        "deploy" => collect(&TEMPLATES_DEPLOY),
+        _ => Vec::new(),
+    }
+}
+
 // used by scaffold::commands::new::run in Task 16
 #[allow(dead_code)]
 pub struct Context {
@@ -117,5 +181,19 @@ mod tests {
         ctx.set("who", "world");
         render_and_write(&ctx, "hello {{who}}", &dst).unwrap();
         assert_eq!(std::fs::read_to_string(&dst).unwrap(), "hello world");
+    }
+
+    #[test]
+    fn load_common_returns_gitignore_template() {
+        let entries = load_templates_common();
+        assert!(entries.iter().any(|e| e.dst_rel == "gitignore.tmpl" || e.dst_rel == ".gitignore"));
+    }
+
+    #[test]
+    fn load_kind_design_returns_cargo_toml() {
+        let entries = load_templates_kind("design");
+        assert!(entries.iter().any(|e| e.dst_rel == "Cargo.toml"));
+        assert!(entries.iter().any(|e| e.dst_rel == "describe.json"));
+        assert!(entries.iter().any(|e| e.dst_rel == "src/lib.rs"));
     }
 }
