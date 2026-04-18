@@ -10,10 +10,13 @@ pub mod watcher;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use tokio_util::sync::CancellationToken;
+
 use self::builder::{Profile, run_build};
 use self::event::{DevEvent, Emitter};
 use self::installer::install_pack;
 use self::packer::build_pack;
+use self::watcher::spawn_watcher;
 
 /// Runtime parameters, resolved from `commands::dev::Args`.
 #[derive(Debug, Clone)]
@@ -100,4 +103,85 @@ pub async fn run_once(cfg: &DevConfig, out: &mut dyn Emitter) -> anyhow::Result<
             Err(e)
         }
     }
+}
+
+/// Main watch loop: rebuild on every debounced FS batch, emit lifecycle events,
+/// stay alive across build failures, exit cleanly on Ctrl+C.
+pub async fn run_watch(cfg: &DevConfig, out: &mut dyn Emitter) -> anyhow::Result<()> {
+    let cancel = CancellationToken::new();
+    let cancel_signal = cancel.clone();
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        cancel_signal.cancel();
+    });
+
+    let handle = spawn_watcher(cfg.project_dir.clone(), cfg.debounce)?;
+    out.emit(&DevEvent::Ready {
+        ext_id: probe_describe_id(&cfg.project_dir).unwrap_or_else(|| "unknown".into()),
+        ext_version: probe_describe_version(&cfg.project_dir).unwrap_or_else(|| "unknown".into()),
+        kind: probe_describe_kind(&cfg.project_dir).unwrap_or_else(|| "unknown".into()),
+        registry: cfg.home.join("registries/dev-local").display().to_string(),
+        watched_files: count_watched_files(&cfg.project_dir),
+    });
+    out.emit(&DevEvent::Idle { last_build_ok: true });
+
+    loop {
+        if cancel.is_cancelled() {
+            out.emit(&DevEvent::Shutdown);
+            return Ok(());
+        }
+        match handle.changes.recv_timeout(Duration::from_millis(250)) {
+            Ok(batch) => {
+                if let Some(p) = batch.first() {
+                    out.emit(&DevEvent::ChangeDetected {
+                        path: p.display().to_string(),
+                    });
+                }
+                out.emit(&DevEvent::Debouncing {
+                    window_ms: u64::try_from(cfg.debounce.as_millis()).unwrap_or(500),
+                });
+                if let Err(e) = run_once(cfg, out).await {
+                    tracing::warn!("dev cycle failed: {e}");
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                out.emit(&DevEvent::Error {
+                    message: "watcher disconnected".into(),
+                });
+                return Err(anyhow::anyhow!("watcher channel closed"));
+            }
+        }
+    }
+}
+
+fn count_watched_files(project_dir: &Path) -> usize {
+    walkdir::WalkDir::new(project_dir)
+        .into_iter()
+        .flatten()
+        .filter(|e| e.file_type().is_file())
+        .filter_map(|e| e.path().strip_prefix(project_dir).ok().map(Path::to_path_buf))
+        .filter(|p| watcher::should_watch(p))
+        .count()
+}
+
+fn probe_describe_field(project_dir: &Path, key: &str) -> Option<String> {
+    let bytes = std::fs::read(project_dir.join("describe.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    match key {
+        "kind" => v["kind"].as_str().map(str::to_string),
+        _ => v["metadata"][key].as_str().map(str::to_string),
+    }
+}
+
+fn probe_describe_id(project_dir: &Path) -> Option<String> {
+    probe_describe_field(project_dir, "id")
+}
+
+fn probe_describe_version(project_dir: &Path) -> Option<String> {
+    probe_describe_field(project_dir, "version")
+}
+
+fn probe_describe_kind(project_dir: &Path) -> Option<String> {
+    probe_describe_field(project_dir, "kind")
 }
