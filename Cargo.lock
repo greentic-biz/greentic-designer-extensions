@@ -761,6 +761,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
 dependencies = [
  "const-oid",
+ "pem-rfc7468",
  "zeroize",
 ]
 
@@ -1293,14 +1294,18 @@ version = "0.1.0"
 dependencies = [
  "anstyle",
  "anyhow",
+ "base64 0.22.1",
  "clap",
  "dialoguer",
  "directories",
+ "ed25519-dalek",
  "greentic-ext-contract",
  "greentic-ext-registry",
  "greentic-ext-runtime",
  "greentic-ext-testing",
  "include_dir",
+ "pkcs8",
+ "rand 0.8.5",
  "semver",
  "serde",
  "serde_json",
@@ -1311,6 +1316,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "which",
+ "zip",
 ]
 
 [[package]]
@@ -1324,6 +1330,7 @@ dependencies = [
  "rand 0.8.5",
  "semver",
  "serde",
+ "serde_jcs",
  "serde_json",
  "sha2",
  "tempfile",
@@ -1360,10 +1367,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arc-swap",
+ "ed25519-dalek",
  "greentic-ext-contract",
  "greentic-ext-testing",
  "notify",
  "notify-debouncer-full",
+ "rand 0.8.5",
  "semver",
  "serde",
  "serde_json",
@@ -2359,6 +2368,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pem-rfc7468"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412"
+dependencies = [
+ "base64ct",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2928,6 +2946,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
+name = "ryu-js"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6518fc26bced4d53678a22d6e423e9d8716377def84545fe328236e3af070e7f"
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2980,6 +3004,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "serde_jcs"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cacecf649bc1a7c5f0e299cc813977c6a78116abda2b93b1ee01735b71ead9a8"
+dependencies = [
+ "ryu-js",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

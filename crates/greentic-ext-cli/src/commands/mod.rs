@@ -1,13 +1,16 @@
 pub mod doctor;
 pub mod info;
 pub mod install;
+pub mod keygen;
 pub mod list;
 pub mod login;
 pub mod new;
 pub mod registries;
 pub mod search;
+pub mod sign;
 pub mod uninstall;
 pub mod validate;
+pub mod verify;
 
 use std::path::Path;
 

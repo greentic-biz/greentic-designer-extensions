@@ -99,6 +99,7 @@ impl ExtensionRuntime {
     }
 
     pub fn register_loaded_from_dir(&mut self, dir: &std::path::Path) -> Result<(), RuntimeError> {
+        Self::verify_dir_signature(dir)?;
         let loaded = LoadedExtension::load_from_dir(&self.engine, dir)?;
         let id = loaded.id.clone();
 
@@ -127,6 +128,35 @@ impl ExtensionRuntime {
         self.capability_registry.store(Arc::new(new_registry));
 
         let _ = self.events.send(RuntimeEvent::ExtensionInstalled(id));
+        Ok(())
+    }
+
+    fn verify_dir_signature(dir: &std::path::Path) -> Result<(), RuntimeError> {
+        if std::env::var("GREENTIC_EXT_ALLOW_UNSIGNED").is_ok() {
+            tracing::warn!(
+                extension_dir = %dir.display(),
+                "GREENTIC_EXT_ALLOW_UNSIGNED is set — signature verification skipped"
+            );
+            return Ok(());
+        }
+        let path = dir.join("describe.json");
+        let raw = std::fs::read_to_string(&path)?;
+        let describe: greentic_ext_contract::DescribeJson = serde_json::from_str(&raw)?;
+        greentic_ext_contract::verify_describe(&describe).map_err(|e| {
+            RuntimeError::SignatureInvalid {
+                extension_id: describe.metadata.id.clone(),
+                reason: e.to_string(),
+            }
+        })?;
+        let pub_prefix = describe.signature.as_ref().map_or_else(
+            || "?".to_string(),
+            |s| s.public_key.chars().take(16).collect::<String>(),
+        );
+        tracing::info!(
+            extension_id = %describe.metadata.id,
+            key_prefix = %pub_prefix,
+            "extension signature verified"
+        );
         Ok(())
     }
 

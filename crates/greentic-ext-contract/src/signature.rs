@@ -2,6 +2,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 
+use crate::describe::DescribeJson;
 use crate::error::ContractError;
 
 /// Compute SHA256 of artifact bytes as hex string.
@@ -43,6 +44,57 @@ pub fn verify_ed25519(
     let signature = Signature::from_bytes(&sig_array);
     key.verify(payload, &signature)
         .map_err(|e| ContractError::SignatureInvalid(format!("verify: {e}")))
+}
+
+/// Canonicalize describe.json for signing — strip the `.signature` field
+/// and emit RFC 8785 JCS bytes. Output is deterministic across languages
+/// and serde versions.
+pub fn canonical_signing_payload(describe: &DescribeJson) -> Result<Vec<u8>, ContractError> {
+    let mut clone = describe.clone();
+    clone.signature = None;
+    serde_jcs::to_vec(&clone).map_err(|e| ContractError::Canonicalize(e.to_string()))
+}
+
+/// Sign describe.json in-place. Strips any existing `.signature` field,
+/// canonicalizes via JCS, signs the canonical bytes, and injects a fresh
+/// `.signature` object. Safe to call on already-signed describe (produces
+/// identical bytes regardless of prior sig).
+pub fn sign_describe(
+    describe: &mut DescribeJson,
+    signing_key: &ed25519_dalek::SigningKey,
+) -> Result<(), ContractError> {
+    use ed25519_dalek::Signer;
+    // Defensive: strip before canonicalize so the sig is computed on clean payload.
+    describe.signature = None;
+    let payload = canonical_signing_payload(describe)?;
+    let sig = signing_key.sign(&payload);
+    let pubkey_b64 = B64.encode(signing_key.verifying_key().to_bytes());
+    let sig_b64 = B64.encode(sig.to_bytes());
+    describe.signature = Some(crate::describe::Signature {
+        algorithm: "ed25519".into(),
+        public_key: pubkey_b64,
+        value: sig_b64,
+    });
+    Ok(())
+}
+
+/// Verify the inline `.signature` field of a describe.json. Returns
+/// `Ok(())` iff signature is present, algorithm is `ed25519`, and the
+/// signature matches the canonical payload (describe with `.signature`
+/// stripped, serialized via JCS).
+pub fn verify_describe(describe: &DescribeJson) -> Result<(), ContractError> {
+    let sig = describe
+        .signature
+        .as_ref()
+        .ok_or_else(|| ContractError::SignatureInvalid("missing signature field".into()))?;
+    if sig.algorithm != "ed25519" {
+        return Err(ContractError::SignatureInvalid(format!(
+            "unsupported algorithm: {}",
+            sig.algorithm
+        )));
+    }
+    let payload = canonical_signing_payload(describe)?;
+    verify_ed25519(&sig.public_key, &sig.value, &payload)
 }
 
 fn strip_prefix(s: &str) -> &str {
