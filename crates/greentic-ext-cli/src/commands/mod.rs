@@ -9,6 +9,7 @@ pub mod search;
 pub mod sign;
 pub mod uninstall;
 pub mod validate;
+pub mod verify;
 
 use std::path::Path;
 
