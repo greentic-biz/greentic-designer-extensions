@@ -21,6 +21,8 @@ enum Command {
     List(commands::list::Args),
     /// Install an extension from a registry or local .gtxpack
     Install(commands::install::Args),
+    /// Generate an ed25519 keypair for signing extension artifacts
+    Keygen(commands::keygen::Args),
     /// Remove an installed extension
     Uninstall(commands::uninstall::Args),
     /// Search a registry
@@ -35,6 +37,10 @@ enum Command {
     Registries(commands::registries::Args),
     /// Diagnose installed extensions
     Doctor(commands::doctor::Args),
+    /// Sign a describe.json in-place with ed25519
+    Sign(commands::sign::Args),
+    /// Verify an extension's signature (file, directory, or .gtxpack)
+    Verify(commands::verify::Args),
     /// Print version
     Version,
 }
@@ -52,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Validate(args) => commands::validate::run(&args, &home),
         Command::List(args) => commands::list::run(args, &home),
         Command::Install(args) => commands::install::run(args, &home).await,
+        Command::Keygen(args) => commands::keygen::run(&args, &home),
         Command::Uninstall(args) => commands::uninstall::run(&args, &home),
         Command::Search(args) => commands::search::run(args, &home).await,
         Command::Info(args) => commands::info::run(args, &home).await,
@@ -59,6 +66,8 @@ async fn main() -> anyhow::Result<()> {
         Command::Logout(args) => commands::login::run_logout(&args, &home),
         Command::Registries(args) => commands::registries::run(args, &home),
         Command::Doctor(args) => commands::doctor::run(args, &home),
+        Command::Sign(args) => commands::sign::run(&args, &home),
+        Command::Verify(args) => commands::verify::run(&args, &home),
         Command::Version => {
             println!("gtdx {}", env!("CARGO_PKG_VERSION"));
             Ok(())

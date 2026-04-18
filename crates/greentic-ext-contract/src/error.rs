@@ -17,6 +17,9 @@ pub enum ContractError {
     #[error("unsupported apiVersion: {0}")]
     UnsupportedApiVersion(String),
 
+    #[error("canonicalization failed: {0}")]
+    Canonicalize(String),
+
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 

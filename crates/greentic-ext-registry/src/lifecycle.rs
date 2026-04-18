@@ -105,11 +105,7 @@ impl<'a, R: ExtensionRegistry + ?Sized> Installer<'a, R> {
         match policy {
             TrustPolicy::Loose => Ok(()),
             TrustPolicy::Strict | TrustPolicy::Normal => {
-                let Some(sig) = &artifact.describe.signature else {
-                    return Err(RegistryError::SignatureInvalid("missing signature".into()));
-                };
-                let payload = serde_json::to_vec(&artifact.describe)?;
-                greentic_ext_contract::verify_ed25519(&sig.public_key, &sig.value, &payload)
+                greentic_ext_contract::verify_describe(&artifact.describe)
                     .map_err(|e| RegistryError::SignatureInvalid(e.to_string()))
             }
         }

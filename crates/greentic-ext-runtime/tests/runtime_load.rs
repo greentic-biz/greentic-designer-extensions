@@ -1,17 +1,16 @@
+#[path = "support/mod.rs"]
+mod support;
+
 use std::path::PathBuf;
 
 use greentic_ext_contract::ExtensionKind;
 use greentic_ext_runtime::{DiscoveryPaths, ExtensionRuntime, RuntimeConfig};
-use greentic_ext_testing::ExtensionFixtureBuilder;
+
+use support::signed_fixture;
 
 #[tokio::test]
 async fn loads_extension_and_registers_caps() {
-    let minimal_wasm = wat::parse_str(r"(component)").expect("component must compile");
-    let fixture = ExtensionFixtureBuilder::new(ExtensionKind::Design, "greentic.test-ext", "0.1.0")
-        .offer("greentic:test/ping", "1.0.0")
-        .with_wasm(minimal_wasm)
-        .build()
-        .unwrap();
+    let (fixture, _sk) = signed_fixture(ExtensionKind::Design, "greentic.test-ext", "0.1.0");
 
     let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")));
     let mut rt = ExtensionRuntime::new(config).unwrap();
