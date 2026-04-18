@@ -1,6 +1,14 @@
 //! File-system watcher wrapper + path filter.
 
 use std::path::Path;
+use std::path::PathBuf;
+use std::sync::mpsc;
+use std::time::Duration;
+
+use notify_debouncer_full::{
+    DebounceEventResult, Debouncer, new_debouncer,
+    notify::{RecommendedWatcher, RecursiveMode},
+};
 
 /// Returns `true` when `path` (relative to the project root) is a file the dev
 /// loop should rebuild on. Filters out `target/`, VCS metadata, editor swap
@@ -35,10 +43,48 @@ pub fn should_watch(path: &Path) -> bool {
         || matches!(name, "Cargo.toml" | "describe.json")
 }
 
+pub struct WatchHandle {
+    _debouncer: Debouncer<RecommendedWatcher, notify_debouncer_full::RecommendedCache>,
+    pub changes: mpsc::Receiver<Vec<PathBuf>>,
+}
+
+/// Spawn a recursive watcher rooted at `project_dir`. Every debounced batch is
+/// filtered through `should_watch` and, if non-empty, sent as a `Vec<PathBuf>`
+/// of project-relative paths.
+pub fn spawn_watcher(project_dir: PathBuf, debounce: Duration) -> anyhow::Result<WatchHandle> {
+    let (tx, rx) = mpsc::channel();
+    let root = project_dir.clone();
+    let debouncer = new_debouncer(debounce, None, move |res: DebounceEventResult| {
+        let Ok(events) = res else {
+            return;
+        };
+        let mut interesting = Vec::new();
+        for ev in events {
+            for path in &ev.paths {
+                let rel = match path.strip_prefix(&root) {
+                    Ok(r) => r.to_path_buf(),
+                    Err(_) => continue,
+                };
+                if should_watch(&rel) {
+                    interesting.push(rel);
+                }
+            }
+        }
+        if !interesting.is_empty() {
+            let _ = tx.send(interesting);
+        }
+    })?;
+    let mut d = debouncer;
+    d.watch(&project_dir, RecursiveMode::Recursive)?;
+    Ok(WatchHandle {
+        _debouncer: d,
+        changes: rx,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     fn p(s: &str) -> PathBuf {
         PathBuf::from(s)
@@ -79,5 +125,58 @@ mod tests {
         assert!(!should_watch(&p("README.md")));
         assert!(!should_watch(&p("LICENSE")));
         assert!(!should_watch(&p("build.sh")));
+    }
+
+    #[test]
+    fn spawn_watcher_delivers_batched_change_for_src_edit() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(tmp.path().join("src/lib.rs"), b"// seed").unwrap();
+        let handle = spawn_watcher(tmp.path().to_path_buf(), Duration::from_millis(150))
+            .expect("spawn");
+
+        // Mutate after the watcher is up.
+        std::thread::sleep(Duration::from_millis(50));
+        std::fs::write(tmp.path().join("src/lib.rs"), b"// changed").unwrap();
+
+        // Drain batches until we see the file path or timeout. On some
+        // platforms (e.g. Linux inotify) the directory event lands first
+        // and the file event arrives in a follow-up batch.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut saw_file = false;
+        let mut all_paths: Vec<PathBuf> = Vec::new();
+        while std::time::Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            match handle.changes.recv_timeout(remaining) {
+                Ok(batch) => {
+                    all_paths.extend(batch.iter().cloned());
+                    if batch.iter().any(|p| p == std::path::Path::new("src/lib.rs")) {
+                        saw_file = true;
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        assert!(
+            saw_file,
+            "expected src/lib.rs in a batch, got: {:?}",
+            all_paths
+        );
+    }
+
+    #[test]
+    fn spawn_watcher_suppresses_target_churn() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("target")).unwrap();
+        let handle = spawn_watcher(tmp.path().to_path_buf(), Duration::from_millis(150))
+            .expect("spawn");
+
+        std::thread::sleep(Duration::from_millis(50));
+        std::fs::write(tmp.path().join("target/out.bin"), b"x").unwrap();
+
+        // No filtered event should arrive within the window.
+        let res = handle.changes.recv_timeout(Duration::from_millis(750));
+        assert!(res.is_err(), "target/ writes must not escape the filter");
     }
 }
