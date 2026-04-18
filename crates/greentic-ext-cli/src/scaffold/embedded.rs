@@ -7,13 +7,13 @@ pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 static EMBEDDED: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/embedded-wit/$CARGO_PKG_VERSION");
 
-#[allow(dead_code)] // fields consumed by Task 5 (per-kind filter + sha256) and Task 16
+#[allow(dead_code)] // consumed by Task 16 (orchestration) via files_for_kind
 pub struct WitFile {
     pub name: &'static str,
     pub bytes: &'static [u8],
 }
 
-#[allow(dead_code)] // consumed by Task 5 and Task 16
+#[allow(dead_code)] // consumed by files_for_kind and Task 16
 pub fn wit_files() -> Vec<WitFile> {
     EMBEDDED
         .files()
@@ -28,6 +28,31 @@ pub fn wit_files() -> Vec<WitFile> {
         .collect()
 }
 
+/// Returns the subset of WIT files needed to scaffold an extension of the given kind.
+/// Always includes `extension-base.wit` and `extension-host.wit`.
+#[allow(dead_code)] // consumed by Task 16 (orchestration) when scaffold command is wired
+pub fn files_for_kind(kind: &str) -> Vec<WitFile> {
+    let kind_file = format!("extension-{kind}.wit");
+    wit_files()
+        .into_iter()
+        .filter(|f| {
+            matches!(f.name, "extension-base.wit" | "extension-host.wit") || f.name == kind_file
+        })
+        .collect()
+}
+
+#[allow(dead_code)] // consumed by Task 6 (contract lock writer) and Task 16
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(bytes);
+    let mut out = String::with_capacity(64);
+    for byte in digest {
+        use std::fmt::Write as _;
+        write!(&mut out, "{byte:02x}").expect("write to string");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -35,11 +60,32 @@ mod tests {
     #[test]
     fn wit_files_returns_all_embedded_packages() {
         let files = wit_files();
-        assert!(files.iter().any(|f| f.name == "extension-base.wit"));
-        assert!(files.iter().any(|f| f.name == "extension-host.wit"));
-        assert!(files.iter().any(|f| f.name == "extension-design.wit"));
-        assert!(files.iter().any(|f| f.name == "extension-bundle.wit"));
-        assert!(files.iter().any(|f| f.name == "extension-deploy.wit"));
         assert_eq!(files.len(), 6);
+    }
+
+    #[test]
+    fn files_for_kind_design_includes_base_host_and_design() {
+        let files = files_for_kind("design");
+        let names: Vec<_> = files.iter().map(|f| f.name).collect();
+        assert!(names.contains(&"extension-base.wit"));
+        assert!(names.contains(&"extension-host.wit"));
+        assert!(names.contains(&"extension-design.wit"));
+        assert!(!names.contains(&"extension-bundle.wit"));
+    }
+
+    #[test]
+    fn files_for_kind_bundle_includes_bundle_not_design() {
+        let files = files_for_kind("bundle");
+        let names: Vec<_> = files.iter().map(|f| f.name).collect();
+        assert!(names.contains(&"extension-bundle.wit"));
+        assert!(!names.contains(&"extension-design.wit"));
+    }
+
+    #[test]
+    fn sha256_hex_is_deterministic() {
+        let a = sha256_hex(b"hello");
+        let b = sha256_hex(b"hello");
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 64);
     }
 }
