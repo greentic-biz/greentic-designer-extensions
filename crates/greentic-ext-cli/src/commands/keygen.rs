@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use base64::Engine as _;
 use clap::Args as ClapArgs;
-use ed25519_dalek::pkcs8::{spki::der::pem::LineEnding, EncodePrivateKey};
 use ed25519_dalek::SigningKey;
+use ed25519_dalek::pkcs8::{EncodePrivateKey, spki::der::pem::LineEnding};
 use rand::rngs::OsRng;
 
 #[derive(ClapArgs, Debug)]
@@ -22,8 +22,8 @@ pub fn run(args: &Args, _home: &Path) -> Result<()> {
         .to_pkcs8_pem(LineEnding::LF)
         .map_err(|e| anyhow::anyhow!("encode PKCS8 PEM: {e}"))?;
 
-    let pubkey_b64 = base64::engine::general_purpose::STANDARD
-        .encode(signing_key.verifying_key().to_bytes());
+    let pubkey_b64 =
+        base64::engine::general_purpose::STANDARD.encode(signing_key.verifying_key().to_bytes());
 
     match &args.out {
         Some(path) => {

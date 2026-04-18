@@ -10,8 +10,7 @@ use support::signed_fixture;
 
 #[tokio::test]
 async fn loads_extension_and_registers_caps() {
-    let (fixture, _sk) =
-        signed_fixture(ExtensionKind::Design, "greentic.test-ext", "0.1.0");
+    let (fixture, _sk) = signed_fixture(ExtensionKind::Design, "greentic.test-ext", "0.1.0");
 
     let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")));
     let mut rt = ExtensionRuntime::new(config).unwrap();

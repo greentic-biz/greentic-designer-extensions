@@ -99,7 +99,7 @@ impl ExtensionRuntime {
     }
 
     pub fn register_loaded_from_dir(&mut self, dir: &std::path::Path) -> Result<(), RuntimeError> {
-        self.verify_dir_signature(dir)?;
+        Self::verify_dir_signature(dir)?;
         let loaded = LoadedExtension::load_from_dir(&self.engine, dir)?;
         let id = loaded.id.clone();
 
@@ -131,7 +131,7 @@ impl ExtensionRuntime {
         Ok(())
     }
 
-    fn verify_dir_signature(&self, dir: &std::path::Path) -> Result<(), RuntimeError> {
+    fn verify_dir_signature(dir: &std::path::Path) -> Result<(), RuntimeError> {
         if std::env::var("GREENTIC_EXT_ALLOW_UNSIGNED").is_ok() {
             tracing::warn!(
                 extension_dir = %dir.display(),
@@ -148,11 +148,10 @@ impl ExtensionRuntime {
                 reason: e.to_string(),
             }
         })?;
-        let pub_prefix = describe
-            .signature
-            .as_ref()
-            .map(|s| s.public_key.chars().take(16).collect::<String>())
-            .unwrap_or_else(|| "?".to_string());
+        let pub_prefix = describe.signature.as_ref().map_or_else(
+            || "?".to_string(),
+            |s| s.public_key.chars().take(16).collect::<String>(),
+        );
         tracing::info!(
             extension_id = %describe.metadata.id,
             key_prefix = %pub_prefix,

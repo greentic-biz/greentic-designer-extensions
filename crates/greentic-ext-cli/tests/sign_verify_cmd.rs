@@ -237,11 +237,11 @@ fn verify_accepts_gtxpack_archive() {
     {
         let f = std::fs::File::create(&pack_path).unwrap();
         let mut zip = zip::ZipWriter::new(f);
-        let options: zip::write::SimpleFileOptions =
-            zip::write::SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Deflated);
+        let options: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
         zip.start_file("describe.json", options).unwrap();
-        zip.write_all(&std::fs::read(&describe_path).unwrap()).unwrap();
+        zip.write_all(&std::fs::read(&describe_path).unwrap())
+            .unwrap();
         zip.start_file("extension.wasm", options).unwrap();
         zip.write_all(&std::fs::read(fx.root().join("extension.wasm")).unwrap())
             .unwrap();

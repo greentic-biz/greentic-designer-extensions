@@ -1,7 +1,7 @@
 use ed25519_dalek::SigningKey;
 use greentic_ext_contract::{
-    artifact_sha256, canonical_signing_payload, sign_describe, sign_ed25519, verify_describe,
-    verify_ed25519, DescribeJson,
+    DescribeJson, artifact_sha256, canonical_signing_payload, sign_describe, sign_ed25519,
+    verify_describe, verify_ed25519,
 };
 use rand::rngs::OsRng;
 
@@ -62,7 +62,10 @@ fn canonical_payload_omits_signature_field() {
     let bytes_with = canonical_signing_payload(&with_sig).expect("canonicalize with sig");
     let without_sig = sample_describe_with_sig(None);
     let bytes_without = canonical_signing_payload(&without_sig).expect("canonicalize without sig");
-    assert_eq!(bytes_with, bytes_without, "canonical bytes must ignore .signature");
+    assert_eq!(
+        bytes_with, bytes_without,
+        "canonical bytes must ignore .signature"
+    );
 }
 
 #[test]
@@ -116,7 +119,10 @@ fn sign_describe_then_verify_describe_roundtrip() {
 fn verify_describe_missing_signature_fails() {
     let d = sample_describe_with_sig(None);
     let err = verify_describe(&d).unwrap_err();
-    assert!(matches!(err, greentic_ext_contract::ContractError::SignatureInvalid(_)));
+    assert!(matches!(
+        err,
+        greentic_ext_contract::ContractError::SignatureInvalid(_)
+    ));
     assert!(format!("{err}").contains("missing signature"));
 }
 
@@ -127,7 +133,10 @@ fn verify_describe_rejects_tampered_metadata() {
     sign_describe(&mut d, &sk).expect("sign");
     d.metadata.version = "99.99.99".into();
     let err = verify_describe(&d).unwrap_err();
-    assert!(matches!(err, greentic_ext_contract::ContractError::SignatureInvalid(_)));
+    assert!(matches!(
+        err,
+        greentic_ext_contract::ContractError::SignatureInvalid(_)
+    ));
 }
 
 #[test]
