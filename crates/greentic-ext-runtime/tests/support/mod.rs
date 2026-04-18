@@ -33,6 +33,23 @@ impl EnvGuard {
             _lock: lock,
         }
     }
+
+    /// Remove an env var for the lifetime of the guard, holding the global
+    /// mutex for exclusive access. On drop, restore the previous value (if any).
+    pub fn remove(key: &str) -> Self {
+        let lock = env_mutex().lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var(key).ok();
+        // SAFETY: serialized via global mutex; we hold the lock for guard lifetime.
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::remove_var(key);
+        }
+        EnvGuard {
+            key: key.to_string(),
+            prev,
+            _lock: lock,
+        }
+    }
 }
 
 impl Drop for EnvGuard {

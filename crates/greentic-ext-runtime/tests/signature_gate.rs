@@ -15,9 +15,7 @@ fn new_runtime() -> ExtensionRuntime {
 
 #[test]
 fn rejects_unsigned_by_default() {
-    // Explicitly clear env var via the scoped guard (removes on drop).
-    let guard = EnvGuard::set("GREENTIC_EXT_ALLOW_UNSIGNED", "");
-    drop(guard);
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
 
     let fx = unsigned_fixture(ExtensionKind::Design, "greentic.unsigned", "0.1.0");
     let mut rt = new_runtime();
@@ -33,8 +31,7 @@ fn rejects_unsigned_by_default() {
 
 #[test]
 fn rejects_tampered_signature() {
-    let guard = EnvGuard::set("GREENTIC_EXT_ALLOW_UNSIGNED", "");
-    drop(guard);
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
 
     let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.tampered", "0.1.0");
     tamper_fixture(&fx);
@@ -45,8 +42,7 @@ fn rejects_tampered_signature() {
 
 #[test]
 fn accepts_signed_by_default() {
-    let guard = EnvGuard::set("GREENTIC_EXT_ALLOW_UNSIGNED", "");
-    drop(guard);
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
 
     let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.signed", "0.1.0");
     let mut rt = new_runtime();
