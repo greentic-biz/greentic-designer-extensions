@@ -6,6 +6,7 @@ pub mod list;
 pub mod login;
 pub mod registries;
 pub mod search;
+pub mod sign;
 pub mod uninstall;
 pub mod validate;
 
