@@ -55,6 +55,12 @@ mod tests {
     #[test]
     fn wit_files_returns_all_embedded_packages() {
         let files = wit_files();
+        assert!(files.iter().any(|f| f.name == "extension-base.wit"));
+        assert!(files.iter().any(|f| f.name == "extension-host.wit"));
+        assert!(files.iter().any(|f| f.name == "extension-design.wit"));
+        assert!(files.iter().any(|f| f.name == "extension-bundle.wit"));
+        assert!(files.iter().any(|f| f.name == "extension-deploy.wit"));
+        assert!(files.iter().any(|f| f.name == "extension-provider.wit"));
         assert_eq!(files.len(), 7);
     }
 
@@ -74,6 +80,18 @@ mod tests {
         let names: Vec<_> = files.iter().map(|f| f.name).collect();
         assert!(names.contains(&"extension-bundle.wit"));
         assert!(!names.contains(&"extension-design.wit"));
+    }
+
+    #[test]
+    fn files_for_kind_provider_includes_provider_not_design() {
+        let files = files_for_kind("provider");
+        let names: Vec<_> = files.iter().map(|f| f.name).collect();
+        assert!(names.contains(&"extension-base.wit"));
+        assert!(names.contains(&"extension-host.wit"));
+        assert!(names.contains(&"extension-provider.wit"));
+        assert!(!names.contains(&"extension-design.wit"));
+        assert!(!names.contains(&"extension-bundle.wit"));
+        assert!(!names.contains(&"extension-deploy.wit"));
     }
 
     #[test]
