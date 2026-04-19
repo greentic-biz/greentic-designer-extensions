@@ -23,7 +23,8 @@ A receipt is written to `./dist/publish-<id>-<version>.json`.
 
 | Flag                  | Purpose                                                       |
 |-----------------------|---------------------------------------------------------------|
-| `--registry <URI>`    | `local` (default) or `file://<path>`. Store/OCI are Phase 2.  |
+| `--registry <URI>`    | `local` / `file://<path>` / `oci://<host>/<ns>[/<name>]` / named Store entry. |
+| `--oci-token <TOKEN>` | Bearer/PAT for `oci://...` registries. Falls back to `GHCR_TOKEN` / `GITHUB_TOKEN` / `OCI_TOKEN` env vars. |
 | `--version <SEMVER>`  | Override `describe.json` version (CI version bumps).          |
 | `--dry-run`           | Validate + build + pack, skip registry write.                 |
 | `--force`             | Overwrite an existing version.                                |
@@ -108,6 +109,44 @@ Publisher handles and allowed-prefix policies are enforced server-side;
 you can only publish extensions whose `metadata.id` matches a prefix
 allowed for your account.
 
+## Publishing to an OCI registry (GHCR, Docker Hub, Harbor, …)
+
+Any OCI Distribution v2-compatible registry can receive a `.gtxpack` directly
+— no Greentic Store server required.
+
+```bash
+# 1. Get a token with write:packages + read:packages scope.
+#    For GHCR with gh CLI:
+gh auth refresh --scopes write:packages,read:packages
+export GHCR_TOKEN=$(gh auth token)
+
+# 2. Publish — URI format is oci://<host>/<namespace>[/<artifact-name>].
+gtdx publish \
+  --registry oci://ghcr.io/myorg/my-ext
+# → pushes to ghcr.io/myorg/my-ext:<describe.version>
+```
+
+If the URI omits the artifact-name segment, `ext_name` from `describe.json` is
+appended:
+
+```bash
+gtdx publish --registry oci://ghcr.io/myorg
+# → pushes to ghcr.io/myorg/<describe.metadata.name>:<version>
+```
+
+Token resolution order on publish:
+
+1. `--oci-token <TOKEN>` CLI flag (explicit)
+2. `GHCR_TOKEN` env
+3. `GITHUB_TOKEN` env (CI-friendly — `actions/checkout@v4` exports this)
+4. `OCI_TOKEN` env (generic)
+5. Anonymous (pull-only; push returns 401 → `AuthRequired`)
+
+The artifact is a single OCI layer with media type
+`application/vnd.greentic.gtxpack.v1` plus a minimal JSON config blob
+(`application/vnd.greentic.gtxpack.config.v1+json`). Consumers pull with
+`gtdx install oci://<same-uri>` — same reference resolves symmetrically.
+
 ## Determinism
 
 Two `gtdx publish` invocations over identical sources produce byte-identical
@@ -115,9 +154,9 @@ Two `gtdx publish` invocations over identical sources produce byte-identical
 epoch (1980-01-01), normalizes Unix permissions to 0644/0755, and normalizes
 CRLF -> LF for text assets (json/md/wit/txt/toml/yaml).
 
-## Non-goals in Phase 1
+## Non-goals (still deferred)
 
-- Publishing to the Greentic Store HTTP registry (Phase 2, S5)
-- Publishing to an OCI registry (Phase 2, S5)
 - Passphrase-encrypted signing keys (Phase 2, S4)
 - Strict trust policy + countersignatures (Phase 2, S4)
+- Server-side `verify_only` HEAD-probe against OCI / Store backends (currently
+  OCI verify-only is a pass-through; the local-filesystem backend does check)

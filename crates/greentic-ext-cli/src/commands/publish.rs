@@ -10,7 +10,8 @@ use crate::publish::{PublishConfig, PublishOutcome, run_publish};
 #[allow(clippy::struct_excessive_bools)]
 pub struct Args {
     /// Registry URI. `local` resolves to `$GREENTIC_HOME/registries/local`.
-    /// Accepts `file://<path>` for explicit paths.
+    /// Accepts `file://<path>`, `oci://<host>/<namespace>[/<artifact>]`, or a
+    /// named entry from `~/.greentic/config.toml`.
     #[arg(short = 'r', long, default_value = "local")]
     pub registry: String,
 
@@ -57,6 +58,12 @@ pub struct Args {
     /// human | json
     #[arg(long, default_value = "human")]
     pub format: String,
+
+    /// Bearer token / PAT for `oci://...` registries. When omitted, falls
+    /// back to env vars `GHCR_TOKEN`, `GITHUB_TOKEN`, `OCI_TOKEN` (in that
+    /// order), then anonymous.
+    #[arg(long)]
+    pub oci_token: Option<String>,
 }
 
 pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
@@ -84,6 +91,7 @@ pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
         version_override: args.version,
         trust_policy: args.trust,
         verify_only: args.verify_only,
+        oci_token: args.oci_token,
     };
     match run_publish(&cfg).await {
         Ok(outcome) => {

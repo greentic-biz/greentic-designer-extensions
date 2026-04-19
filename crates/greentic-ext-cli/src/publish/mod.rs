@@ -17,6 +17,7 @@ use crate::publish::receipt::{PublishReceiptJson, write_receipt};
 use crate::publish::validator::{format_errors, validate_for_publish};
 
 use greentic_ext_registry::credentials::Credentials;
+use greentic_ext_registry::oci::OciRegistry;
 use greentic_ext_registry::store::GreenticStoreRegistry;
 
 /// Typed publish error with spec §9 exit codes.
@@ -80,6 +81,7 @@ fn io_err<E: std::fmt::Display>(e: E) -> PublishError {
 enum Backend {
     Local(LocalFilesystemRegistry),
     Store(GreenticStoreRegistry),
+    Oci(OciRegistry),
 }
 
 impl Backend {
@@ -91,11 +93,16 @@ impl Backend {
         match self {
             Backend::Local(r) => r.publish(req).await,
             Backend::Store(r) => r.publish(req).await,
+            Backend::Oci(r) => r.publish(req).await,
         }
     }
 }
 
-fn resolve_backend(uri: &str, home: &Path) -> anyhow::Result<Backend> {
+fn resolve_backend(
+    uri: &str,
+    home: &Path,
+    oci_token_override: Option<&str>,
+) -> anyhow::Result<Backend> {
     if uri == "local" {
         let root = home.join("registries/local");
         return Ok(Backend::Local(LocalFilesystemRegistry::new(
@@ -106,6 +113,9 @@ fn resolve_backend(uri: &str, home: &Path) -> anyhow::Result<Backend> {
     if let Some(rest) = uri.strip_prefix("file://") {
         let root = std::path::PathBuf::from(rest);
         return Ok(Backend::Local(LocalFilesystemRegistry::new("file", root)));
+    }
+    if let Some(rest) = uri.strip_prefix("oci://") {
+        return build_oci_backend(rest, oci_token_override);
     }
 
     let cfg = greentic_ext_registry::config::load(&home.join("config.toml"))
@@ -127,6 +137,75 @@ fn resolve_backend(uri: &str, home: &Path) -> anyhow::Result<Backend> {
         &entry.url,
         token,
     )))
+}
+
+/// Parse `oci://<host>/<namespace>[/<artifact-name>]` into an `OciRegistry`.
+///
+/// Two forms are accepted:
+/// - `oci://ghcr.io/myorg` — namespace only; the final artifact name is
+///   taken from `PublishRequest.ext_name` per-publish (one GHCR package per
+///   extension).
+/// - `oci://ghcr.io/myorg/my-package` — fully qualified; every publish from
+///   this URI targets the same `my-package` (different tags per version).
+///
+/// Auth resolution:
+///
+///   1. `--oci-token` CLI flag (explicit override)
+///   2. `GHCR_TOKEN` env
+///   3. `GITHUB_TOKEN` env (CI-friendly — `actions/checkout@v4` exports this)
+///   4. `OCI_TOKEN` env (generic)
+///   5. anonymous (public pulls only; push will 401)
+fn build_oci_backend(spec: &str, oci_token_override: Option<&str>) -> anyhow::Result<Backend> {
+    let (host, rest) = spec.split_once('/').ok_or_else(|| {
+        anyhow::anyhow!(
+            "oci:// URI must include at least a namespace: oci://<host>/<namespace>[/<name>]"
+        )
+    })?;
+    if host.is_empty() {
+        anyhow::bail!("oci:// URI missing host: {spec}");
+    }
+
+    let (namespace, artifact_name) = match rest.rsplit_once('/') {
+        Some((ns, name)) if !ns.is_empty() && !name.is_empty() => {
+            (ns.to_string(), Some(name.to_string()))
+        }
+        _ => (rest.to_string(), None),
+    };
+    if namespace.is_empty() {
+        anyhow::bail!("oci:// URI namespace is empty: {spec}");
+    }
+
+    let token = oci_token_override
+        .map(str::to_string)
+        .or_else(|| non_empty_env("GHCR_TOKEN"))
+        .or_else(|| non_empty_env("GITHUB_TOKEN"))
+        .or_else(|| non_empty_env("OCI_TOKEN"));
+
+    let auth = token.map(|t| oci_basic_auth_for(host, t));
+    let mut reg = OciRegistry::new(format!("oci-{host}"), host, namespace, auth);
+    if let Some(name) = artifact_name {
+        reg = reg.with_artifact_name(name);
+    }
+    Ok(Backend::Oci(reg))
+}
+
+fn non_empty_env(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|s| !s.is_empty())
+}
+
+/// OCI registries expect `(username, password)` basic auth. GHCR convention
+/// is `(<any-username>, <PAT>)`. Docker Hub uses `(<dockerhub-user>, <PAT>)`.
+/// For registries we don't recognize, fall back to `("token", <PAT>)`.
+fn oci_basic_auth_for(host: &str, token: String) -> (String, String) {
+    let user = if host.ends_with("ghcr.io") {
+        // GHCR accepts any non-empty username; "USERNAME" is the documented
+        // placeholder but the actual GitHub handle also works. Using a static
+        // token label keeps the auth deterministic across developers.
+        "oauth2".to_string()
+    } else {
+        "token".to_string()
+    };
+    (user, token)
 }
 
 fn resolve_token(
@@ -158,6 +237,10 @@ pub struct PublishConfig {
     pub version_override: Option<String>,
     pub trust_policy: String,
     pub verify_only: bool,
+    /// Explicit bearer/PAT token for `oci://...` registries. When `None`,
+    /// `resolve_backend` falls back to `GHCR_TOKEN` / `GITHUB_TOKEN` /
+    /// `OCI_TOKEN` env vars, then anonymous.
+    pub oci_token: Option<String>,
 }
 
 #[derive(Debug)]
@@ -204,7 +287,7 @@ pub async fn run_publish(cfg: &PublishConfig) -> Result<PublishOutcome, PublishE
     }
 
     // 3. Resolve registry root.
-    let backend = resolve_backend(&cfg.registry_uri, &cfg.home)
+    let backend = resolve_backend(&cfg.registry_uri, &cfg.home, cfg.oci_token.as_deref())
         .map_err(|e| PublishError::Other(anyhow::anyhow!("{e}")))?;
 
     if cfg.verify_only {
@@ -356,6 +439,15 @@ fn verify_only(
                 registry: r.base_url().to_string(),
             })
         }
+        Backend::Oci(_) => {
+            // Server-side HEAD probe against the OCI manifest endpoint lands
+            // in a later iteration; for now verify-only is a pass-through.
+            Ok(PublishOutcome::VerifyOnly {
+                ext_id: describe.metadata.id.clone(),
+                version: describe.metadata.version.clone(),
+                registry: "oci-registry".into(),
+            })
+        }
     }
 }
 
@@ -363,6 +455,7 @@ fn backend_registry_label(backend: &Backend) -> String {
     match backend {
         Backend::Local(r) => r.root_path().display().to_string(),
         Backend::Store(r) => r.base_url().to_string(),
+        Backend::Oci(_) => "oci-registry".to_string(),
     }
 }
 
