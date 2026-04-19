@@ -38,10 +38,7 @@ impl LocalFilesystemRegistry {
     /// # Errors
     /// - `RegistryError::VersionExists` if version dir already present and `!req.force`.
     /// - `RegistryError::Io` for filesystem failures.
-    pub fn publish_local(
-        &self,
-        req: &PublishRequest,
-    ) -> Result<PublishReceipt, RegistryError> {
+    pub fn publish_local(&self, req: &PublishRequest) -> Result<PublishReceipt, RegistryError> {
         let root = self.root_path();
         fs::create_dir_all(root)?;
         let _lock = acquire_lock(root)?;
@@ -103,8 +100,7 @@ fn acquire_lock(root: &Path) -> Result<File, RegistryError> {
 fn atomic_write(dest: &Path, bytes: &[u8]) -> Result<(), RegistryError> {
     let tmp = dest.with_extension(
         dest.extension()
-            .map(|e| format!("{}.tmp", e.to_string_lossy()))
-            .unwrap_or_else(|| "tmp".into()),
+            .map_or_else(|| "tmp".into(), |e| format!("{}.tmp", e.to_string_lossy())),
     );
     {
         let mut f = File::create(&tmp)?;
@@ -140,7 +136,7 @@ fn update_index(root: &Path, req: &PublishRequest) -> Result<(), RegistryError> 
         }
         entry.versions.sort();
         entry.latest = entry.versions.last().cloned().unwrap_or_default();
-        entry.name = req.ext_name.clone();
+        entry.name.clone_from(&req.ext_name);
         entry.kind = kind_str;
     } else {
         index.extensions.push(IndexEntry {

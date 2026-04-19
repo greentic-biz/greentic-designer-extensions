@@ -29,8 +29,8 @@ pub fn build_pack(
     output_pack: &Path,
 ) -> anyhow::Result<PackInfo> {
     let describe_path = project_dir.join("describe.json");
-    let describe_bytes = std::fs::read(&describe_path)
-        .map_err(|e| anyhow::anyhow!("read describe.json: {e}"))?;
+    let describe_bytes =
+        std::fs::read(&describe_path).map_err(|e| anyhow::anyhow!("read describe.json: {e}"))?;
     let describe: serde_json::Value = serde_json::from_slice(&describe_bytes)
         .map_err(|e| anyhow::anyhow!("parse describe.json: {e}"))?;
     let ext_name = describe["metadata"]["name"]
@@ -76,8 +76,7 @@ pub fn build_pack(
     if let Some(parent) = output_pack.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let zip_bytes = build_gtxpack(entries)
-        .map_err(|e| anyhow::anyhow!("build_gtxpack: {e}"))?;
+    let zip_bytes = build_gtxpack(entries).map_err(|e| anyhow::anyhow!("build_gtxpack: {e}"))?;
     std::fs::write(output_pack, &zip_bytes)?;
 
     let size = u64::try_from(zip_bytes.len()).unwrap_or(u64::MAX);

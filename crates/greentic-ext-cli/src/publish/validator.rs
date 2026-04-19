@@ -93,12 +93,13 @@ impl ValidationError {
 
 /// Human-readable formatter for a collection of errors.
 pub fn format_errors(errors: &[ValidationError]) -> String {
+    use std::fmt::Write as _;
     let mut out = format!(
         "\u{2717} describe.json validation failed ({} errors):\n",
         errors.len()
     );
     for e in errors {
-        out.push_str(&format!("  \u{2022} {}: {}\n", e.field, e.message));
+        let _ = writeln!(&mut out, "  \u{2022} {}: {}", e.field, e.message);
     }
     out.push_str("\nFix these and re-run: gtdx publish\n");
     out

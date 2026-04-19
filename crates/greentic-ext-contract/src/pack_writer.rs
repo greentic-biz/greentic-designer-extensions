@@ -162,7 +162,10 @@ mod tests {
     fn sha256_hex_is_lowercase_64_chars() {
         let s = sha256_hex(b"hello");
         assert_eq!(s.len(), 64);
-        assert!(s.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(
+            s.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
     }
 
     #[test]

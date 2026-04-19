@@ -16,6 +16,7 @@ use crate::publish::receipt::{PublishReceiptJson, write_receipt};
 use crate::publish::validator::{format_errors, validate_for_publish};
 
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct PublishConfig {
     pub project_dir: PathBuf,
     pub registry_uri: String,
@@ -54,6 +55,7 @@ pub enum PublishOutcome {
     },
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn run_publish(cfg: &PublishConfig) -> anyhow::Result<PublishOutcome> {
     // 1. Load + schema-validate describe.json via ext-contract.
     let describe_path = cfg.project_dir.join("describe.json");

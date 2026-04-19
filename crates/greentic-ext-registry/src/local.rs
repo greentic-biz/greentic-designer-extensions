@@ -59,16 +59,15 @@ impl LocalFilesystemRegistry {
                 let path = pack.path();
                 if path.extension().and_then(|s| s.to_str()) == Some("gtxpack") {
                     let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                    if let Some((n, v)) = Self::parse_pack_filename(filename) {
-                        if v == version
-                            && (n == name
-                                || ext_dir
-                                    .file_name()
-                                    .and_then(|s| s.to_str())
-                                    .is_some_and(|id| id == name))
-                        {
-                            return Some(path);
-                        }
+                    if let Some((n, v)) = Self::parse_pack_filename(filename)
+                        && v == version
+                        && (n == name
+                            || ext_dir
+                                .file_name()
+                                .and_then(|s| s.to_str())
+                                .is_some_and(|id| id == name))
+                    {
+                        return Some(path);
                     }
                 }
             }

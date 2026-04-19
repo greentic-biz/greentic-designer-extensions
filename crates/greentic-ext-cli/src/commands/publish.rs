@@ -9,8 +9,8 @@ use crate::publish::{PublishConfig, PublishOutcome, run_publish};
 #[derive(ClapArgs, Debug, Clone)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct Args {
-    /// Registry URI. `local` resolves to $GREENTIC_HOME/registries/local.
-    /// Accepts file://<path> for explicit paths.
+    /// Registry URI. `local` resolves to `$GREENTIC_HOME/registries/local`.
+    /// Accepts `file://<path>` for explicit paths.
     #[arg(short = 'r', long, default_value = "local")]
     pub registry: String,
 
