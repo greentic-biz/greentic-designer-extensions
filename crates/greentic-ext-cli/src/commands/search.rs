@@ -5,7 +5,8 @@ use greentic_ext_registry::{ExtensionRegistry, SearchQuery, store::GreenticStore
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
-    pub query: String,
+    /// Search term (partial-match on extension name). If omitted, lists everything the registry exposes.
+    pub query: Option<String>,
     #[arg(long)]
     pub registry: Option<String>,
     #[arg(long)]
@@ -39,11 +40,15 @@ pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
     let results = reg
         .search(SearchQuery {
             kind,
-            query: Some(args.query),
+            query: args.query,
             limit: args.limit,
             ..Default::default()
         })
         .await?;
+    if results.is_empty() {
+        println!("(no extensions match)");
+        return Ok(());
+    }
     for r in results {
         println!(
             "{:<40}  {:>10}  {:?}  {}",
