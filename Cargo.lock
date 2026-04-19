@@ -1313,6 +1313,7 @@ dependencies = [
  "greentic-ext-runtime",
  "greentic-ext-testing",
  "include_dir",
+ "jsonschema",
  "notify-debouncer-full",
  "pkcs8",
  "rand 0.8.5",

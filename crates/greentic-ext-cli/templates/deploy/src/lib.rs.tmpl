@@ -3,14 +3,12 @@
 // This scaffold implements every export required by the extension-deploy
 // contract as a TODO stub. Replace each body with real logic before shipping.
 
-wit_bindgen::generate!({
-    world: "extension",
-    path: "wit",
-});
+#[allow(warnings)]
+mod bindings;
 
-use exports::greentic::extension_base::{lifecycle, manifest};
-use exports::greentic::extension_deploy::{deployment, targets};
-use greentic::extension_base::types;
+use bindings::exports::greentic::extension_base::{lifecycle, manifest};
+use bindings::exports::greentic::extension_deploy::{deployment, targets};
+use bindings::greentic::extension_base::types;
 
 struct Component;
 
@@ -99,4 +97,4 @@ impl deployment::Guest for Component {
     }
 }
 
-export!(Component);
+bindings::export!(Component with_types_in bindings);
