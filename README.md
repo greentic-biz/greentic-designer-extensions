@@ -229,6 +229,7 @@ Full index at [docs/README.md](docs/README.md). Quick links:
 | [`how-to-write-a-design-extension.md`](docs/how-to-write-a-design-extension.md) | External devs (Osora, Telco X) |
 | [`how-to-write-a-bundle-extension.md`](docs/how-to-write-a-bundle-extension.md) | Devs adding deployment recipes |
 | [`how-to-write-a-deploy-extension.md`](docs/how-to-write-a-deploy-extension.md) | Devs adding cloud / on-prem targets |
+| [`how-to-write-a-provider-extension.md`](docs/how-to-write-a-provider-extension.md) | Provider authors (messaging, events, webhooks) |
 
 ### Guides
 | Document | Description |
