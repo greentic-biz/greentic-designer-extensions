@@ -19,6 +19,7 @@ rust-version = "1.94"
 [workspace.dependencies]
 anstyle = "1"
 anyhow = "1"
+ciborium = "0.2"
 arc-swap = "1.7"
 async-trait = "0.1"
 base64 = "0.22"

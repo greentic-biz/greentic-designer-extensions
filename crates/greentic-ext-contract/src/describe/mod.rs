@@ -52,9 +52,9 @@ impl TryFrom<DescribeJsonRaw> for DescribeJson {
     fn try_from(raw: DescribeJsonRaw) -> Result<Self, String> {
         let has_gtpack = raw.runtime.gtpack.is_some();
         match (raw.kind, has_gtpack) {
-            (ExtensionKind::Provider, false) => Err(
-                "kind=ProviderExtension requires `runtime.gtpack` to be set".into(),
-            ),
+            (ExtensionKind::Provider, false) => {
+                Err("kind=ProviderExtension requires `runtime.gtpack` to be set".into())
+            }
             (k, true) if k != ExtensionKind::Provider => Err(format!(
                 "runtime.gtpack is only allowed when kind=ProviderExtension (got kind={k:?})"
             )),

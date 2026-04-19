@@ -7,6 +7,7 @@ pub mod lifecycle;
 pub mod local;
 pub mod oci;
 pub mod prompt;
+pub mod provider_install;
 pub mod registry;
 pub mod storage;
 pub mod store;

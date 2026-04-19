@@ -15,6 +15,11 @@ impl Storage {
     }
 
     #[must_use]
+    pub fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+
+    #[must_use]
     pub fn clone_shallow(&self) -> Self {
         Self {
             root: self.root.clone(),

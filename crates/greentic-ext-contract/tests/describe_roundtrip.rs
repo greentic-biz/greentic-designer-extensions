@@ -48,9 +48,11 @@ fn describe_with_kind_provider_and_gtpack_roundtrips() {
         },
         "contributions": {}
     });
-    let describe: greentic_ext_contract::DescribeJson =
-        serde_json::from_value(json).unwrap();
-    assert_eq!(describe.kind, greentic_ext_contract::ExtensionKind::Provider);
+    let describe: greentic_ext_contract::DescribeJson = serde_json::from_value(json).unwrap();
+    assert_eq!(
+        describe.kind,
+        greentic_ext_contract::ExtensionKind::Provider
+    );
     assert!(describe.runtime.gtpack.is_some());
     assert_eq!(
         describe.runtime.gtpack.as_ref().unwrap().pack_id,

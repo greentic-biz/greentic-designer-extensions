@@ -37,4 +37,7 @@ pub enum RegistryError {
 
     #[error("contract: {0}")]
     Contract(#[from] greentic_ext_contract::ContractError),
+
+    #[error("provider install: {0}")]
+    ProviderInstall(String),
 }

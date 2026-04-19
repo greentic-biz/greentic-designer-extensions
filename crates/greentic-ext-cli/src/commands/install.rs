@@ -66,6 +66,7 @@ async fn install_from_local_file(
             InstallOptions {
                 trust_policy: trust,
                 accept_permissions: yes,
+                force: false,
             },
         )
         .await
@@ -101,6 +102,7 @@ async fn install_from_registry(
             InstallOptions {
                 trust_policy: trust,
                 accept_permissions: args.yes,
+                force: false,
             },
         )
         .await
