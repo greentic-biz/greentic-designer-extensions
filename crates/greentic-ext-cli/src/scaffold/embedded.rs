@@ -2,7 +2,13 @@
 
 use include_dir::{Dir, include_dir};
 
-pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Version of the embedded WIT contract (the `@X.Y.Z` in each WIT
+/// `package greentic:extension-*@X.Y.Z;` declaration). Decoupled from the
+/// crate `CARGO_PKG_VERSION` because the tooling bumps faster than the WIT
+/// contract — scaffolded extensions import the contract at this version.
+/// Bump this constant when the vendored `wit/*.wit` files declare a new
+/// `@version`.
+pub const CONTRACT_VERSION: &str = "0.1.0";
 
 static EMBEDDED: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/embedded-wit/$CARGO_PKG_VERSION");
 
