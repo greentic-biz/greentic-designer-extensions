@@ -1,0 +1,269 @@
+use std::path::Path;
+use std::process::Command;
+
+use greentic_ext_contract::{
+    DescribeJson, ExtensionKind,
+    describe::{Author, Capabilities, Engine, Metadata, Permissions, Runtime, RuntimeGtpack},
+};
+use greentic_ext_registry::hex;
+use sha2::{Digest, Sha256};
+use tempfile::TempDir;
+
+fn gtdx_bin() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_BIN_EXE_gtdx"))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    hex::encode(&digest)
+}
+
+fn write_design_fixture(extensions_root: &std::path::Path) {
+    let design_dir = extensions_root
+        .join("design")
+        .join("greentic.design.adaptive-cards-0.1.0");
+    std::fs::create_dir_all(&design_dir).unwrap();
+
+    let design_describe = DescribeJson {
+        schema_ref: None,
+        api_version: "greentic.ai/v1".into(),
+        kind: ExtensionKind::Design,
+        metadata: Metadata {
+            id: "greentic.design.adaptive-cards".into(),
+            name: "Adaptive Cards".into(),
+            version: "0.1.0".into(),
+            summary: "Design extension for adaptive cards".into(),
+            description: None,
+            author: Author {
+                name: "Test".into(),
+                email: None,
+                public_key: None,
+            },
+            license: "MIT".into(),
+            homepage: None,
+            repository: None,
+            keywords: vec![],
+            icon: None,
+            screenshots: vec![],
+        },
+        engine: Engine {
+            greentic_designer: "*".into(),
+            ext_runtime: "*".into(),
+        },
+        capabilities: Capabilities {
+            offered: vec![],
+            required: vec![],
+        },
+        runtime: Runtime {
+            component: "extension.wasm".into(),
+            memory_limit_mb: 64,
+            permissions: Permissions::default(),
+            gtpack: None,
+        },
+        contributions: serde_json::json!({}),
+        signature: None,
+    };
+
+    let describe_path = design_dir.join("describe.json");
+    std::fs::write(
+        &describe_path,
+        serde_json::to_string_pretty(&design_describe).unwrap(),
+    )
+    .unwrap();
+}
+
+fn write_provider_fixture(extensions_root: &std::path::Path) {
+    let provider_dir = extensions_root
+        .join("provider")
+        .join("greentic.provider.telegram-0.2.0");
+    std::fs::create_dir_all(&provider_dir).unwrap();
+
+    let gtpack_bytes = b"fake-gtpack-data".to_vec();
+    let sha256 = sha256_hex(&gtpack_bytes);
+
+    let provider_describe = DescribeJson {
+        schema_ref: None,
+        api_version: "greentic.ai/v1".into(),
+        kind: ExtensionKind::Provider,
+        metadata: Metadata {
+            id: "greentic.provider.telegram".into(),
+            name: "Telegram Provider".into(),
+            version: "0.2.0".into(),
+            summary: "Provider extension for Telegram".into(),
+            description: None,
+            author: Author {
+                name: "Test".into(),
+                email: None,
+                public_key: None,
+            },
+            license: "MIT".into(),
+            homepage: None,
+            repository: None,
+            keywords: vec![],
+            icon: None,
+            screenshots: vec![],
+        },
+        engine: Engine {
+            greentic_designer: "*".into(),
+            ext_runtime: "^0.1.0".into(),
+        },
+        capabilities: Capabilities {
+            offered: vec![],
+            required: vec![],
+        },
+        runtime: Runtime {
+            component: "wasm/provider.wasm".into(),
+            memory_limit_mb: 256,
+            permissions: Permissions::default(),
+            gtpack: Some(RuntimeGtpack {
+                file: "runtime/provider.gtpack".into(),
+                sha256,
+                pack_id: "greentic.provider.telegram".into(),
+                component_version: "0.6.0".into(),
+            }),
+        },
+        contributions: serde_json::json!({}),
+        signature: None,
+    };
+
+    let describe_path = provider_dir.join("describe.json");
+    std::fs::write(
+        &describe_path,
+        serde_json::to_string_pretty(&provider_describe).unwrap(),
+    )
+    .unwrap();
+}
+
+fn setup_fixture_extensions(home: &Path) {
+    let extensions_root = home.join("extensions");
+    std::fs::create_dir_all(&extensions_root).unwrap();
+    write_design_fixture(&extensions_root);
+    write_provider_fixture(&extensions_root);
+}
+
+#[test]
+fn gtdx_list_filters_by_kind_provider() {
+    let tmp = TempDir::new().unwrap();
+    setup_fixture_extensions(tmp.path());
+
+    let output = Command::new(gtdx_bin())
+        .args([
+            "--home",
+            tmp.path().to_str().unwrap(),
+            "list",
+            "--kind",
+            "provider",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should contain provider extension
+    assert!(
+        stdout.contains("greentic.provider.telegram"),
+        "stdout: {stdout}"
+    );
+
+    // Should NOT contain design extension
+    assert!(
+        !stdout.contains("greentic.design.adaptive-cards"),
+        "stdout: {stdout}"
+    );
+
+    // Should show [provider] header
+    assert!(stdout.contains("[provider]"), "stdout: {stdout}");
+}
+
+#[test]
+fn gtdx_list_filters_by_kind_design() {
+    let tmp = TempDir::new().unwrap();
+    setup_fixture_extensions(tmp.path());
+
+    let output = Command::new(gtdx_bin())
+        .args([
+            "--home",
+            tmp.path().to_str().unwrap(),
+            "list",
+            "--kind",
+            "design",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should contain design extension
+    assert!(
+        stdout.contains("greentic.design.adaptive-cards"),
+        "stdout: {stdout}"
+    );
+
+    // Should NOT contain provider extension
+    assert!(
+        !stdout.contains("greentic.provider.telegram"),
+        "stdout: {stdout}"
+    );
+
+    // Should show [design] header
+    assert!(stdout.contains("[design]"), "stdout: {stdout}");
+}
+
+#[test]
+fn gtdx_list_shows_all_kinds_by_default() {
+    let tmp = TempDir::new().unwrap();
+    setup_fixture_extensions(tmp.path());
+
+    let output = Command::new(gtdx_bin())
+        .args(["--home", tmp.path().to_str().unwrap(), "list"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should contain both design and provider extensions
+    assert!(
+        stdout.contains("greentic.design.adaptive-cards"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("greentic.provider.telegram"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn gtdx_list_handles_missing_kind_dir() {
+    let tmp = TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join("extensions")).unwrap();
+
+    // Don't create any provider dir
+    let output = Command::new(gtdx_bin())
+        .args([
+            "--home",
+            tmp.path().to_str().unwrap(),
+            "list",
+            "--kind",
+            "provider",
+        ])
+        .output()
+        .unwrap();
+
+    // Should succeed with empty output, not panic
+    assert!(output.status.success());
+}
