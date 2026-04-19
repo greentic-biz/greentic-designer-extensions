@@ -157,3 +157,56 @@ fn publish_conflicts_without_force() {
         "stderr should mention version conflict; got: {e}"
     );
 }
+
+#[test]
+fn publish_to_local_then_install_round_trip() {
+    if !gate() {
+        eprintln!("skipped: set GTDX_RUN_BUILD=1 to enable");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = tmp.path().join("demo");
+    let home = tmp.path().join("home");
+
+    assert!(
+        run(Command::new(gtdx_bin())
+            .arg("new")
+            .arg("demo")
+            .arg("--dir")
+            .arg(&proj)
+            .arg("--author")
+            .arg("tester")
+            .arg("-y")
+            .arg("--no-git"))
+        .0
+    );
+    assert!(
+        run(Command::new(gtdx_bin())
+            .env("GREENTIC_HOME", &home)
+            .arg("publish")
+            .arg("--manifest")
+            .arg(proj.join("Cargo.toml")))
+        .0
+    );
+
+    // Hierarchical publish wrote .gtxpack under <home>/registries/local/<id>/<version>/
+    let pack_path = home
+        .join("registries/local/com.example.demo/0.1.0/demo-0.1.0.gtxpack");
+    assert!(pack_path.is_file(), "publish must write {}", pack_path.display());
+
+    // Install from the pack path into a SECOND home — proves round-trip.
+    let home2 = tmp.path().join("home2");
+    let (ok, o, e) = run(Command::new(gtdx_bin())
+        .env("GREENTIC_HOME", &home2)
+        .arg("install")
+        .arg(pack_path.to_string_lossy().to_string())
+        .arg("--trust")
+        .arg("loose")
+        .arg("-y"));
+    assert!(ok, "gtdx install failed: {o}\n{e}");
+
+    let installed = home2.join("extensions/design/com.example.demo-0.1.0");
+    assert!(installed.exists(), "expected install at {}", installed.display());
+    assert!(installed.join("describe.json").exists());
+    assert!(installed.join("extension.wasm").exists());
+}
