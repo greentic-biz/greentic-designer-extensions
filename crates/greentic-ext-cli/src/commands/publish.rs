@@ -103,9 +103,55 @@ fn render_outcome(format: &str, outcome: &PublishOutcome) -> anyhow::Result<()> 
             render_human(outcome);
             Ok(())
         }
-        "json" => anyhow::bail!("--format json not yet implemented"),
+        "json" => render_json(outcome),
         other => anyhow::bail!("unknown --format: {other} (use human|json)"),
     }
+}
+
+fn render_json(outcome: &PublishOutcome) -> anyhow::Result<()> {
+    use serde_json::json;
+    let v = match outcome {
+        PublishOutcome::DryRun {
+            artifact,
+            sha256,
+            registry,
+        } => json!({
+            "event": "dry_run",
+            "artifact": artifact.display().to_string(),
+            "sha256": sha256,
+            "registry": registry,
+        }),
+        PublishOutcome::VerifyOnly {
+            ext_id,
+            version,
+            registry,
+        } => json!({
+            "event": "verify_only",
+            "ext_id": ext_id,
+            "version": version,
+            "registry": registry,
+        }),
+        PublishOutcome::Published {
+            ext_id,
+            version,
+            sha256,
+            artifact,
+            receipt_path,
+            signed,
+            registry_url,
+        } => json!({
+            "event": "published",
+            "ext_id": ext_id,
+            "version": version,
+            "sha256": sha256,
+            "artifact": artifact.display().to_string(),
+            "receipt_path": receipt_path.display().to_string(),
+            "signed": signed,
+            "registry_url": registry_url,
+        }),
+    };
+    println!("{}", serde_json::to_string(&v)?);
+    Ok(())
 }
 
 fn render_human(outcome: &PublishOutcome) {
