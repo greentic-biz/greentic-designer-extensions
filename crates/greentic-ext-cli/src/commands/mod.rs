@@ -1,3 +1,4 @@
+pub mod dev;
 pub mod doctor;
 pub mod info;
 pub mod install;
