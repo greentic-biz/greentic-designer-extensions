@@ -16,6 +16,7 @@ path = "src/main.rs"
 anstyle = { workspace = true }
 anyhow = { workspace = true }
 base64 = { workspace = true }
+chrono = { workspace = true }
 clap = { workspace = true }
 dialoguer = { workspace = true }
 directories = { workspace = true }

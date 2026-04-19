@@ -1,5 +1,6 @@
 mod commands;
 mod dev;
+mod publish;
 mod scaffold;
 
 use clap::{Parser, Subcommand};
@@ -35,6 +36,8 @@ enum Command {
     New(commands::new::Args),
     /// Run the developer inner-loop: rebuild, pack, and install on source change
     Dev(commands::dev::Args),
+    /// Publish an extension to a registry
+    Publish(commands::publish::Args),
     /// Log in to a registry (stores token at ~/.greentic/credentials.toml)
     Login(commands::login::Args),
     /// Log out of a registry
@@ -70,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Info(args) => commands::info::run(args, &home).await,
         Command::New(args) => commands::new::run(&args, &home),
         Command::Dev(args) => commands::dev::run(args, &home).await,
+        Command::Publish(args) => commands::publish::run(args, &home).await,
         Command::Login(args) => commands::login::run_login(&args, &home),
         Command::Logout(args) => commands::login::run_logout(&args, &home),
         Command::Registries(args) => commands::registries::run(args, &home),

@@ -6,6 +6,7 @@ pub mod keygen;
 pub mod list;
 pub mod login;
 pub mod new;
+pub mod publish;
 pub mod registries;
 pub mod search;
 pub mod sign;

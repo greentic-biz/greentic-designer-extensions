@@ -11,3 +11,12 @@
   for IDE integrations. File watcher filters `target/`, VCS dirs, editor swap
   files, and backup files automatically. Skip-unchanged logic avoids redundant
   installs when the pack's sha256 has not changed.
+- `gtdx publish` subcommand: validate describe.json, build release WASM, pack
+  into a deterministic `.gtxpack`, and publish into the filesystem registry at
+  `$GREENTIC_HOME/registries/local/<id>/<version>/`. Supports `--dry-run`,
+  `--force`, `--sign --key-id <id>`, `--version` override, and `--verify-only`.
+  Writes a receipt at `./dist/publish-<id>-<version>.json`. Store and OCI
+  registries return `NotImplemented` for now (Phase 2).
+- `greentic-ext-contract::pack_writer` — deterministic ZIP writer (sorted
+  entries, zeroed timestamps, LF normalization) shared by `gtdx dev` and
+  `gtdx publish`.
