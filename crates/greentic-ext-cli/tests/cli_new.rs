@@ -199,3 +199,49 @@ fn generated_project_passes_cargo_check() {
         "cargo check failed\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
 }
+
+#[test]
+fn scaffolded_describe_json_validates_against_schema() {
+    let schema_path = {
+        let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        p.pop();
+        p.push("greentic-ext-contract/schemas/describe-v1.json");
+        p
+    };
+    let schema_bytes = std::fs::read(&schema_path)
+        .unwrap_or_else(|e| panic!("read schema at {}: {e}", schema_path.display()));
+    let schema: serde_json::Value = serde_json::from_slice(&schema_bytes).unwrap();
+    let compiled = jsonschema::validator_for(&schema).expect("compile schema");
+
+    for (kind_flag, scaffold_name) in [
+        ("design", "design-demo"),
+        ("bundle", "bundle-demo"),
+        ("deploy", "deploy-demo"),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        let proj = tmp.path().join(scaffold_name);
+        let (ok, stdout, stderr) = run(Command::new(gtdx_bin())
+            .arg("new")
+            .arg(scaffold_name)
+            .arg("--kind")
+            .arg(kind_flag)
+            .arg("--dir")
+            .arg(&proj)
+            .arg("-y")
+            .arg("--no-git"));
+        assert!(ok, "gtdx new --kind {kind_flag} failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+
+        let describe_bytes = std::fs::read(proj.join("describe.json")).unwrap();
+        let describe: serde_json::Value = serde_json::from_slice(&describe_bytes).unwrap();
+        if !compiled.is_valid(&describe) {
+            let details: Vec<String> = compiled
+                .iter_errors(&describe)
+                .map(|e| format!("- {e}"))
+                .collect();
+            panic!(
+                "describe.json for kind={kind_flag} failed schema validation:\n{}",
+                details.join("\n")
+            );
+        }
+    }
+}
