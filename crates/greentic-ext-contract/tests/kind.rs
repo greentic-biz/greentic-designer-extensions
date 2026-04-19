@@ -35,3 +35,17 @@ fn dir_name_matches_spec() {
     assert_eq!(ExtensionKind::Bundle.dir_name(), "bundle");
     assert_eq!(ExtensionKind::Deploy.dir_name(), "deploy");
 }
+
+#[test]
+fn provider_kind_serde_roundtrip() {
+    let original = ExtensionKind::Provider;
+    let json = serde_json::to_string(&original).unwrap();
+    assert_eq!(json, "\"ProviderExtension\"");
+    let parsed: ExtensionKind = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed, original);
+}
+
+#[test]
+fn provider_kind_dir_name() {
+    assert_eq!(ExtensionKind::Provider.dir_name(), "provider");
+}
