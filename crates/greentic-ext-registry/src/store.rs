@@ -1,12 +1,10 @@
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::error::RegistryError;
 use crate::registry::ExtensionRegistry;
-use crate::types::{
-    AuthToken, ExtensionArtifact, ExtensionMetadata, ExtensionSummary, SearchQuery,
-};
+use crate::types::{ExtensionArtifact, ExtensionMetadata, ExtensionSummary, SearchQuery};
 
 pub struct GreenticStoreRegistry {
     name: String,
@@ -65,14 +63,6 @@ struct MetadataDto {
     published_at: String,
     #[serde(default)]
     yanked: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PublishRequest<'a> {
-    describe: &'a greentic_ext_contract::DescribeJson,
-    signature: Option<&'a str>,
-    artifact_sha256: String,
 }
 
 #[async_trait]
@@ -161,34 +151,11 @@ impl ExtensionRegistry for GreenticStoreRegistry {
 
     async fn publish(
         &self,
-        artifact: ExtensionArtifact,
-        auth: &AuthToken,
-    ) -> Result<(), RegistryError> {
-        let sha = greentic_ext_contract::artifact_sha256(&artifact.bytes);
-        let body = PublishRequest {
-            describe: &artifact.describe,
-            signature: artifact.signature.as_deref(),
-            artifact_sha256: sha,
-        };
-
-        let form = reqwest::multipart::Form::new()
-            .text("metadata", serde_json::to_string(&body)?)
-            .part(
-                "artifact",
-                reqwest::multipart::Part::bytes(artifact.bytes)
-                    .file_name("artifact.gtxpack")
-                    .mime_str("application/zip")
-                    .map_err(|e| RegistryError::Storage(format!("mime: {e}")))?,
-            );
-
-        self.client
-            .post(self.url("/api/v1/extensions"))
-            .bearer_auth(&auth.token)
-            .multipart(form)
-            .send()
-            .await?
-            .error_for_status()?;
-        Ok(())
+        _req: crate::publish::PublishRequest,
+    ) -> Result<crate::publish::PublishReceipt, RegistryError> {
+        Err(RegistryError::NotImplemented {
+            hint: "Store publish lands in Phase 2 (S5). Use --registry local for now.".into(),
+        })
     }
 
     async fn list_versions(&self, name: &str) -> Result<Vec<String>, RegistryError> {

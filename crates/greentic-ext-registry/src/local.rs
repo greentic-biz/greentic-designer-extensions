@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::error::RegistryError;
 use crate::registry::ExtensionRegistry;
 use crate::types::{
-    ArtifactBytes, AuthToken, ExtensionArtifact, ExtensionMetadata, ExtensionSummary, SearchQuery,
+    ArtifactBytes, ExtensionArtifact, ExtensionMetadata, ExtensionSummary, SearchQuery,
 };
 
 pub struct LocalFilesystemRegistry {
@@ -156,16 +156,6 @@ impl ExtensionRegistry for LocalFilesystemRegistry {
             bytes,
             signature: None,
         })
-    }
-
-    async fn publish(
-        &self,
-        _artifact: ExtensionArtifact,
-        _auth: &AuthToken,
-    ) -> Result<(), RegistryError> {
-        Err(RegistryError::Storage(
-            "local registry does not support publish; use `cp` directly".into(),
-        ))
     }
 
     async fn list_versions(&self, name: &str) -> Result<Vec<String>, RegistryError> {
