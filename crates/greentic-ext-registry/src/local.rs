@@ -39,6 +39,12 @@ impl LocalFilesystemRegistry {
         self.root.join(format!("{name}-{version}.gtxpack"))
     }
 
+    /// Return the on-disk root path of this registry.
+    #[must_use]
+    pub fn root_path(&self) -> &Path {
+        &self.root
+    }
+
     fn read_describe_from_pack(pack_path: &Path) -> Result<DescribeJson, RegistryError> {
         let file = std::fs::File::open(pack_path)?;
         let mut archive = zip::ZipArchive::new(file)
@@ -167,5 +173,12 @@ impl ExtensionRegistry for LocalFilesystemRegistry {
             .collect();
         versions.sort();
         Ok(versions)
+    }
+
+    async fn publish(
+        &self,
+        req: crate::publish::PublishRequest,
+    ) -> Result<crate::publish::PublishReceipt, RegistryError> {
+        self.publish_local(&req)
     }
 }

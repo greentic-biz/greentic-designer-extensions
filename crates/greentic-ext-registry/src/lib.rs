@@ -5,6 +5,7 @@ pub mod credentials;
 pub mod error;
 pub mod lifecycle;
 pub mod local;
+pub mod local_publish;
 pub mod oci;
 pub mod prompt;
 pub mod publish;
