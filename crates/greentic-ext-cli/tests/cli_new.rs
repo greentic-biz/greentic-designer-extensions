@@ -141,13 +141,19 @@ fn scaffolds_provider_extension_with_correct_wit_deps() {
             .exists()
     );
     assert!(
-        !proj.join("wit/deps/greentic/extension-design/world.wit").exists()
+        !proj
+            .join("wit/deps/greentic/extension-design/world.wit")
+            .exists()
     );
     assert!(
-        !proj.join("wit/deps/greentic/extension-bundle/world.wit").exists()
+        !proj
+            .join("wit/deps/greentic/extension-bundle/world.wit")
+            .exists()
     );
     assert!(
-        !proj.join("wit/deps/greentic/extension-deploy/world.wit").exists()
+        !proj
+            .join("wit/deps/greentic/extension-deploy/world.wit")
+            .exists()
     );
 
     let describe = std::fs::read_to_string(proj.join("describe.json")).unwrap();
