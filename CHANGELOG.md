@@ -28,11 +28,28 @@
   for IDE integrations. File watcher filters `target/`, VCS dirs, editor swap
   files, and backup files automatically. Skip-unchanged logic avoids redundant
   installs when the pack's sha256 has not changed.
+- `gtdx publish` subcommand: validate describe.json, build release WASM, pack
+  into a deterministic `.gtxpack`, and publish into the filesystem registry at
+  `$GREENTIC_HOME/registries/local/<id>/<version>/`. Supports `--dry-run`,
+  `--force`, `--sign --key-id <id>`, `--version` override, and `--verify-only`.
+  Writes a receipt at `./dist/publish-<id>-<version>.json`. Store and OCI
+  registries return `NotImplemented` for now (Phase 2).
+- `greentic-ext-contract::pack_writer` — deterministic ZIP writer (sorted
+  entries, zeroed timestamps, LF normalization) shared by `gtdx dev` and
+  `gtdx publish`.
+- `gtdx publish --registry <name>` now uploads `.gtxpack` artifacts to a
+  Greentic Store HTTP server via multipart POST to `/api/v1/extensions` with
+  bearer-token auth. Registry URL is resolved from `~/.greentic/config.toml`
+  (add with `gtdx registries add <name> <url>`); token is read from
+  `~/.greentic/credentials.toml` (`gtdx login --registry <name>`) or the
+  env-var named in the registry's `token-env` entry. 401 → `AuthRequired`
+  with actionable hint; 409 → `VersionExists`; 2xx → parsed `PublishReceipt`.
 
 ### Changed
 - `InstallOptions` gained `force: bool` field (default `false`)
-- `RegistryError::ProviderInstall` variant added
+- `RegistryError::ProviderInstall`, `VersionExists`, `NotImplemented` variants added
 - `Storage::root()` accessor exposed
+- `ExtensionRegistry::publish` signature: now takes `PublishRequest` and returns `PublishReceipt` (replaces prior `ExtensionArtifact + AuthToken` shape)
 - Workspace version bumped 0.1.0 → 0.2.0 (additive — existing kinds unaffected)
 
 ### Fixed

@@ -1,9 +1,7 @@
 use async_trait::async_trait;
 
 use crate::error::RegistryError;
-use crate::types::{
-    AuthToken, ExtensionArtifact, ExtensionMetadata, ExtensionSummary, SearchQuery,
-};
+use crate::types::{ExtensionArtifact, ExtensionMetadata, ExtensionSummary, SearchQuery};
 use greentic_ext_contract::ExtensionKind;
 
 #[async_trait]
@@ -19,13 +17,12 @@ pub trait ExtensionRegistry: Send + Sync {
 
     async fn publish(
         &self,
-        artifact: ExtensionArtifact,
-        auth: &AuthToken,
-    ) -> Result<(), RegistryError> {
-        let _ = (artifact, auth);
-        Err(RegistryError::Storage(
-            "publish not supported by this registry".into(),
-        ))
+        req: crate::publish::PublishRequest,
+    ) -> Result<crate::publish::PublishReceipt, RegistryError> {
+        let _ = req;
+        Err(RegistryError::NotImplemented {
+            hint: format!("publish not supported for registry '{}'", self.name()),
+        })
     }
 
     async fn list_versions(&self, name: &str) -> Result<Vec<String>, RegistryError>;

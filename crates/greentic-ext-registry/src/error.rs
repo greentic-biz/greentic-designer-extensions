@@ -40,4 +40,10 @@ pub enum RegistryError {
 
     #[error("provider install: {0}")]
     ProviderInstall(String),
+
+    #[error("version already exists in registry (sha256={existing_sha})")]
+    VersionExists { existing_sha: String },
+
+    #[error("not implemented: {hint}")]
+    NotImplemented { hint: String },
 }

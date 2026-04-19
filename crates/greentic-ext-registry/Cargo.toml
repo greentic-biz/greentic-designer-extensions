@@ -11,8 +11,10 @@ publish = false
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+chrono = { workspace = true }
 ciborium = { workspace = true }
 dialoguer = { workspace = true }
+fs2 = { workspace = true }
 greentic-ext-contract = { path = "../greentic-ext-contract" }
 oci-client = { workspace = true }
 reqwest = { workspace = true }
@@ -28,13 +30,9 @@ tracing = { workspace = true }
 zip = { workspace = true }
 
 [dev-dependencies]
-ciborium = { workspace = true }
-greentic-ext-contract = { path = "../greentic-ext-contract" }
 greentic-ext-testing = { path = "../greentic-ext-testing" }
-sha2 = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wiremock = "0.6"
-zip = { workspace = true }
 
 [lints]
 workspace = true

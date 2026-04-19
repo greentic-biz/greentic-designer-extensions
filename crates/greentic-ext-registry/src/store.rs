@@ -4,9 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::RegistryError;
 use crate::registry::ExtensionRegistry;
-use crate::types::{
-    AuthToken, ExtensionArtifact, ExtensionMetadata, ExtensionSummary, SearchQuery,
-};
+use crate::types::{ExtensionArtifact, ExtensionMetadata, ExtensionSummary, SearchQuery};
 
 pub struct GreenticStoreRegistry {
     name: String,
@@ -30,6 +28,11 @@ impl GreenticStoreRegistry {
                 .build()
                 .expect("reqwest client"),
         }
+    }
+
+    #[must_use]
+    pub fn base_url(&self) -> &str {
+        &self.base_url
     }
 
     fn url(&self, path: &str) -> String {
@@ -69,10 +72,32 @@ struct MetadataDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PublishRequest<'a> {
-    describe: &'a greentic_ext_contract::DescribeJson,
-    signature: Option<&'a str>,
-    artifact_sha256: String,
+struct PublishMetadata<'a> {
+    ext_id: &'a str,
+    ext_name: &'a str,
+    version: &'a str,
+    kind: greentic_ext_contract::ExtensionKind,
+    artifact_sha256: &'a str,
+    describe: &'a serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signature: Option<&'a crate::publish::SignatureBlob>,
+    force: bool,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+struct PublishResponseDto {
+    url: Option<String>,
+    artifact_sha256: Option<String>,
+    published_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+fn extract_existing_sha(body: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    v.get("existing_sha")
+        .or_else(|| v.get("artifactSha256"))
+        .and_then(|x| x.as_str())
+        .map(str::to_string)
 }
 
 #[async_trait]
@@ -161,34 +186,82 @@ impl ExtensionRegistry for GreenticStoreRegistry {
 
     async fn publish(
         &self,
-        artifact: ExtensionArtifact,
-        auth: &AuthToken,
-    ) -> Result<(), RegistryError> {
-        let sha = greentic_ext_contract::artifact_sha256(&artifact.bytes);
-        let body = PublishRequest {
-            describe: &artifact.describe,
-            signature: artifact.signature.as_deref(),
-            artifact_sha256: sha,
+        req: crate::publish::PublishRequest,
+    ) -> Result<crate::publish::PublishReceipt, RegistryError> {
+        let token = self.token.as_deref().ok_or_else(|| {
+            RegistryError::AuthRequired(format!(
+                "no token configured for registry '{}'; run: gtdx login --registry {}",
+                self.name, self.name
+            ))
+        })?;
+
+        let describe_bytes = serde_json::to_vec(&req.describe)?;
+        let describe_value: serde_json::Value = serde_json::from_slice(&describe_bytes)?;
+        let metadata = PublishMetadata {
+            ext_id: &req.ext_id,
+            ext_name: &req.ext_name,
+            version: &req.version,
+            kind: req.kind,
+            artifact_sha256: &req.artifact_sha256,
+            describe: &describe_value,
+            signature: req.signature.as_ref(),
+            force: req.force,
         };
+        let metadata_json = serde_json::to_string(&metadata)?;
 
         let form = reqwest::multipart::Form::new()
-            .text("metadata", serde_json::to_string(&body)?)
+            .text("metadata", metadata_json)
             .part(
                 "artifact",
-                reqwest::multipart::Part::bytes(artifact.bytes)
-                    .file_name("artifact.gtxpack")
+                reqwest::multipart::Part::bytes(req.artifact_bytes)
+                    .file_name(format!("{}-{}.gtxpack", req.ext_name, req.version))
                     .mime_str("application/zip")
                     .map_err(|e| RegistryError::Storage(format!("mime: {e}")))?,
             );
 
-        self.client
+        let resp = self
+            .client
             .post(self.url("/api/v1/extensions"))
-            .bearer_auth(&auth.token)
+            .bearer_auth(token)
             .multipart(form)
             .send()
-            .await?
-            .error_for_status()?;
-        Ok(())
+            .await?;
+
+        let status = resp.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(RegistryError::AuthRequired(format!(
+                "401 from '{}'. Token expired? Re-run: gtdx login --registry {}",
+                self.name, self.name
+            )));
+        }
+        if status == reqwest::StatusCode::CONFLICT {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(RegistryError::VersionExists {
+                existing_sha: extract_existing_sha(&body).unwrap_or_else(|| "unknown".into()),
+            });
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(RegistryError::Storage(format!(
+                "store publish failed: {status} {body}"
+            )));
+        }
+        let dto: PublishResponseDto = resp.json().await.unwrap_or_default();
+        Ok(crate::publish::PublishReceipt {
+            url: dto.url.unwrap_or_else(|| {
+                format!(
+                    "{}/api/v1/extensions/{}/{}",
+                    self.base_url.trim_end_matches('/'),
+                    req.ext_id,
+                    req.version
+                )
+            }),
+            sha256: dto
+                .artifact_sha256
+                .unwrap_or_else(|| req.artifact_sha256.clone()),
+            published_at: dto.published_at.unwrap_or_else(chrono::Utc::now),
+            signed: req.signature.is_some(),
+        })
     }
 
     async fn list_versions(&self, name: &str) -> Result<Vec<String>, RegistryError> {

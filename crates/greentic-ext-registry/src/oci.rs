@@ -5,9 +5,7 @@ use oci_client::{Client, Reference};
 
 use crate::error::RegistryError;
 use crate::registry::ExtensionRegistry;
-use crate::types::{
-    AuthToken, ExtensionArtifact, ExtensionMetadata, ExtensionSummary, SearchQuery,
-};
+use crate::types::{ExtensionArtifact, ExtensionMetadata, ExtensionSummary, SearchQuery};
 
 pub struct OciRegistry {
     name: String,
@@ -112,12 +110,10 @@ impl ExtensionRegistry for OciRegistry {
 
     async fn publish(
         &self,
-        _artifact: ExtensionArtifact,
-        _auth: &AuthToken,
-    ) -> Result<(), RegistryError> {
-        Err(RegistryError::Storage(
-            "OCI publish requires external `oras push`; gtdx publish covers Greentic Store only"
-                .into(),
-        ))
+        _req: crate::publish::PublishRequest,
+    ) -> Result<crate::publish::PublishReceipt, RegistryError> {
+        Err(RegistryError::NotImplemented {
+            hint: "OCI publish lands in Phase 2 (S5). Use --registry local for now.".into(),
+        })
     }
 }
