@@ -13,6 +13,12 @@
   not-implemented=50, io=74, other=1).
 - `gtdx publish --format json` emits a single JSON object per invocation
   (`event`: `dry_run` / `verify_only` / `published`) for IDE + CI consumers.
+- `gtdx publish --registry oci://<host>/<namespace>[/<artifact>]` pushes the
+  `.gtxpack` directly to any OCI Distribution v2-compatible registry (GHCR,
+  Docker Hub, Harbor, Azure ACR). Artifact is a single layer with media type
+  `application/vnd.greentic.gtxpack.v1`. Auth priority: `--oci-token` flag >
+  `GHCR_TOKEN` > `GITHUB_TOKEN` > `OCI_TOKEN` > anonymous. 401/403 → hint to
+  refresh `write:packages` scope; 409 → `VersionExists`.
 
 ## [0.2.0] - 2026-04-19
 
