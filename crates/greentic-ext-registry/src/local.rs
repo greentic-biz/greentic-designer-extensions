@@ -35,8 +35,55 @@ impl LocalFilesystemRegistry {
         }
     }
 
+    fn resolve_pack_path(&self, name: &str, version: &str) -> Option<PathBuf> {
+        // Hierarchical preferred (Track C publish): <root>/<key>/<version>/<name>-<version>.gtxpack
+        // where `key` may be either id or name.
+        let hierarchical = self
+            .root
+            .join(name)
+            .join(version)
+            .join(format!("{name}-{version}.gtxpack"));
+        if hierarchical.is_file() {
+            return Some(hierarchical);
+        }
+        for entry in std::fs::read_dir(&self.root).ok()?.flatten() {
+            if !entry.file_type().ok()?.is_dir() {
+                continue;
+            }
+            let ext_dir = entry.path();
+            let ver_dir = ext_dir.join(version);
+            if !ver_dir.is_dir() {
+                continue;
+            }
+            for pack in std::fs::read_dir(&ver_dir).ok()?.flatten() {
+                let path = pack.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("gtxpack") {
+                    let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                    if let Some((n, v)) = Self::parse_pack_filename(filename) {
+                        if v == version
+                            && (n == name
+                                || ext_dir
+                                    .file_name()
+                                    .and_then(|s| s.to_str())
+                                    .is_some_and(|id| id == name))
+                        {
+                            return Some(path);
+                        }
+                    }
+                }
+            }
+        }
+        // Fallback: flat layout (dev-local scratch dir).
+        let flat = self.root.join(format!("{name}-{version}.gtxpack"));
+        if flat.is_file() {
+            return Some(flat);
+        }
+        None
+    }
+
     fn pack_path(&self, name: &str, version: &str) -> PathBuf {
-        self.root.join(format!("{name}-{version}.gtxpack"))
+        self.resolve_pack_path(name, version)
+            .unwrap_or_else(|| self.root.join(format!("{name}-{version}.gtxpack")))
     }
 
     /// Return the on-disk root path of this registry.
@@ -69,13 +116,33 @@ impl LocalFilesystemRegistry {
         let mut out = Vec::new();
         for entry in std::fs::read_dir(&self.root)? {
             let entry = entry?;
-            if !entry.file_type()?.is_file() {
-                continue;
-            }
-            let filename = entry.file_name();
-            let filename_str = filename.to_string_lossy();
-            if let Some((n, v)) = Self::parse_pack_filename(&filename_str) {
-                out.push((n, v, entry.path()));
+            let ft = entry.file_type()?;
+            let path = entry.path();
+            if ft.is_file() {
+                // Flat: <root>/<name>-<version>.gtxpack
+                let filename = entry.file_name();
+                let filename_str = filename.to_string_lossy();
+                if let Some((n, v)) = Self::parse_pack_filename(&filename_str) {
+                    out.push((n, v, path));
+                }
+            } else if ft.is_dir() {
+                // Hierarchical: <root>/<id>/<version>/<name>-<version>.gtxpack
+                for ver_entry in std::fs::read_dir(&path)?.flatten() {
+                    if !ver_entry.file_type()?.is_dir() {
+                        continue;
+                    }
+                    for pack_entry in std::fs::read_dir(ver_entry.path())?.flatten() {
+                        let pack_path = pack_entry.path();
+                        if pack_path.extension().and_then(|s| s.to_str()) != Some("gtxpack") {
+                            continue;
+                        }
+                        let filename = pack_entry.file_name();
+                        let filename_str = filename.to_string_lossy();
+                        if let Some((n, v)) = Self::parse_pack_filename(&filename_str) {
+                            out.push((n, v, pack_path));
+                        }
+                    }
+                }
             }
         }
         Ok(out)
