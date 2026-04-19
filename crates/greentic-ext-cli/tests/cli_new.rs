@@ -92,7 +92,7 @@ fn scaffolds_bundle_extension_with_correct_wit_deps() {
             .exists()
     );
     let describe = std::fs::read_to_string(proj.join("describe.json")).unwrap();
-    assert!(describe.contains("\"kind\": \"bundle\""));
+    assert!(describe.contains("\"kind\": \"BundleExtension\""));
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn scaffolds_deploy_extension_with_correct_wit_deps() {
             .exists()
     );
     let describe = std::fs::read_to_string(proj.join("describe.json")).unwrap();
-    assert!(describe.contains("\"kind\": \"deploy\""));
+    assert!(describe.contains("\"kind\": \"DeployExtension\""));
 }
 
 #[test]
