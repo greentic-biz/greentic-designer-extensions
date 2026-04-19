@@ -11,7 +11,9 @@ publish = false
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+chrono = { workspace = true }
 dialoguer = { workspace = true }
+fs2 = { workspace = true }
 greentic-ext-contract = { path = "../greentic-ext-contract" }
 oci-client = { workspace = true }
 reqwest = { workspace = true }
