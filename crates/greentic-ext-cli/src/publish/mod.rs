@@ -15,6 +15,77 @@ use crate::dev::packer::build_pack;
 use crate::publish::receipt::{PublishReceiptJson, write_receipt};
 use crate::publish::validator::{format_errors, validate_for_publish};
 
+use greentic_ext_registry::credentials::Credentials;
+use greentic_ext_registry::store::GreenticStoreRegistry;
+
+enum Backend {
+    Local(LocalFilesystemRegistry),
+    Store(GreenticStoreRegistry),
+}
+
+impl Backend {
+    async fn publish(
+        &self,
+        req: greentic_ext_registry::publish::PublishRequest,
+    ) -> Result<
+        greentic_ext_registry::publish::PublishReceipt,
+        greentic_ext_registry::RegistryError,
+    > {
+        match self {
+            Backend::Local(r) => r.publish(req).await,
+            Backend::Store(r) => r.publish(req).await,
+        }
+    }
+}
+
+fn resolve_backend(uri: &str, home: &Path) -> anyhow::Result<Backend> {
+    if uri == "local" {
+        let root = home.join("registries/local");
+        return Ok(Backend::Local(LocalFilesystemRegistry::new(
+            "publish-local",
+            root,
+        )));
+    }
+    if let Some(rest) = uri.strip_prefix("file://") {
+        let root = std::path::PathBuf::from(rest);
+        return Ok(Backend::Local(LocalFilesystemRegistry::new("file", root)));
+    }
+
+    let cfg = greentic_ext_registry::config::load(&home.join("config.toml"))
+        .map_err(|e| anyhow::anyhow!("load config: {e}"))?;
+    let entry = cfg
+        .registries
+        .iter()
+        .find(|e| e.name == uri)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "no registry named '{uri}' in {}/config.toml. Add one with: gtdx registries add {uri} <url>",
+                home.display()
+            )
+        })?;
+
+    let token = resolve_token(home, entry);
+    Ok(Backend::Store(GreenticStoreRegistry::new(
+        &entry.name,
+        &entry.url,
+        token,
+    )))
+}
+
+fn resolve_token(
+    home: &Path,
+    entry: &greentic_ext_registry::config::RegistryEntry,
+) -> Option<String> {
+    if let Some(var) = &entry.token_env
+        && let Ok(v) = std::env::var(var)
+        && !v.is_empty()
+    {
+        return Some(v);
+    }
+    let creds = Credentials::load(&home.join("credentials.toml")).ok()?;
+    creds.get(&entry.name).map(str::to_string)
+}
+
 #[derive(Debug, Clone)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct PublishConfig {
@@ -76,25 +147,10 @@ pub async fn run_publish(cfg: &PublishConfig) -> anyhow::Result<PublishOutcome> 
     }
 
     // 3. Resolve registry root.
-    let registry_root = resolve_registry_root(&cfg.registry_uri, &cfg.home)?;
-    let registry = LocalFilesystemRegistry::new("publish-local", registry_root.clone());
+    let backend = resolve_backend(&cfg.registry_uri, &cfg.home)?;
 
     if cfg.verify_only {
-        let ver_dir = registry_root
-            .join(&describe.metadata.id)
-            .join(&describe.metadata.version);
-        if ver_dir.exists() && !cfg.force {
-            anyhow::bail!(
-                "version {} already exists at {}",
-                describe.metadata.version,
-                ver_dir.display()
-            );
-        }
-        return Ok(PublishOutcome::VerifyOnly {
-            ext_id: describe.metadata.id,
-            version: describe.metadata.version,
-            registry: registry_root.display().to_string(),
-        });
+        return verify_only(&backend, &describe, cfg.force);
     }
 
     // 4. Build (release unless cfg says otherwise).
@@ -133,7 +189,7 @@ pub async fn run_publish(cfg: &PublishConfig) -> anyhow::Result<PublishOutcome> 
         return Ok(PublishOutcome::DryRun {
             artifact: staging_pack,
             sha256: info.sha256,
-            registry: registry_root.display().to_string(),
+            registry: backend_registry_label(&backend),
         });
     }
 
@@ -150,7 +206,7 @@ pub async fn run_publish(cfg: &PublishConfig) -> anyhow::Result<PublishOutcome> 
         force: cfg.force,
     };
 
-    let receipt = registry
+    let receipt = backend
         .publish(req)
         .await
         .map_err(|e| anyhow::anyhow!("publish: {e}"))?;
@@ -194,14 +250,47 @@ pub async fn run_publish(cfg: &PublishConfig) -> anyhow::Result<PublishOutcome> 
     })
 }
 
-fn resolve_registry_root(uri: &str, home: &Path) -> anyhow::Result<PathBuf> {
-    if uri == "local" {
-        return Ok(home.join("registries/local"));
+fn verify_only(
+    backend: &Backend,
+    describe: &DescribeJson,
+    force: bool,
+) -> anyhow::Result<PublishOutcome> {
+    match backend {
+        Backend::Local(r) => {
+            let ver_dir = r
+                .root_path()
+                .join(&describe.metadata.id)
+                .join(&describe.metadata.version);
+            if ver_dir.exists() && !force {
+                anyhow::bail!(
+                    "version {} already exists at {}",
+                    describe.metadata.version,
+                    ver_dir.display()
+                );
+            }
+            Ok(PublishOutcome::VerifyOnly {
+                ext_id: describe.metadata.id.clone(),
+                version: describe.metadata.version.clone(),
+                registry: r.root_path().display().to_string(),
+            })
+        }
+        Backend::Store(r) => {
+            // Server-side conflict check lands here in a future iteration;
+            // for now, verify_only on a remote registry is a no-op success.
+            Ok(PublishOutcome::VerifyOnly {
+                ext_id: describe.metadata.id.clone(),
+                version: describe.metadata.version.clone(),
+                registry: r.base_url().to_string(),
+            })
+        }
     }
-    if let Some(rest) = uri.strip_prefix("file://") {
-        return Ok(PathBuf::from(rest));
+}
+
+fn backend_registry_label(backend: &Backend) -> String {
+    match backend {
+        Backend::Local(r) => r.root_path().display().to_string(),
+        Backend::Store(r) => r.base_url().to_string(),
     }
-    anyhow::bail!("unsupported --registry {uri} (only 'local' or file:// in Phase 1)")
 }
 
 fn load_signing_key(home: &Path, key_id: &str) -> anyhow::Result<ed25519_dalek::SigningKey> {
