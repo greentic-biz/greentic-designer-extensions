@@ -61,27 +61,36 @@ pub fn run_build(project_dir: &Path, profile: Profile) -> anyhow::Result<BuildOu
     })
 }
 
-/// Locate the wasm component produced by the most recent build. Looks under
-/// `target/wasm32-wasip2/<profile>/` and returns the single `.wasm` file. If
-/// there are multiple (e.g. multi-target workspaces), the first lexicographic
-/// one is returned so callers get deterministic behavior.
+/// Locate the wasm component produced by the most recent build. Searches
+/// `target/wasm32-wasip2/<profile>/` first, then `target/wasm32-wasip1/<profile>/`
+/// (cargo-component 0.21 emits wasip2 components under the wasip1 directory
+/// because it compiles guests against wasip1 and applies the p2 adapter at
+/// component-creation time). Returns the first lexicographic `.wasm` so multi-
+/// target workspaces get deterministic behavior.
 pub fn find_wasm_artifact(project_dir: &Path, profile: Profile) -> anyhow::Result<PathBuf> {
-    let dir = project_dir
-        .join("target/wasm32-wasip2")
-        .join(profile.as_str());
-    if !dir.exists() {
-        anyhow::bail!("expected artifact dir does not exist: {}", dir.display());
+    let profile = profile.as_str();
+    let candidates_dirs = [
+        project_dir.join("target/wasm32-wasip2").join(profile),
+        project_dir.join("target/wasm32-wasip1").join(profile),
+    ];
+    for dir in &candidates_dirs {
+        if !dir.exists() {
+            continue;
+        }
+        let mut candidates: Vec<_> = std::fs::read_dir(dir)?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("wasm"))
+            .collect();
+        candidates.sort();
+        if let Some(first) = candidates.into_iter().next() {
+            return Ok(first);
+        }
     }
-    let mut candidates: Vec<_> = std::fs::read_dir(&dir)?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("wasm"))
-        .collect();
-    candidates.sort();
-    candidates
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("no .wasm artifact under {}", dir.display()))
+    anyhow::bail!(
+        "no .wasm artifact under target/wasm32-wasip2/{profile}/ or target/wasm32-wasip1/{profile}/ in {}",
+        project_dir.display()
+    )
 }
 
 #[cfg(test)]
@@ -124,7 +133,7 @@ mod tests {
     fn find_wasm_artifact_errors_when_dir_missing() {
         let tmp = tempfile::tempdir().unwrap();
         let err = find_wasm_artifact(tmp.path(), Profile::Debug).unwrap_err();
-        assert!(err.to_string().contains("does not exist"));
+        assert!(err.to_string().contains("no .wasm artifact"));
     }
 
     #[test]
@@ -133,5 +142,16 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("target/wasm32-wasip2/release")).unwrap();
         let err = find_wasm_artifact(tmp.path(), Profile::Release).unwrap_err();
         assert!(err.to_string().contains("no .wasm"));
+    }
+
+    #[test]
+    fn find_wasm_artifact_falls_back_to_wasip1_output_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        // cargo-component 0.21 lands wasip2 components here:
+        let dir = tmp.path().join("target/wasm32-wasip1/debug");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("demo.wasm"), b"\0asm").unwrap();
+        let got = find_wasm_artifact(tmp.path(), Profile::Debug).unwrap();
+        assert_eq!(got.file_name().unwrap(), "demo.wasm");
     }
 }

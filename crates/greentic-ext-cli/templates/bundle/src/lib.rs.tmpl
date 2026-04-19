@@ -1,26 +1,94 @@
 // Bundle extension guest for {{id}}.
-// Edit `list_recipes` and `build_pack` to assemble application packs.
+//
+// This scaffold implements every export required by the extension-bundle
+// contract as a TODO stub. Replace each body with real logic before shipping.
 
-wit_bindgen::generate!({
-    world: "extension",
-    path: "wit",
-});
+#[allow(warnings)]
+mod bindings;
+
+use bindings::exports::greentic::extension_base::{lifecycle, manifest};
+use bindings::exports::greentic::extension_bundle::{bundling, recipes};
+use bindings::greentic::extension_base::types;
 
 struct Component;
 
-impl exports::greentic::extension_bundle::bundle::Guest for Component {
-    fn list_recipes() -> Vec<exports::greentic::extension_bundle::bundle::Recipe> {
-        vec![exports::greentic::extension_bundle::bundle::Recipe {
-            id: "{{id}}.default".to_string(),
-            title: "Default recipe".to_string(),
-            description: "Edit list_recipes in src/lib.rs".to_string(),
-        }]
+// ---- extension-base/manifest ----
+impl manifest::Guest for Component {
+    fn get_identity() -> types::ExtensionIdentity {
+        types::ExtensionIdentity {
+            id: "{{id}}".to_string(),
+            version: "{{version}}".to_string(),
+            kind: types::Kind::Bundle,
+        }
     }
 
-    fn build_pack(_recipe_id: String, _input: String) -> Result<Vec<u8>, String> {
-        // TODO: implement. Return application pack bytes (ZIP/SquashFS).
-        Ok(vec![])
+    fn get_offered() -> Vec<types::CapabilityRef> {
+        Vec::new()
+    }
+
+    fn get_required() -> Vec<types::CapabilityRef> {
+        Vec::new()
     }
 }
 
-export!(Component);
+// ---- extension-base/lifecycle ----
+impl lifecycle::Guest for Component {
+    fn init(_config_json: String) -> Result<(), types::ExtensionError> {
+        // TODO: initialize any state the extension needs.
+        Ok(())
+    }
+
+    fn shutdown() {
+        // TODO: release any resources the extension owns.
+    }
+}
+
+// ---- extension-bundle/recipes ----
+impl recipes::Guest for Component {
+    fn list_recipes() -> Vec<recipes::RecipeSummary> {
+        // TODO: return every recipe this extension can bundle.
+        Vec::new()
+    }
+
+    fn recipe_config_schema(
+        recipe_id: String,
+    ) -> Result<String, types::ExtensionError> {
+        // TODO: return a JSON Schema for the recipe's config.
+        Err(types::ExtensionError::InvalidInput(format!(
+            "unknown recipe: {recipe_id}"
+        )))
+    }
+
+    fn supported_capabilities(
+        recipe_id: String,
+    ) -> Result<Vec<String>, types::ExtensionError> {
+        // TODO: list capabilities the recipe can satisfy.
+        Err(types::ExtensionError::InvalidInput(format!(
+            "unknown recipe: {recipe_id}"
+        )))
+    }
+}
+
+// ---- extension-bundle/bundling ----
+impl bundling::Guest for Component {
+    fn validate_config(
+        _recipe_id: String,
+        _config_json: String,
+    ) -> Vec<types::Diagnostic> {
+        // TODO: emit configuration diagnostics.
+        Vec::new()
+    }
+
+    fn render(
+        recipe_id: String,
+        _config_json: String,
+        _session: bundling::DesignerSession,
+    ) -> Result<bundling::BundleArtifact, types::ExtensionError> {
+        // TODO: render the recipe into a bundle artifact.
+        Err(types::ExtensionError::Internal(format!(
+            "render not implemented for recipe: {recipe_id}"
+        )))
+    }
+}
+
+bindings::export!(Component with_types_in bindings);
