@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+- `gtdx publish` now embeds `runtime.gtpack.file` (with sha256 verification)
+  for Provider extensions. Previously the runtime artifact was omitted from
+  the published `.gtxpack`, causing Wave A `post_install_provider` to reject
+  the install for sha256 mismatch / missing file. Unblocks auto-publish of
+  provider extensions via `greenticai/greentic-designer-extension-action`.
+
 ### Added
 - `gtdx search` accepts an optional QUERY (lists everything when omitted).
 - `gtdx doctor` expands to four sections: toolchain (cargo / cargo-component /
