@@ -1361,6 +1361,7 @@ dependencies = [
  "notify-debouncer-full",
  "pkcs8",
  "rand 0.8.5",
+ "reqwest",
  "semver",
  "serde",
  "serde_json",
