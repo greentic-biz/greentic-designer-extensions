@@ -1,5 +1,6 @@
 mod commands;
 mod dev;
+mod publish;
 mod scaffold;
 
 use clap::{Parser, Subcommand};
