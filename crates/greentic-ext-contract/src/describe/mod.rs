@@ -6,7 +6,11 @@ use crate::kind::ExtensionKind;
 pub mod provider;
 pub use provider::RuntimeGtpack;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Top-level descriptor for a Greentic extension.
+///
+/// Invariant enforced at deserialize time:
+/// `kind == ProviderExtension  ↔  runtime.gtpack.is_some()`
+#[derive(Debug, Clone, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DescribeJson {
     #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
@@ -21,6 +25,62 @@ pub struct DescribeJson {
     pub contributions: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<Signature>,
+}
+
+/// Private intermediate for deserialization — identical shape to `DescribeJson`.
+/// `TryFrom` validates the kind ↔ gtpack invariant before constructing the real type.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DescribeJsonRaw {
+    #[serde(rename = "$schema", default, skip_serializing_if = "Option::is_none")]
+    schema_ref: Option<String>,
+    #[serde(rename = "apiVersion")]
+    api_version: String,
+    kind: ExtensionKind,
+    metadata: Metadata,
+    engine: Engine,
+    capabilities: Capabilities,
+    runtime: Runtime,
+    contributions: serde_json::Value,
+    #[serde(default)]
+    signature: Option<Signature>,
+}
+
+impl TryFrom<DescribeJsonRaw> for DescribeJson {
+    type Error = String;
+
+    fn try_from(raw: DescribeJsonRaw) -> Result<Self, String> {
+        let has_gtpack = raw.runtime.gtpack.is_some();
+        match (raw.kind, has_gtpack) {
+            (ExtensionKind::Provider, false) => Err(
+                "kind=ProviderExtension requires `runtime.gtpack` to be set".into(),
+            ),
+            (k, true) if k != ExtensionKind::Provider => Err(format!(
+                "runtime.gtpack is only allowed when kind=ProviderExtension (got kind={k:?})"
+            )),
+            _ => Ok(DescribeJson {
+                schema_ref: raw.schema_ref,
+                api_version: raw.api_version,
+                kind: raw.kind,
+                metadata: raw.metadata,
+                engine: raw.engine,
+                capabilities: raw.capabilities,
+                runtime: raw.runtime,
+                contributions: raw.contributions,
+                signature: raw.signature,
+            }),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for DescribeJson {
+    fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = DescribeJsonRaw::deserialize(d)?;
+        Self::try_from(raw).map_err(serde::de::Error::custom)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +141,10 @@ pub struct Runtime {
     #[serde(rename = "memoryLimitMB", default = "default_memory")]
     pub memory_limit_mb: u32,
     pub permissions: Permissions,
+    /// Provider-only: bundled `.gtpack` artifact metadata.
+    /// Present if and only if `kind == ProviderExtension`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gtpack: Option<RuntimeGtpack>,
 }
 
 const fn default_memory() -> u32 {

@@ -107,6 +107,7 @@ impl ExtensionFixtureBuilder {
                 component: "extension.wasm".into(),
                 memory_limit_mb: 64,
                 permissions: greentic_ext_contract::describe::Permissions::default(),
+                gtpack: None,
             },
             contributions: serde_json::json!({}),
             signature: None,

@@ -1,5 +1,117 @@
 use greentic_ext_contract::DescribeJson;
 
+fn hex64(c: char) -> String {
+    std::iter::repeat_n(c, 64).collect()
+}
+
+fn base_metadata() -> serde_json::Value {
+    serde_json::json!({
+        "id": "greentic.provider.telegram",
+        "name": "Telegram",
+        "version": "0.1.0",
+        "summary": "Telegram messaging provider",
+        "author": { "name": "Greentic" },
+        "license": "Apache-2.0"
+    })
+}
+
+fn base_engine() -> serde_json::Value {
+    serde_json::json!({ "greenticDesigner": "*", "extRuntime": "^0.1.0" })
+}
+
+fn base_capabilities() -> serde_json::Value {
+    serde_json::json!({ "offered": [], "required": [] })
+}
+
+fn base_permissions() -> serde_json::Value {
+    serde_json::json!({ "network": [], "secrets": [], "callExtensionKinds": [] })
+}
+
+#[test]
+fn describe_with_kind_provider_and_gtpack_roundtrips() {
+    let json = serde_json::json!({
+        "apiVersion": "greentic.ai/v1",
+        "kind": "ProviderExtension",
+        "metadata": base_metadata(),
+        "engine": base_engine(),
+        "capabilities": base_capabilities(),
+        "runtime": {
+            "component": "wasm/provider_telegram_ext.wasm",
+            "memoryLimitMB": 64,
+            "permissions": base_permissions(),
+            "gtpack": {
+                "file": "runtime/provider.gtpack",
+                "sha256": hex64('b'),
+                "pack_id": "greentic.provider.telegram",
+                "component_version": "0.6.0"
+            }
+        },
+        "contributions": {}
+    });
+    let describe: greentic_ext_contract::DescribeJson =
+        serde_json::from_value(json).unwrap();
+    assert_eq!(describe.kind, greentic_ext_contract::ExtensionKind::Provider);
+    assert!(describe.runtime.gtpack.is_some());
+    assert_eq!(
+        describe.runtime.gtpack.as_ref().unwrap().pack_id,
+        "greentic.provider.telegram"
+    );
+    // Re-serialize and re-parse to verify round-trip
+    let v = serde_json::to_value(&describe).unwrap();
+    let round: greentic_ext_contract::DescribeJson = serde_json::from_value(v).unwrap();
+    assert_eq!(round.kind, describe.kind);
+}
+
+#[test]
+fn describe_with_kind_provider_requires_gtpack() {
+    let json = serde_json::json!({
+        "apiVersion": "greentic.ai/v1",
+        "kind": "ProviderExtension",
+        "metadata": base_metadata(),
+        "engine": base_engine(),
+        "capabilities": base_capabilities(),
+        "runtime": {
+            "component": "wasm/provider_telegram_ext.wasm",
+            "memoryLimitMB": 64,
+            "permissions": base_permissions()
+        },
+        "contributions": {}
+    });
+    let err = serde_json::from_value::<greentic_ext_contract::DescribeJson>(json)
+        .unwrap_err()
+        .to_string()
+        .to_lowercase();
+    assert!(
+        err.contains("gtpack") || err.contains("provider"),
+        "error should explain missing gtpack field; got: {err}"
+    );
+}
+
+#[test]
+fn describe_non_provider_rejects_gtpack() {
+    let json = serde_json::json!({
+        "apiVersion": "greentic.ai/v1",
+        "kind": "DesignExtension",
+        "metadata": base_metadata(),
+        "engine": base_engine(),
+        "capabilities": base_capabilities(),
+        "runtime": {
+            "component": "wasm/something.wasm",
+            "memoryLimitMB": 64,
+            "permissions": base_permissions(),
+            "gtpack": {
+                "file": "runtime/provider.gtpack",
+                "sha256": hex64('c'),
+                "pack_id": "x",
+                "component_version": "0.6.0"
+            }
+        },
+        "contributions": {}
+    });
+    let err = serde_json::from_value::<greentic_ext_contract::DescribeJson>(json);
+    assert!(err.is_err(), "non-provider kinds must reject gtpack field");
+}
+
 const AC_FIXTURE: &str = r#"{
   "apiVersion": "greentic.ai/v1",
   "kind": "DesignExtension",
