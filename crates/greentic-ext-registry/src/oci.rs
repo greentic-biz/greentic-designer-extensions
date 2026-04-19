@@ -169,7 +169,7 @@ impl ExtensionRegistry for OciRegistry {
             .client
             .push(&reference, &[layer], config, &self.auth, None)
             .await
-            .map_err(|e| map_oci_error(e, &self.name, &reference))?;
+            .map_err(|e| map_oci_error(&e, &self.name, &reference))?;
 
         Ok(crate::publish::PublishReceipt {
             url: response.manifest_url,
@@ -181,7 +181,7 @@ impl ExtensionRegistry for OciRegistry {
 }
 
 fn map_oci_error(
-    err: oci_client::errors::OciDistributionError,
+    err: &oci_client::errors::OciDistributionError,
     registry: &str,
     reference: &Reference,
 ) -> RegistryError {

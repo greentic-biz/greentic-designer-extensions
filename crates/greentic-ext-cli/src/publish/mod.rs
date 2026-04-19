@@ -147,16 +147,15 @@ fn resolve_backend(
 ///   extension).
 /// - `oci://ghcr.io/myorg/my-package` — fully qualified; every publish from
 ///   this URI targets the same `my-package` (different tags per version).
+///
 /// Auth resolution:
+///
 ///   1. `--oci-token` CLI flag (explicit override)
 ///   2. `GHCR_TOKEN` env
 ///   3. `GITHUB_TOKEN` env (CI-friendly — `actions/checkout@v4` exports this)
 ///   4. `OCI_TOKEN` env (generic)
 ///   5. anonymous (public pulls only; push will 401)
-fn build_oci_backend(
-    spec: &str,
-    oci_token_override: Option<&str>,
-) -> anyhow::Result<Backend> {
+fn build_oci_backend(spec: &str, oci_token_override: Option<&str>) -> anyhow::Result<Backend> {
     let (host, rest) = spec.split_once('/').ok_or_else(|| {
         anyhow::anyhow!(
             "oci:// URI must include at least a namespace: oci://<host>/<namespace>[/<name>]"
