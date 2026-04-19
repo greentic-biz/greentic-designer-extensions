@@ -27,10 +27,8 @@ impl Backend {
     async fn publish(
         &self,
         req: greentic_ext_registry::publish::PublishRequest,
-    ) -> Result<
-        greentic_ext_registry::publish::PublishReceipt,
-        greentic_ext_registry::RegistryError,
-    > {
+    ) -> Result<greentic_ext_registry::publish::PublishReceipt, greentic_ext_registry::RegistryError>
+    {
         match self {
             Backend::Local(r) => r.publish(req).await,
             Backend::Store(r) => r.publish(req).await,
