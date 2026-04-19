@@ -60,7 +60,9 @@ pub async fn run_once(cfg: &DevConfig, out: &mut dyn Emitter) -> anyhow::Result<
     let out_pack = dist.join("dev.gtxpack");
     let info = build_pack(&cfg.project_dir, &build.wasm_path, &out_pack)?;
     let final_pack = dist.join(format!("{}-{}.gtxpack", info.ext_name, info.ext_version));
-    let info = if final_pack != info.pack_path {
+    let info = if final_pack == info.pack_path {
+        info
+    } else {
         if final_pack.exists() {
             std::fs::remove_file(&final_pack)?;
         }
@@ -70,8 +72,6 @@ pub async fn run_once(cfg: &DevConfig, out: &mut dyn Emitter) -> anyhow::Result<
             pack_name: format!("{}-{}.gtxpack", info.ext_name, info.ext_version),
             ..info
         }
-    } else {
-        info
     };
     out.emit(&DevEvent::PackOk {
         pack_name: info.pack_name.clone(),
@@ -82,7 +82,9 @@ pub async fn run_once(cfg: &DevConfig, out: &mut dyn Emitter) -> anyhow::Result<
         out.emit(&DevEvent::InstallSkipped {
             reason: "--no-install".into(),
         });
-        out.emit(&DevEvent::Idle { last_build_ok: true });
+        out.emit(&DevEvent::Idle {
+            last_build_ok: true,
+        });
         return Ok(());
     }
 
@@ -92,14 +94,18 @@ pub async fn run_once(cfg: &DevConfig, out: &mut dyn Emitter) -> anyhow::Result<
                 registry: summary.registry.display().to_string(),
                 version: summary.version,
             });
-            out.emit(&DevEvent::Idle { last_build_ok: true });
+            out.emit(&DevEvent::Idle {
+                last_build_ok: true,
+            });
             Ok(())
         }
         Err(e) => {
             out.emit(&DevEvent::Error {
                 message: format!("install failed: {e}"),
             });
-            out.emit(&DevEvent::Idle { last_build_ok: false });
+            out.emit(&DevEvent::Idle {
+                last_build_ok: false,
+            });
             Err(e)
         }
     }
@@ -115,7 +121,7 @@ pub async fn run_watch(cfg: &DevConfig, out: &mut dyn Emitter) -> anyhow::Result
         cancel_signal.cancel();
     });
 
-    let handle = spawn_watcher(cfg.project_dir.clone(), cfg.debounce)?;
+    let handle = spawn_watcher(&cfg.project_dir, cfg.debounce)?;
     out.emit(&DevEvent::Ready {
         ext_id: probe_describe_id(&cfg.project_dir).unwrap_or_else(|| "unknown".into()),
         ext_version: probe_describe_version(&cfg.project_dir).unwrap_or_else(|| "unknown".into()),
@@ -123,7 +129,9 @@ pub async fn run_watch(cfg: &DevConfig, out: &mut dyn Emitter) -> anyhow::Result
         registry: cfg.home.join("registries/dev-local").display().to_string(),
         watched_files: count_watched_files(&cfg.project_dir),
     });
-    out.emit(&DevEvent::Idle { last_build_ok: true });
+    out.emit(&DevEvent::Idle {
+        last_build_ok: true,
+    });
 
     let mut last_pack_hash: Option<String> = None;
 
@@ -146,7 +154,7 @@ pub async fn run_watch(cfg: &DevConfig, out: &mut dyn Emitter) -> anyhow::Result
                     tracing::warn!("dev cycle failed: {e}");
                 }
             }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 out.emit(&DevEvent::Error {
                     message: "watcher disconnected".into(),
@@ -182,7 +190,9 @@ async fn run_once_cached(
     let out_pack = dist.join("dev.gtxpack");
     let info = build_pack(&cfg.project_dir, &build.wasm_path, &out_pack)?;
     let final_pack = dist.join(format!("{}-{}.gtxpack", info.ext_name, info.ext_version));
-    let info = if final_pack != info.pack_path {
+    let info = if final_pack == info.pack_path {
+        info
+    } else {
         if final_pack.exists() {
             std::fs::remove_file(&final_pack)?;
         }
@@ -192,8 +202,6 @@ async fn run_once_cached(
             pack_name: format!("{}-{}.gtxpack", info.ext_name, info.ext_version),
             ..info
         }
-    } else {
-        info
     };
     out.emit(&DevEvent::PackOk {
         pack_name: info.pack_name.clone(),
@@ -204,7 +212,9 @@ async fn run_once_cached(
         out.emit(&DevEvent::InstallSkipped {
             reason: "--no-install".into(),
         });
-        out.emit(&DevEvent::Idle { last_build_ok: true });
+        out.emit(&DevEvent::Idle {
+            last_build_ok: true,
+        });
         return Ok(());
     }
 
@@ -212,7 +222,9 @@ async fn run_once_cached(
         out.emit(&DevEvent::InstallSkipped {
             reason: "pack sha256 unchanged since last install".into(),
         });
-        out.emit(&DevEvent::Idle { last_build_ok: true });
+        out.emit(&DevEvent::Idle {
+            last_build_ok: true,
+        });
         return Ok(());
     }
 
@@ -223,14 +235,18 @@ async fn run_once_cached(
                 registry: summary.registry.display().to_string(),
                 version: summary.version,
             });
-            out.emit(&DevEvent::Idle { last_build_ok: true });
+            out.emit(&DevEvent::Idle {
+                last_build_ok: true,
+            });
             Ok(())
         }
         Err(e) => {
             out.emit(&DevEvent::Error {
                 message: format!("install failed: {e}"),
             });
-            out.emit(&DevEvent::Idle { last_build_ok: false });
+            out.emit(&DevEvent::Idle {
+                last_build_ok: false,
+            });
             Err(e)
         }
     }
@@ -241,7 +257,12 @@ fn count_watched_files(project_dir: &Path) -> usize {
         .into_iter()
         .flatten()
         .filter(|e| e.file_type().is_file())
-        .filter_map(|e| e.path().strip_prefix(project_dir).ok().map(Path::to_path_buf))
+        .filter_map(|e| {
+            e.path()
+                .strip_prefix(project_dir)
+                .ok()
+                .map(Path::to_path_buf)
+        })
         .filter(|p| watcher::should_watch(p))
         .count()
 }

@@ -13,12 +13,13 @@ use notify_debouncer_full::{
 /// Returns `true` when `path` (relative to the project root) is a file the dev
 /// loop should rebuild on. Filters out `target/`, VCS metadata, editor swap
 /// files, and OS droppings.
+// Editors create lowercase swap/tmp suffixes; case-sensitive match is intentional.
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 pub fn should_watch(path: &Path) -> bool {
     let comps: Vec<_> = path.components().collect();
     for c in &comps {
-        let s = match c.as_os_str().to_str() {
-            Some(s) => s,
-            None => return false,
+        let Some(s) = c.as_os_str().to_str() else {
+            return false;
         };
         if matches!(
             s,
@@ -27,9 +28,8 @@ pub fn should_watch(path: &Path) -> bool {
             return false;
         }
     }
-    let name = match path.file_name().and_then(|s| s.to_str()) {
-        Some(s) => s,
-        None => return false,
+    let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+        return false;
     };
     if name.starts_with('~') || name.starts_with('.') && name.ends_with(".swp") {
         return false;
@@ -38,7 +38,10 @@ pub fn should_watch(path: &Path) -> bool {
         return false;
     }
     // Positive patterns: match any file under watched roots, or a known root-level file.
-    let first = comps.first().and_then(|c| c.as_os_str().to_str()).unwrap_or("");
+    let first = comps
+        .first()
+        .and_then(|c| c.as_os_str().to_str())
+        .unwrap_or("");
     matches!(first, "src" | "wit" | "i18n" | "schemas" | "prompts")
         || matches!(name, "Cargo.toml" | "describe.json")
 }
@@ -51,9 +54,9 @@ pub struct WatchHandle {
 /// Spawn a recursive watcher rooted at `project_dir`. Every debounced batch is
 /// filtered through `should_watch` and, if non-empty, sent as a `Vec<PathBuf>`
 /// of project-relative paths.
-pub fn spawn_watcher(project_dir: PathBuf, debounce: Duration) -> anyhow::Result<WatchHandle> {
+pub fn spawn_watcher(project_dir: &Path, debounce: Duration) -> anyhow::Result<WatchHandle> {
     let (tx, rx) = mpsc::channel();
-    let root = project_dir.clone();
+    let root = project_dir.to_path_buf();
     let debouncer = new_debouncer(debounce, None, move |res: DebounceEventResult| {
         let Ok(events) = res else {
             return;
@@ -61,9 +64,8 @@ pub fn spawn_watcher(project_dir: PathBuf, debounce: Duration) -> anyhow::Result
         let mut interesting = Vec::new();
         for ev in events {
             for path in &ev.paths {
-                let rel = match path.strip_prefix(&root) {
-                    Ok(r) => r.to_path_buf(),
-                    Err(_) => continue,
+                let Ok(rel) = path.strip_prefix(&root).map(Path::to_path_buf) else {
+                    continue;
                 };
                 if should_watch(&rel) {
                     interesting.push(rel);
@@ -75,7 +77,7 @@ pub fn spawn_watcher(project_dir: PathBuf, debounce: Duration) -> anyhow::Result
         }
     })?;
     let mut d = debouncer;
-    d.watch(&project_dir, RecursiveMode::Recursive)?;
+    d.watch(project_dir, RecursiveMode::Recursive)?;
     Ok(WatchHandle {
         _debouncer: d,
         changes: rx,
@@ -94,7 +96,9 @@ mod tests {
     fn watches_src_wit_describe_cargo() {
         assert!(should_watch(&p("src/lib.rs")));
         assert!(should_watch(&p("wit/world.wit")));
-        assert!(should_watch(&p("wit/deps/greentic/extension-base/world.wit")));
+        assert!(should_watch(&p(
+            "wit/deps/greentic/extension-base/world.wit"
+        )));
         assert!(should_watch(&p("describe.json")));
         assert!(should_watch(&p("Cargo.toml")));
         assert!(should_watch(&p("i18n/en.json")));
@@ -132,8 +136,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("src")).unwrap();
         std::fs::write(tmp.path().join("src/lib.rs"), b"// seed").unwrap();
-        let handle = spawn_watcher(tmp.path().to_path_buf(), Duration::from_millis(150))
-            .expect("spawn");
+        let handle = spawn_watcher(tmp.path(), Duration::from_millis(150)).expect("spawn");
 
         // Mutate after the watcher is up.
         std::thread::sleep(Duration::from_millis(50));
@@ -150,7 +153,10 @@ mod tests {
             match handle.changes.recv_timeout(remaining) {
                 Ok(batch) => {
                     all_paths.extend(batch.iter().cloned());
-                    if batch.iter().any(|p| p == std::path::Path::new("src/lib.rs")) {
+                    if batch
+                        .iter()
+                        .any(|p| p == std::path::Path::new("src/lib.rs"))
+                    {
                         saw_file = true;
                         break;
                     }
@@ -160,8 +166,7 @@ mod tests {
         }
         assert!(
             saw_file,
-            "expected src/lib.rs in a batch, got: {:?}",
-            all_paths
+            "expected src/lib.rs in a batch, got: {all_paths:?}"
         );
     }
 
@@ -169,8 +174,7 @@ mod tests {
     fn spawn_watcher_suppresses_target_churn() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("target")).unwrap();
-        let handle = spawn_watcher(tmp.path().to_path_buf(), Duration::from_millis(150))
-            .expect("spawn");
+        let handle = spawn_watcher(tmp.path(), Duration::from_millis(150)).expect("spawn");
 
         std::thread::sleep(Duration::from_millis(50));
         std::fs::write(tmp.path().join("target/out.bin"), b"x").unwrap();

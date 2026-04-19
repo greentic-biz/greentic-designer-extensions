@@ -1,4 +1,4 @@
-//! DevEvent enum + human/JSON formatters.
+//! `DevEvent` enum + human/JSON formatters.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -51,7 +51,7 @@ pub enum DevEvent {
     },
 }
 
-/// Emission sink: stdout printer used by run_once / run_watch.
+/// Emission sink: stdout printer used by `run_once` / `run_watch`.
 pub trait Emitter: Send {
     fn emit(&mut self, event: &DevEvent);
 }
@@ -89,13 +89,22 @@ impl Emitter for StdoutEmitter {
 pub fn format_human(event: &DevEvent) -> String {
     let ts = timestamp_human();
     match event {
-        DevEvent::Ready { ext_id, ext_version, kind, registry, watched_files } => format!(
+        DevEvent::Ready {
+            ext_id,
+            ext_version,
+            kind,
+            registry,
+            watched_files,
+        } => format!(
             "[{ts}] ready. id={ext_id}@{ext_version} kind={kind} registry={registry} watching={watched_files}",
         ),
         DevEvent::ChangeDetected { path } => format!("[{ts}] change detected: {path}"),
         DevEvent::Debouncing { window_ms } => format!("[{ts}] debouncing ({window_ms}ms)..."),
         DevEvent::BuildStart { profile } => format!("[{ts}] building ({profile}, incremental)..."),
-        DevEvent::BuildOk { duration_ms, wasm_size } => format!(
+        DevEvent::BuildOk {
+            duration_ms,
+            wasm_size,
+        } => format!(
             "[{ts}] \u{2713} build ok ({}s, {} KB)",
             fmt_secs(*duration_ms),
             wasm_size / 1024,
@@ -104,16 +113,19 @@ pub fn format_human(event: &DevEvent) -> String {
             "[{ts}] \u{2717} build failed ({}s). Fix errors above and save to retry.",
             fmt_secs(*duration_ms),
         ),
-        DevEvent::PackOk { pack_name, size } => format!(
-            "[{ts}] \u{2713} packed {pack_name} ({} KB)",
-            size / 1024,
-        ),
-        DevEvent::InstallOk { registry, version } => format!(
-            "[{ts}] \u{2713} installed {version} into {registry}. ready.",
-        ),
+        DevEvent::PackOk { pack_name, size } => {
+            format!("[{ts}] \u{2713} packed {pack_name} ({} KB)", size / 1024,)
+        }
+        DevEvent::InstallOk { registry, version } => {
+            format!("[{ts}] \u{2713} installed {version} into {registry}. ready.",)
+        }
         DevEvent::InstallSkipped { reason } => format!("[{ts}] skipped install: {reason}"),
         DevEvent::Idle { last_build_ok } => {
-            let tag = if *last_build_ok { "" } else { " (last build failed)" };
+            let tag = if *last_build_ok {
+                ""
+            } else {
+                " (last build failed)"
+            };
             format!("[{ts}] idle{tag}.")
         }
         DevEvent::Shutdown => format!("[{ts}] shutting down."),
@@ -133,7 +145,8 @@ pub fn format_json(event: &DevEvent) -> String {
         ts: timestamp_utc_iso8601(),
         event,
     };
-    serde_json::to_string(&env).unwrap_or_else(|e| format!("{{\"event\":\"error\",\"message\":\"{e}\"}}"))
+    serde_json::to_string(&env)
+        .unwrap_or_else(|e| format!("{{\"event\":\"error\",\"message\":\"{e}\"}}"))
 }
 
 fn timestamp_human() -> String {
@@ -155,6 +168,8 @@ fn timestamp_utc_iso8601() -> String {
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
 }
 
+// Millisecond precision loss is acceptable for a human-readable "X.Ys" display.
+#[allow(clippy::cast_precision_loss)]
 fn fmt_secs(ms: u64) -> String {
     format!("{:.1}", ms as f64 / 1000.0)
 }
@@ -165,7 +180,10 @@ mod tests {
 
     #[test]
     fn human_build_ok_includes_check_mark_and_size() {
-        let e = DevEvent::BuildOk { duration_ms: 2100, wasm_size: 48_512 };
+        let e = DevEvent::BuildOk {
+            duration_ms: 2100,
+            wasm_size: 48_512,
+        };
         let line = format_human(&e);
         assert!(line.contains("\u{2713}"));
         assert!(line.contains("build ok"));
@@ -175,26 +193,38 @@ mod tests {
 
     #[test]
     fn human_idle_shows_last_build_status() {
-        let ok = format_human(&DevEvent::Idle { last_build_ok: true });
-        let fail = format_human(&DevEvent::Idle { last_build_ok: false });
+        let ok = format_human(&DevEvent::Idle {
+            last_build_ok: true,
+        });
+        let fail = format_human(&DevEvent::Idle {
+            last_build_ok: false,
+        });
         assert!(ok.contains("idle."));
         assert!(fail.contains("(last build failed)"));
     }
 
     #[test]
     fn json_shape_has_ts_and_event_tag() {
-        let e = DevEvent::BuildOk { duration_ms: 2100, wasm_size: 48_512 };
+        let e = DevEvent::BuildOk {
+            duration_ms: 2100,
+            wasm_size: 48_512,
+        };
         let line = format_json(&e);
         let v: serde_json::Value = serde_json::from_str(&line).expect("valid json");
         assert_eq!(v["event"], "build_ok");
         assert_eq!(v["duration_ms"], 2100);
         assert_eq!(v["wasm_size"], 48_512);
-        assert!(v["ts"].as_str().unwrap().ends_with("Z") || v["ts"].as_str().unwrap().contains("+00:00"));
+        assert!(
+            v["ts"].as_str().unwrap().ends_with('Z')
+                || v["ts"].as_str().unwrap().contains("+00:00")
+        );
     }
 
     #[test]
     fn json_change_detected_preserves_path() {
-        let e = DevEvent::ChangeDetected { path: "src/lib.rs".into() };
+        let e = DevEvent::ChangeDetected {
+            path: "src/lib.rs".into(),
+        };
         let line = format_json(&e);
         let v: serde_json::Value = serde_json::from_str(&line).unwrap();
         assert_eq!(v["event"], "change_detected");

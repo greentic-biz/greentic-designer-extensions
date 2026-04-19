@@ -1,4 +1,4 @@
-//! Wraps `greentic-ext-registry::Installer` with a LocalFilesystemRegistry.
+//! Wraps `greentic-ext-registry::Installer` with a `LocalFilesystemRegistry`.
 
 use std::path::{Path, PathBuf};
 
@@ -41,6 +41,7 @@ pub async fn install_pack(home: &Path, pack: &PackInfo) -> anyhow::Result<Instal
 #[derive(Debug, Clone)]
 pub struct InstallSummary {
     pub registry: PathBuf,
+    #[allow(dead_code)]
     pub name: String,
     pub version: String,
 }

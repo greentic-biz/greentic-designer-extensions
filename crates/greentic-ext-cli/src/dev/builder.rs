@@ -50,7 +50,7 @@ pub fn run_build(project_dir: &Path, profile: Profile) -> anyhow::Result<BuildOu
     let status = cargo_command(project_dir, profile).status()?;
     let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
     if !status.success() {
-        anyhow::bail!("cargo component build failed (exit {})", status);
+        anyhow::bail!("cargo component build failed (exit {status})");
     }
     let wasm_path = find_wasm_artifact(project_dir, profile)?;
     let wasm_size = std::fs::metadata(&wasm_path)?.len();
@@ -66,7 +66,9 @@ pub fn run_build(project_dir: &Path, profile: Profile) -> anyhow::Result<BuildOu
 /// there are multiple (e.g. multi-target workspaces), the first lexicographic
 /// one is returned so callers get deterministic behavior.
 pub fn find_wasm_artifact(project_dir: &Path, profile: Profile) -> anyhow::Result<PathBuf> {
-    let dir = project_dir.join("target/wasm32-wasip2").join(profile.as_str());
+    let dir = project_dir
+        .join("target/wasm32-wasip2")
+        .join(profile.as_str());
     if !dir.exists() {
         anyhow::bail!("expected artifact dir does not exist: {}", dir.display());
     }
@@ -90,11 +92,20 @@ mod tests {
     fn cargo_command_has_target_and_profile_flags() {
         let tmp = tempfile::tempdir().unwrap();
         let dbg = cargo_command(tmp.path(), Profile::Debug);
-        let args: Vec<_> = dbg.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
-        assert_eq!(args, vec!["component", "build", "--target", "wasm32-wasip2"]);
+        let args: Vec<_> = dbg
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            vec!["component", "build", "--target", "wasm32-wasip2"]
+        );
 
         let rel = cargo_command(tmp.path(), Profile::Release);
-        let rel_args: Vec<_> = rel.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let rel_args: Vec<_> = rel
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         assert!(rel_args.iter().any(|a| a == "--release"));
     }
 

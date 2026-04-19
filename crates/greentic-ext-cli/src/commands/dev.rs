@@ -7,6 +7,8 @@ use crate::dev::builder::Profile;
 use crate::dev::event::{Format, StdoutEmitter};
 use crate::dev::{DevConfig, project_dir_from_manifest, run_once, run_watch};
 
+// CLI flags are naturally boolean; grouping into sub-structs would hurt UX.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(ClapArgs, Debug, Clone)]
 pub struct Args {
     /// Build + install once, then exit (CI-friendly)
@@ -18,6 +20,8 @@ pub struct Args {
     pub watch: bool,
 
     /// Override target registry dir (currently informational; install uses home)
+    // Reserved: consumed in future tracks.
+    #[allow(dead_code)]
     #[arg(long)]
     pub install_to: Option<PathBuf>,
 
@@ -25,11 +29,13 @@ pub struct Args {
     #[arg(long)]
     pub no_install: bool,
 
-    /// Build with --release (default: debug for speed)
+    /// Build with `--release` (default: debug for speed)
     #[arg(long)]
     pub release: bool,
 
-    /// Override describe.json id for this run (reserved for future multi-variant dev)
+    /// Override `describe.json` id for this run (reserved for future multi-variant dev)
+    // Reserved: consumed in future tracks.
+    #[allow(dead_code)]
     #[arg(long)]
     pub ext_id: Option<String>,
 
@@ -38,14 +44,18 @@ pub struct Args {
     pub debounce_ms: u64,
 
     /// Log filter level
+    // Reserved: consumed in future tracks.
+    #[allow(dead_code)]
     #[arg(long, default_value = "info")]
     pub log: String,
 
-    /// Path to the project's Cargo.toml
+    /// Path to the project's `Cargo.toml`
     #[arg(long, default_value = "./Cargo.toml")]
     pub manifest: PathBuf,
 
     /// Force a full rebuild by running `cargo clean -p <crate>` first
+    // Reserved: consumed in future tracks.
+    #[allow(dead_code)]
     #[arg(long)]
     pub force_rebuild: bool,
 
@@ -60,7 +70,11 @@ fn default_debounce_ms() -> u64 {
 
 pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
     let project_dir = project_dir_from_manifest(&args.manifest)?;
-    let profile = if args.release { Profile::Release } else { Profile::Debug };
+    let profile = if args.release {
+        Profile::Release
+    } else {
+        Profile::Debug
+    };
     let cfg = DevConfig {
         project_dir,
         home: home.to_path_buf(),

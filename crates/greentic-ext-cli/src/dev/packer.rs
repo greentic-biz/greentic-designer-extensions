@@ -16,6 +16,7 @@ pub struct PackInfo {
     pub sha256: String,
     pub ext_name: String,
     pub ext_version: String,
+    #[allow(dead_code)]
     pub ext_kind: String,
 }
 
@@ -29,8 +30,8 @@ pub fn build_pack(
     output_pack: &Path,
 ) -> anyhow::Result<PackInfo> {
     let describe_path = project_dir.join("describe.json");
-    let describe_bytes = std::fs::read(&describe_path)
-        .map_err(|e| anyhow::anyhow!("read describe.json: {e}"))?;
+    let describe_bytes =
+        std::fs::read(&describe_path).map_err(|e| anyhow::anyhow!("read describe.json: {e}"))?;
     let describe: serde_json::Value = serde_json::from_slice(&describe_bytes)
         .map_err(|e| anyhow::anyhow!("parse describe.json: {e}"))?;
     let ext_name = describe["metadata"]["name"]
@@ -196,7 +197,10 @@ mod tests {
         std::fs::write(&p, b"hello").unwrap();
         let h = sha256_of_file(&p).unwrap();
         assert_eq!(h.len(), 64);
-        assert!(h.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(
+            h.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
     }
 
     #[test]

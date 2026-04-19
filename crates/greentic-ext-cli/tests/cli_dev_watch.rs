@@ -87,7 +87,11 @@ fn dev_watch_rebuilds_and_reinstalls_on_source_edit() {
     let installed = home.join("extensions/design/com.example.demo-0.1.0");
     let _ = child.kill();
     let _ = child.wait();
-    assert!(installed.exists(), "expected reinstall at {}", installed.display());
+    assert!(
+        installed.exists(),
+        "expected reinstall at {}",
+        installed.display()
+    );
 }
 
 #[test]

@@ -1,6 +1,8 @@
 //! Finite state machine for the dev loop.
 
 /// High-level states the dev loop traverses per change.
+// Reserved for future state-driven watch loop (Phase 1 follow-up).
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
     Idle { last_build_ok: bool },
@@ -12,6 +14,8 @@ pub enum State {
 }
 
 /// Input events fed into the state machine.
+// Reserved for future state-driven watch loop (Phase 1 follow-up).
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Input {
     FsChange,
@@ -25,27 +29,33 @@ pub enum Input {
     Shutdown,
 }
 
+// Reserved for future state-driven watch loop (Phase 1 follow-up).
+#[allow(dead_code)]
 impl State {
     pub fn initial() -> Self {
-        State::Idle { last_build_ok: true }
+        State::Idle {
+            last_build_ok: true,
+        }
     }
 
     /// Apply an input and return the next state. Unexpected transitions keep
     /// the current state (a no-op), so callers can safely replay events.
     #[must_use]
     pub fn next(self, input: Input) -> State {
-        use Input::*;
-        use State::*;
         match (self, input) {
-            (_, Shutdown) => Error,
-            (Idle { .. }, FsChange) | (Debouncing, FsChange) => Debouncing,
-            (Debouncing, DebounceElapsed) => Building,
-            (Building, BuildOk) => Packing,
-            (Building, BuildFailed) => Idle { last_build_ok: false },
-            (Packing, PackOk) => Installing,
-            (Packing, PackFailed) => Idle { last_build_ok: false },
-            (Installing, InstallOk) => Idle { last_build_ok: true },
-            (Installing, InstallFailed) => Idle { last_build_ok: false },
+            (_, Input::Shutdown) => State::Error,
+            (State::Idle { .. } | State::Debouncing, Input::FsChange) => State::Debouncing,
+            (State::Debouncing, Input::DebounceElapsed) => State::Building,
+            (State::Building, Input::BuildOk) => State::Packing,
+            (State::Packing, Input::PackOk) => State::Installing,
+            (State::Installing, Input::InstallOk) => State::Idle {
+                last_build_ok: true,
+            },
+            (State::Building, Input::BuildFailed)
+            | (State::Packing, Input::PackFailed)
+            | (State::Installing, Input::InstallFailed) => State::Idle {
+                last_build_ok: false,
+            },
             (state, _) => state,
         }
     }
@@ -53,7 +63,11 @@ impl State {
 
 #[cfg(test)]
 mod tests {
-    use super::{Input::*, State::*, *};
+    use super::Input::{
+        BuildFailed, BuildOk, DebounceElapsed, FsChange, InstallFailed, InstallOk, PackOk, Shutdown,
+    };
+    use super::State::{Building, Debouncing, Error, Idle, Installing, Packing};
+    use super::*;
 
     #[test]
     fn happy_path_cycles_back_to_idle() {
@@ -67,7 +81,12 @@ mod tests {
         let s = s.next(PackOk);
         assert!(matches!(s, Installing));
         let s = s.next(InstallOk);
-        assert!(matches!(s, Idle { last_build_ok: true }));
+        assert!(matches!(
+            s,
+            Idle {
+                last_build_ok: true
+            }
+        ));
     }
 
     #[test]
@@ -75,7 +94,12 @@ mod tests {
         let s = State::initial().next(FsChange).next(DebounceElapsed);
         assert!(matches!(s, Building));
         let s = s.next(BuildFailed);
-        assert!(matches!(s, Idle { last_build_ok: false }));
+        assert!(matches!(
+            s,
+            Idle {
+                last_build_ok: false
+            }
+        ));
     }
 
     #[test]
@@ -87,7 +111,12 @@ mod tests {
             .next(PackOk);
         assert!(matches!(s, Installing));
         let s = s.next(InstallFailed);
-        assert!(matches!(s, Idle { last_build_ok: false }));
+        assert!(matches!(
+            s,
+            Idle {
+                last_build_ok: false
+            }
+        ));
     }
 
     #[test]
@@ -106,13 +135,7 @@ mod tests {
 
     #[test]
     fn shutdown_always_transitions_to_error() {
-        for start in [
-            State::initial(),
-            Debouncing,
-            Building,
-            Packing,
-            Installing,
-        ] {
+        for start in [State::initial(), Debouncing, Building, Packing, Installing] {
             assert!(matches!(start.next(Shutdown), Error));
         }
     }
