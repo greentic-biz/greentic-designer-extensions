@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "_wit-lint"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "wit-parser 0.221.3",
 ]
@@ -1332,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-ext-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anstyle",
  "anyhow",
@@ -1367,7 +1367,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-ext-contract"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1385,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-ext-registry"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1410,7 +1410,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-ext-runtime"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -1435,7 +1435,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-ext-testing"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "ciborium",
