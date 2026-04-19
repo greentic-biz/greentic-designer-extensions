@@ -11,16 +11,19 @@ use greentic_ext_contract::DescribeJson;
 use sha2::{Digest, Sha256};
 
 use crate::error::RegistryError;
+use crate::hex;
 
-/// Encode a byte slice as lowercase hexadecimal string.
-fn hex_encode(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-    bytes
-        .iter()
-        .fold(String::with_capacity(bytes.len() * 2), |mut acc, b| {
-            let _ = write!(acc, "{b:02x}");
-            acc
-        })
+/// Decode a lowercase hex string into raw bytes.
+///
+/// Returns `None` if `s` has odd length or contains non-hex characters.
+fn hex_decode(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+        .collect()
 }
 
 /// Provider-specific post-install step.
@@ -35,6 +38,9 @@ fn hex_encode(bytes: &[u8]) -> String {
 /// 4. Copy verified bytes to `storage_root/runtime/packs/providers/gtdx/`.
 /// 5. Remove the `.gtpack` file (and empty parent dirs) from staging so it
 ///    does not end up in the final `extensions/provider/{id}-{version}/` tree.
+///
+/// Caller must invoke `Storage::abort_install` on the staging dir if this
+/// returns `Err` — staging will be left populated.
 pub(crate) fn post_install_provider(
     staging: &Path,
     describe: &DescribeJson,
@@ -57,11 +63,18 @@ pub(crate) fn post_install_provider(
         ))
     })?;
 
-    let actual_sha = hex_encode(&Sha256::digest(&bytes));
-    if actual_sha != gtpack.sha256 {
+    let actual_digest = Sha256::digest(&bytes);
+    let expected_bytes = hex_decode(&gtpack.sha256).ok_or_else(|| {
+        RegistryError::ProviderInstall(format!(
+            "describe.json sha256 is not valid hex: {}",
+            gtpack.sha256
+        ))
+    })?;
+    if actual_digest.as_slice() != expected_bytes.as_slice() {
         return Err(RegistryError::ProviderInstall(format!(
             "sha256 mismatch: describe={}, actual={}",
-            gtpack.sha256, actual_sha
+            gtpack.sha256,
+            hex::encode(&actual_digest)
         )));
     }
 
@@ -132,6 +145,12 @@ fn check_manual_conflict(manual_dir: &Path, pack_id: &str) -> Result<(), Registr
     Ok(())
 }
 
+/// Typed container for the fields we need from `manifest.cbor`.
+#[derive(serde::Deserialize)]
+struct ManifestHead {
+    pack_id: String,
+}
+
 /// Read `pack_id` from the `manifest.cbor` ZIP entry inside a `.gtpack`.
 fn read_pack_id_from_gtpack(path: &Path) -> Result<String, RegistryError> {
     let file = std::fs::File::open(path)?;
@@ -145,16 +164,7 @@ fn read_pack_id_from_gtpack(path: &Path) -> Result<String, RegistryError> {
     })?;
     let mut raw = Vec::new();
     entry.read_to_end(&mut raw)?;
-    let value: serde_json::Value = ciborium::from_reader(raw.as_slice())
+    let head: ManifestHead = ciborium::from_reader(raw.as_slice())
         .map_err(|e| RegistryError::ProviderInstall(format!("cbor decode: {e}")))?;
-    value
-        .get("pack_id")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .ok_or_else(|| {
-            RegistryError::ProviderInstall(format!(
-                "manifest.cbor in {} has no pack_id field",
-                path.display()
-            ))
-        })
+    Ok(head.pack_id)
 }

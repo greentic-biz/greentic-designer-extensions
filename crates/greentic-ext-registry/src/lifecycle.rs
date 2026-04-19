@@ -104,6 +104,18 @@ impl<'a, R: ExtensionRegistry + ?Sized> Installer<'a, R> {
                 .by_index(i)
                 .map_err(|e| RegistryError::Storage(format!("zip entry: {e}")))?;
             let out_path = staging.join(entry.mangled_name());
+            // Defense in depth: reject any entry whose resolved path
+            // contains a `..` component — mangled_name() already strips
+            // leading slashes and `..`, so this should never fire in practice.
+            if out_path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                return Err(RegistryError::Storage(format!(
+                    "zip entry escapes staging: {}",
+                    out_path.display()
+                )));
+            }
             if entry.is_dir() {
                 std::fs::create_dir_all(&out_path)?;
                 continue;

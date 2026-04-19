@@ -7,19 +7,9 @@ use greentic_ext_contract::{
     DescribeJson, ExtensionKind, RuntimeGtpack,
     describe::{Author, Capabilities, Engine, Metadata, Permissions, Runtime},
 };
+use greentic_ext_registry::hex;
 use sha2::{Digest, Sha256};
 use zip::write::SimpleFileOptions;
-
-/// Inline hex encoder — avoids pulling in the `hex` crate as a dev-dep.
-fn hex_encode(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-    bytes
-        .iter()
-        .fold(String::with_capacity(bytes.len() * 2), |mut acc, b| {
-            let _ = write!(acc, "{b:02x}");
-            acc
-        })
-}
 
 /// Build a minimal `.gtxpack` ZIP containing `describe.json` and the embedded
 /// `.gtpack` file at `runtime/provider.gtpack`.
@@ -103,7 +93,7 @@ pub fn build_provider_fixture_gtxpack(
 
 /// Compute a valid SHA-256 hex string for the given bytes.
 pub fn sha256_hex(bytes: &[u8]) -> String {
-    hex_encode(&Sha256::digest(bytes))
+    hex::encode(&Sha256::digest(bytes))
 }
 
 /// Build a minimal `.gtpack` ZIP whose `manifest.cbor` entry contains

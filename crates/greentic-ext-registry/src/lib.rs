@@ -3,6 +3,7 @@
 pub mod config;
 pub mod credentials;
 pub mod error;
+pub mod hex;
 pub mod lifecycle;
 pub mod local;
 pub mod oci;
