@@ -229,7 +229,10 @@ fn scaffolded_describe_json_validates_against_schema() {
             .arg(&proj)
             .arg("-y")
             .arg("--no-git"));
-        assert!(ok, "gtdx new --kind {kind_flag} failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        assert!(
+            ok,
+            "gtdx new --kind {kind_flag} failed\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
 
         let describe_bytes = std::fs::read(proj.join("describe.json")).unwrap();
         let describe: serde_json::Value = serde_json::from_slice(&describe_bytes).unwrap();
