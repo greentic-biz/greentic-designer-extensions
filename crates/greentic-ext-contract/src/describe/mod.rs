@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use crate::capability::CapabilityRef;
 use crate::kind::ExtensionKind;
 
+pub mod provider;
+pub use provider::RuntimeGtpack;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DescribeJson {

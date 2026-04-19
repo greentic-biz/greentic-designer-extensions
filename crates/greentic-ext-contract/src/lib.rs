@@ -8,7 +8,7 @@ pub mod schema;
 pub mod signature;
 
 pub use self::capability::{CapabilityId, CapabilityRef, CapabilityVersion};
-pub use self::describe::DescribeJson;
+pub use self::describe::{DescribeJson, RuntimeGtpack};
 pub use self::error::ContractError;
 pub use self::kind::ExtensionKind;
 pub use self::signature::{
