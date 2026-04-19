@@ -33,6 +33,45 @@ A receipt is written to `./dist/publish-<id>-<version>.json`.
 | `--release`           | Build with `--release` (default true for publish).            |
 | `--format <FMT>`      | `human` (default) or `json`.                                  |
 
+## Exit codes
+
+`gtdx publish` returns these exit codes:
+
+| Code | Meaning                                                  |
+|------|----------------------------------------------------------|
+| 0    | Published (or dry-run / verify-only OK).                 |
+| 2    | `describe.json` failed schema or business validation.    |
+| 10   | Version already exists; re-run with `--force`.           |
+| 20   | Auth required or token invalid; run `gtdx login`.        |
+| 30   | Registry not writable (permissions).                     |
+| 50   | Backend returns `NotImplemented` (e.g. OCI in Phase 1).  |
+| 70   | `cargo component build` failed — see compiler output.    |
+| 74   | I/O error (disk, network).                               |
+| 1    | Any other failure.                                       |
+
+CI scripts can switch on these codes:
+
+```bash
+gtdx publish --registry mystore || {
+  case $? in
+    10) echo "skip: already published" ;;
+    20) echo "need to refresh token" ;;
+    *)  exit 1 ;;
+  esac
+}
+```
+
+## JSON output
+
+`--format json` emits one JSON object per invocation on stdout. Example:
+
+```json
+{"event":"published","ext_id":"com.example.demo","version":"0.1.0","sha256":"089a1b56...","artifact":"./dist/demo-0.1.0.gtxpack","receipt_path":"./dist/publish-com.example.demo-0.1.0.json","signed":false,"registry_url":"file:///..."}
+```
+
+`event` is one of `dry_run` / `verify_only` / `published`. IDEs + CI can parse
+this line to drive UX (e.g. update a status bar) without scraping human text.
+
 ## Publishing to the Greentic Store
 
 `gtdx publish --registry local` writes to the local filesystem. To push to a

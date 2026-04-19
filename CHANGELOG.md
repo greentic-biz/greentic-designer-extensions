@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+- `gtdx search` accepts an optional QUERY (lists everything when omitted).
+- `gtdx doctor` expands to four sections: toolchain (cargo / cargo-component /
+  rustup / wasm32-wasip2 target), registries (reachability probe via /health),
+  credentials (JWT expiry decode from token), and installed extensions
+  (existing describe validation). `--offline` skips network probes.
+- `gtdx publish` maps error kinds to numeric exit codes per spec §9
+  (describe=2, build=70, version-exists=10, auth=20, registry=30,
+  not-implemented=50, io=74, other=1).
+- `gtdx publish --format json` emits a single JSON object per invocation
+  (`event`: `dry_run` / `verify_only` / `published`) for IDE + CI consumers.
+
 ## [0.2.0] - 2026-04-19
 
 ### Added

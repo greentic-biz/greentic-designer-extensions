@@ -77,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Login(args) => commands::login::run_login(&args, &home),
         Command::Logout(args) => commands::login::run_logout(&args, &home),
         Command::Registries(args) => commands::registries::run(args, &home),
-        Command::Doctor(args) => commands::doctor::run(args, &home),
+        Command::Doctor(args) => commands::doctor::run(args, &home).await,
         Command::Sign(args) => commands::sign::run(&args, &home),
         Command::Verify(args) => commands::verify::run(&args, &home),
         Command::Version => {

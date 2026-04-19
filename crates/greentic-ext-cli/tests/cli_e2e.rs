@@ -108,7 +108,10 @@ fn doctor_exits_zero_on_empty_home() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("0 total"), "got: {stdout}");
+    // Doctor now prints 4 sections; on a fresh home it reports no installed
+    // extensions and should exit 0 with "all checks passed".
+    assert!(stdout.contains("installed extensions"), "got: {stdout}");
+    assert!(stdout.contains("all checks passed"), "got: {stdout}");
 }
 
 #[test]

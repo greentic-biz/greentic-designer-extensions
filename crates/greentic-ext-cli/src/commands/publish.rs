@@ -85,7 +85,77 @@ pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
         trust_policy: args.trust,
         verify_only: args.verify_only,
     };
-    match run_publish(&cfg).await? {
+    match run_publish(&cfg).await {
+        Ok(outcome) => {
+            render_outcome(&args.format, &outcome)?;
+            Ok(())
+        }
+        Err(err) => {
+            eprintln!("error: {err}");
+            std::process::exit(err.exit_code());
+        }
+    }
+}
+
+fn render_outcome(format: &str, outcome: &PublishOutcome) -> anyhow::Result<()> {
+    match format {
+        "human" => {
+            render_human(outcome);
+            Ok(())
+        }
+        "json" => render_json(outcome),
+        other => anyhow::bail!("unknown --format: {other} (use human|json)"),
+    }
+}
+
+fn render_json(outcome: &PublishOutcome) -> anyhow::Result<()> {
+    use serde_json::json;
+    let v = match outcome {
+        PublishOutcome::DryRun {
+            artifact,
+            sha256,
+            registry,
+        } => json!({
+            "event": "dry_run",
+            "artifact": artifact.display().to_string(),
+            "sha256": sha256,
+            "registry": registry,
+        }),
+        PublishOutcome::VerifyOnly {
+            ext_id,
+            version,
+            registry,
+        } => json!({
+            "event": "verify_only",
+            "ext_id": ext_id,
+            "version": version,
+            "registry": registry,
+        }),
+        PublishOutcome::Published {
+            ext_id,
+            version,
+            sha256,
+            artifact,
+            receipt_path,
+            signed,
+            registry_url,
+        } => json!({
+            "event": "published",
+            "ext_id": ext_id,
+            "version": version,
+            "sha256": sha256,
+            "artifact": artifact.display().to_string(),
+            "receipt_path": receipt_path.display().to_string(),
+            "signed": signed,
+            "registry_url": registry_url,
+        }),
+    };
+    println!("{}", serde_json::to_string(&v)?);
+    Ok(())
+}
+
+fn render_human(outcome: &PublishOutcome) {
+    match outcome {
         PublishOutcome::DryRun {
             artifact,
             sha256,
@@ -122,5 +192,4 @@ pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
             println!("  receipt:  {}", receipt_path.display());
         }
     }
-    Ok(())
 }
