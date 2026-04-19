@@ -33,6 +33,42 @@ A receipt is written to `./dist/publish-<id>-<version>.json`.
 | `--release`           | Build with `--release` (default true for publish).            |
 | `--format <FMT>`      | `human` (default) or `json`.                                  |
 
+## Publishing to the Greentic Store
+
+`gtdx publish --registry local` writes to the local filesystem. To push to a
+Store HTTP server:
+
+1. Register the Store URL once:
+
+   ```bash
+   gtdx registries add mystore https://store.example.com
+   ```
+
+2. Log in (saves a bearer token at `~/.greentic/credentials.toml` with
+   mode 0600):
+
+   ```bash
+   gtdx login --registry mystore
+   # paste the JWT when prompted
+   ```
+
+3. Publish:
+
+   ```bash
+   gtdx publish --registry mystore
+   ```
+
+Token resolution order on publish:
+
+1. Env var named in the registry's `token-env` entry (configured via
+   `gtdx registries add <name> <url> --token-env MYSTORE_TOKEN`).
+2. `~/.greentic/credentials.toml` entry for the registry name.
+3. None → `gtdx publish` aborts with an `AuthRequired` hint.
+
+Publisher handles and allowed-prefix policies are enforced server-side;
+you can only publish extensions whose `metadata.id` matches a prefix
+allowed for your account.
+
 ## Determinism
 
 Two `gtdx publish` invocations over identical sources produce byte-identical
