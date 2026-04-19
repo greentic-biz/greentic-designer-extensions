@@ -67,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Keygen(args) => commands::keygen::run(&args, &home),
         Command::Uninstall(args) => commands::uninstall::run(&args, &home),
         Command::Search(args) => commands::search::run(args, &home).await,
-        Command::Info(args) => commands::info::run(args, &home).await,
+        Command::Info(args) => commands::info::run(&args, &home),
         Command::New(args) => commands::new::run(&args, &home),
         Command::Dev(args) => commands::dev::run(args, &home).await,
         Command::Login(args) => commands::login::run_login(&args, &home),

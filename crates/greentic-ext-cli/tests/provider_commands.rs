@@ -2,7 +2,7 @@ use std::path::Path;
 use std::process::Command;
 
 use greentic_ext_contract::{
-    DescribeJson, ExtensionKind,
+    CapabilityId, CapabilityRef, DescribeJson, ExtensionKind,
     describe::{Author, Capabilities, Engine, Metadata, Permissions, Runtime, RuntimeGtpack},
 };
 use greentic_ext_registry::hex;
@@ -266,4 +266,123 @@ fn gtdx_list_handles_missing_kind_dir() {
 
     // Should succeed with empty output, not panic
     assert!(output.status.success());
+}
+
+// ---------------------------------------------------------------------------
+// A9: gtdx info — local-first lookup for provider extensions
+// ---------------------------------------------------------------------------
+
+fn write_provider_fixture_with_capabilities(
+    home: &Path,
+    id: &str,
+    version: &str,
+    capability_ids: &[&str],
+) {
+    let extensions_root = home.join("extensions");
+    let provider_dir = extensions_root
+        .join("provider")
+        .join(format!("{id}-{version}"));
+    std::fs::create_dir_all(&provider_dir).unwrap();
+
+    let gtpack_bytes = b"fake-gtpack-data".to_vec();
+    let sha256 = sha256_hex(&gtpack_bytes);
+
+    let offered: Vec<CapabilityRef> = capability_ids
+        .iter()
+        .map(|cap_str| CapabilityRef {
+            id: cap_str.parse::<CapabilityId>().unwrap(),
+            version: "0.1.0".into(),
+        })
+        .collect();
+
+    let describe = DescribeJson {
+        schema_ref: None,
+        api_version: "greentic.ai/v1".into(),
+        kind: ExtensionKind::Provider,
+        metadata: Metadata {
+            id: id.into(),
+            name: "Telegram Provider".into(),
+            version: version.into(),
+            summary: "Provider extension for Telegram".into(),
+            description: None,
+            author: Author {
+                name: "Test".into(),
+                email: None,
+                public_key: None,
+            },
+            license: "MIT".into(),
+            homepage: None,
+            repository: None,
+            keywords: vec![],
+            icon: None,
+            screenshots: vec![],
+        },
+        engine: Engine {
+            greentic_designer: "*".into(),
+            ext_runtime: "^0.1.0".into(),
+        },
+        capabilities: Capabilities {
+            offered,
+            required: vec![],
+        },
+        runtime: Runtime {
+            component: "wasm/provider.wasm".into(),
+            memory_limit_mb: 256,
+            permissions: Permissions::default(),
+            gtpack: Some(RuntimeGtpack {
+                file: "runtime/provider.gtpack".into(),
+                sha256,
+                pack_id: id.into(),
+                component_version: "0.6.0".into(),
+            }),
+        },
+        contributions: serde_json::json!({}),
+        signature: None,
+    };
+
+    let describe_path = provider_dir.join("describe.json");
+    std::fs::write(
+        &describe_path,
+        serde_json::to_string_pretty(&describe).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn gtdx_info_displays_provider_channels() {
+    let tmp = TempDir::new().unwrap();
+    let home = tmp.path();
+    write_provider_fixture_with_capabilities(
+        home,
+        "greentic.provider.telegram",
+        "0.1.0",
+        &["greentic:messaging/send@0.1.0"],
+    );
+
+    let output = Command::new(gtdx_bin())
+        .args([
+            "--home",
+            home.to_str().unwrap(),
+            "info",
+            "greentic.provider.telegram",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Kind: ProviderExtension"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("Capabilities: "), "stdout: {stdout}");
+    assert!(stdout.contains("messaging"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("Runtime pack: greentic.provider.telegram"),
+        "stdout: {stdout}"
+    );
 }
