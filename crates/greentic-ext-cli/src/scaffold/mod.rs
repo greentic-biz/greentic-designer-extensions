@@ -11,6 +11,7 @@ pub enum Kind {
     Design,
     Bundle,
     Deploy,
+    Provider,
 }
 
 impl Kind {
@@ -19,6 +20,7 @@ impl Kind {
             Kind::Design => "design",
             Kind::Bundle => "bundle",
             Kind::Deploy => "deploy",
+            Kind::Provider => "provider",
         }
     }
 }

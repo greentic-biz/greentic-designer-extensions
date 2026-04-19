@@ -36,17 +36,26 @@ pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
 }
 
 fn check_toolchain() -> usize {
+    // `cargo` is the only hard dependency (everything else is a build-time tool
+    // the author installs on demand). Missing cargo-component / rustup /
+    // wasm32-wasip2 target are warnings, not failures, so `gtdx doctor` on a
+    // fresh machine exits 0 unless a real problem (bad describe, unreachable
+    // registry, expired token) is present.
     let mut fails = 0;
+    if let Ok(path) = which::which("cargo") {
+        println!("  \u{2713} cargo  {}", path.display());
+    } else {
+        println!("  \u{2717} cargo not found — install Rust from https://rustup.rs/");
+        fails += 1;
+    }
     for (name, hint) in [
-        ("cargo", "install Rust from https://rustup.rs/"),
         ("cargo-component", "cargo install --locked cargo-component"),
         ("rustup", "install Rust from https://rustup.rs/"),
     ] {
         if let Ok(path) = which::which(name) {
             println!("  \u{2713} {name}  {}", path.display());
         } else {
-            println!("  \u{2717} {name} not found — {hint}");
-            fails += 1;
+            println!("  \u{26A0} {name} not found — {hint}");
         }
     }
     match std::process::Command::new("rustup")
@@ -61,7 +70,6 @@ fn check_toolchain() -> usize {
                 println!(
                     "  \u{26A0} wasm32-wasip2 target missing — rustup target add wasm32-wasip2"
                 );
-                fails += 1;
             }
         }
         _ => {

@@ -8,6 +8,7 @@ static TEMPLATES_COMMON: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/c
 static TEMPLATES_DESIGN: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/design");
 static TEMPLATES_BUNDLE: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/bundle");
 static TEMPLATES_DEPLOY: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/deploy");
+static TEMPLATES_PROVIDER: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/provider");
 
 #[derive(Debug, Clone)]
 pub struct TemplateEntry {
@@ -56,6 +57,7 @@ pub fn load_templates_kind(kind: &str) -> Vec<TemplateEntry> {
         "design" => collect(&TEMPLATES_DESIGN),
         "bundle" => collect(&TEMPLATES_BUNDLE),
         "deploy" => collect(&TEMPLATES_DEPLOY),
+        "provider" => collect(&TEMPLATES_PROVIDER),
         _ => Vec::new(),
     }
 }

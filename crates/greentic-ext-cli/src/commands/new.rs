@@ -275,6 +275,7 @@ fn wit_package_subdir_for(filename: &str) -> &'static str {
         "extension-design.wit" => "extension-design",
         "extension-bundle.wit" => "extension-bundle",
         "extension-deploy.wit" => "extension-deploy",
+        "extension-provider.wit" => "extension-provider",
         "runtime-side.wit" => "runtime-side",
         _ => "extension-misc",
     }
