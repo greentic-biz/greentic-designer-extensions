@@ -45,3 +45,53 @@ async fn local_registry_returns_not_found_for_missing() {
         other => panic!("unexpected error: {other}"),
     }
 }
+
+#[tokio::test]
+async fn local_list_by_kind_filters_results() {
+    let tmp = TempDir::new().unwrap();
+    let reg_root = tmp.path().to_path_buf();
+
+    // Fixture 1: Design extension
+    let design =
+        ExtensionFixtureBuilder::new(ExtensionKind::Design, "greentic.design-demo", "0.1.0")
+            .offer("greentic:demo/hi", "1.0.0")
+            .with_wasm(b"stub".to_vec())
+            .build()
+            .unwrap();
+    pack_directory(
+        design.root(),
+        &reg_root.join("greentic.design-demo-0.1.0.gtxpack"),
+    )
+    .unwrap();
+
+    // Fixture 2: Bundle extension
+    let bundle =
+        ExtensionFixtureBuilder::new(ExtensionKind::Bundle, "greentic.bundle-demo", "0.1.0")
+            .offer("greentic:demo/pack", "1.0.0")
+            .with_wasm(b"stub".to_vec())
+            .build()
+            .unwrap();
+    pack_directory(
+        bundle.root(),
+        &reg_root.join("greentic.bundle-demo-0.1.0.gtxpack"),
+    )
+    .unwrap();
+
+    let reg = LocalFilesystemRegistry::new("local", reg_root);
+
+    // list_by_kind(Design) → only design
+    let designs = reg.list_by_kind(ExtensionKind::Design).await.unwrap();
+    assert_eq!(designs.len(), 1);
+    assert_eq!(designs[0].name, "greentic.design-demo");
+    assert_eq!(designs[0].kind, ExtensionKind::Design);
+
+    // list_by_kind(Bundle) → only bundle
+    let bundles = reg.list_by_kind(ExtensionKind::Bundle).await.unwrap();
+    assert_eq!(bundles.len(), 1);
+    assert_eq!(bundles[0].name, "greentic.bundle-demo");
+    assert_eq!(bundles[0].kind, ExtensionKind::Bundle);
+
+    // list_by_kind(Provider) → empty (no provider fixtures here)
+    let providers = reg.list_by_kind(ExtensionKind::Provider).await.unwrap();
+    assert!(providers.is_empty());
+}
