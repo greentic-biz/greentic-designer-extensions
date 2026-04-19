@@ -123,6 +123,40 @@ fn scaffolds_deploy_extension_with_correct_wit_deps() {
 }
 
 #[test]
+fn scaffolds_provider_extension_with_correct_wit_deps() {
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = tmp.path().join("p");
+    let (ok, _o, e) = run(Command::new(gtdx_bin())
+        .arg("new")
+        .arg("p")
+        .arg("--kind")
+        .arg("provider")
+        .arg("--dir")
+        .arg(&proj)
+        .arg("-y")
+        .arg("--no-git"));
+    assert!(ok, "gtdx new provider failed: {e}");
+    assert!(
+        proj.join("wit/deps/greentic/extension-provider/world.wit")
+            .exists()
+    );
+    assert!(
+        !proj.join("wit/deps/greentic/extension-design/world.wit").exists()
+    );
+    assert!(
+        !proj.join("wit/deps/greentic/extension-bundle/world.wit").exists()
+    );
+    assert!(
+        !proj.join("wit/deps/greentic/extension-deploy/world.wit").exists()
+    );
+
+    let describe = std::fs::read_to_string(proj.join("describe.json")).unwrap();
+    assert!(describe.contains("\"kind\": \"ProviderExtension\""));
+    assert!(describe.contains("\"gtpack\""));
+    assert!(describe.contains("REPLACE_WITH_YOUR.gtpack"));
+}
+
+#[test]
 fn target_dir_conflict_without_force_fails() {
     let tmp = tempfile::tempdir().unwrap();
     let proj = tmp.path().join("demo");
@@ -217,6 +251,7 @@ fn scaffolded_describe_json_validates_against_schema() {
         ("design", "design-demo"),
         ("bundle", "bundle-demo"),
         ("deploy", "deploy-demo"),
+        ("provider", "provider-demo"),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         let proj = tmp.path().join(scaffold_name);
