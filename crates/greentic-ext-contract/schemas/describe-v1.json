@@ -8,7 +8,7 @@
   "properties": {
     "$schema": { "type": "string" },
     "apiVersion": { "const": "greentic.ai/v1" },
-    "kind": { "enum": ["DesignExtension", "BundleExtension", "DeployExtension"] },
+    "kind": { "enum": ["DesignExtension", "BundleExtension", "DeployExtension", "ProviderExtension"] },
     "metadata": { "$ref": "#/$defs/metadata" },
     "engine": { "$ref": "#/$defs/engine" },
     "capabilities": { "$ref": "#/$defs/capabilities" },
@@ -79,7 +79,7 @@
             "secrets": { "type": "array", "items": { "type": "string" } },
             "callExtensionKinds": {
               "type": "array",
-              "items": { "enum": ["design", "bundle", "deploy"] }
+              "items": { "enum": ["design", "bundle", "deploy", "provider"] }
             }
           }
         }

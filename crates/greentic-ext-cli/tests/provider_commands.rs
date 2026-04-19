@@ -348,6 +348,72 @@ fn write_provider_fixture_with_capabilities(
     .unwrap();
 }
 
+// ---------------------------------------------------------------------------
+// A10: gtdx install — routes kind=Provider through lifecycle::install_artifact
+// ---------------------------------------------------------------------------
+
+#[test]
+fn gtdx_install_provider_from_gtxpack_places_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+
+    let gtpack_bytes = b"fake-gtpack-bytes".to_vec();
+    let sha = greentic_ext_testing::sha256_hex(&gtpack_bytes);
+    let gtxpack = greentic_ext_testing::build_provider_fixture_gtxpack(
+        tmp.path(),
+        "greentic.provider.fixture",
+        "0.1.0",
+        &gtpack_bytes,
+        &sha,
+    );
+
+    let output = std::process::Command::new(gtdx_bin())
+        .args([
+            "--home",
+            home.to_str().unwrap(),
+            "install",
+            gtxpack.to_str().unwrap(),
+            "-y",
+            "--trust",
+            "loose",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "gtdx install failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Gtpack landed in runner pickup dir (FLAT layout: {id}-{version}.gtpack)
+    let installed_pack = home
+        .join("runtime/packs/providers/gtdx")
+        .join("greentic.provider.fixture-0.1.0.gtpack");
+    assert!(
+        installed_pack.exists(),
+        "expected extracted gtpack at {installed_pack:?}"
+    );
+    assert_eq!(std::fs::read(&installed_pack).unwrap(), gtpack_bytes);
+
+    // Metadata landed in extensions dir (FLAT layout: {id}-{version}/)
+    let describe = home
+        .join("extensions/provider/greentic.provider.fixture-0.1.0")
+        .join("describe.json");
+    assert!(describe.exists(), "expected describe.json at {describe:?}");
+
+    // Gtpack MUST NOT be in final extensions dir
+    let gtpack_in_ext = home
+        .join("extensions/provider/greentic.provider.fixture-0.1.0")
+        .join("runtime/provider.gtpack");
+    assert!(
+        !gtpack_in_ext.exists(),
+        "gtpack must not be left in extensions dir"
+    );
+}
+
 #[test]
 fn gtdx_info_displays_provider_channels() {
     let tmp = TempDir::new().unwrap();
