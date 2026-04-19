@@ -3,6 +3,7 @@
 pub mod capability;
 pub mod describe;
 pub mod error;
+pub mod hex;
 pub mod kind;
 pub mod schema;
 pub mod signature;

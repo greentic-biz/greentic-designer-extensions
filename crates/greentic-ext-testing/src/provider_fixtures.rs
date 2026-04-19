@@ -8,26 +8,15 @@ use std::path::{Path, PathBuf};
 use greentic_ext_contract::{
     DescribeJson, ExtensionKind, RuntimeGtpack,
     describe::{Author, Capabilities, Engine, Metadata, Permissions, Runtime},
+    hex,
 };
 use sha2::{Digest, Sha256};
 use zip::write::SimpleFileOptions;
 
-/// Inline hex encoding — avoids depending on `greentic-ext-registry` from
-/// this crate (which would create a circular dependency).
-fn hex_encode(bytes: &[u8]) -> String {
-    use std::fmt::Write as FmtWrite;
-    bytes
-        .iter()
-        .fold(String::with_capacity(bytes.len() * 2), |mut acc, b| {
-            let _ = write!(acc, "{b:02x}");
-            acc
-        })
-}
-
 /// Compute a SHA-256 hex string for the given bytes.
 #[must_use]
 pub fn sha256_hex(bytes: &[u8]) -> String {
-    hex_encode(&Sha256::digest(bytes))
+    hex::encode(&Sha256::digest(bytes))
 }
 
 /// Build a minimal `.gtxpack` ZIP containing `describe.json` and the embedded
