@@ -85,7 +85,31 @@ pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
         trust_policy: args.trust,
         verify_only: args.verify_only,
     };
-    match run_publish(&cfg).await? {
+    match run_publish(&cfg).await {
+        Ok(outcome) => {
+            render_outcome(&args.format, &outcome)?;
+            Ok(())
+        }
+        Err(err) => {
+            eprintln!("error: {err}");
+            std::process::exit(err.exit_code());
+        }
+    }
+}
+
+fn render_outcome(format: &str, outcome: &PublishOutcome) -> anyhow::Result<()> {
+    match format {
+        "human" => {
+            render_human(outcome);
+            Ok(())
+        }
+        "json" => anyhow::bail!("--format json not yet implemented"),
+        other => anyhow::bail!("unknown --format: {other} (use human|json)"),
+    }
+}
+
+fn render_human(outcome: &PublishOutcome) {
+    match outcome {
         PublishOutcome::DryRun {
             artifact,
             sha256,
@@ -122,5 +146,4 @@ pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
             println!("  receipt:  {}", receipt_path.display());
         }
     }
-    Ok(())
 }
