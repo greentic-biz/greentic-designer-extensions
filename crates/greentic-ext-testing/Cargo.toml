@@ -10,9 +10,11 @@ publish = false
 
 [dependencies]
 anyhow = { workspace = true }
+ciborium = { workspace = true }
 greentic-ext-contract = { path = "../greentic-ext-contract" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 tempfile = { workspace = true }
 zip = { workspace = true }
 

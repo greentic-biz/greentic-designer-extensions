@@ -3,11 +3,13 @@
 pub mod config;
 pub mod credentials;
 pub mod error;
+pub mod hex;
 pub mod lifecycle;
 pub mod local;
 pub mod local_publish;
 pub mod oci;
 pub mod prompt;
+pub mod provider_install;
 pub mod publish;
 pub mod registry;
 pub mod storage;

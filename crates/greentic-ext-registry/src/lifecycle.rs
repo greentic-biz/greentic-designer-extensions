@@ -1,6 +1,9 @@
 use std::io::Cursor;
 
+use greentic_ext_contract::ExtensionKind;
+
 use crate::error::RegistryError;
+use crate::provider_install::post_install_provider;
 use crate::registry::ExtensionRegistry;
 use crate::storage::Storage;
 use crate::types::ExtensionArtifact;
@@ -12,10 +15,11 @@ pub enum TrustPolicy {
     Loose,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct InstallOptions {
     pub trust_policy: TrustPolicy,
     pub accept_permissions: bool,
+    pub force: bool,
 }
 
 impl Default for InstallOptions {
@@ -23,6 +27,7 @@ impl Default for InstallOptions {
         Self {
             trust_policy: TrustPolicy::Normal,
             accept_permissions: false,
+            force: false,
         }
     }
 }
@@ -51,7 +56,7 @@ impl<'a, R: ExtensionRegistry + ?Sized> Installer<'a, R> {
     pub fn install_artifact(
         &self,
         artifact: &ExtensionArtifact,
-        _opts: InstallOptions,
+        opts: InstallOptions,
     ) -> Result<(), RegistryError> {
         let kind = artifact.describe.kind;
         let (staging, final_dir) =
@@ -63,6 +68,20 @@ impl<'a, R: ExtensionRegistry + ?Sized> Installer<'a, R> {
             self.storage.abort_install(&staging);
             result?;
         }
+
+        if kind == ExtensionKind::Provider {
+            let post_result = post_install_provider(
+                &staging,
+                &artifact.describe,
+                self.storage.root(),
+                opts.force,
+            );
+            if post_result.is_err() {
+                self.storage.abort_install(&staging);
+                post_result?;
+            }
+        }
+
         self.storage.commit_install(&staging, &final_dir)?;
         tracing::info!(
             name = %artifact.name,
@@ -85,6 +104,18 @@ impl<'a, R: ExtensionRegistry + ?Sized> Installer<'a, R> {
                 .by_index(i)
                 .map_err(|e| RegistryError::Storage(format!("zip entry: {e}")))?;
             let out_path = staging.join(entry.mangled_name());
+            // Defense in depth: reject any entry whose resolved path
+            // contains a `..` component — mangled_name() already strips
+            // leading slashes and `..`, so this should never fire in practice.
+            if out_path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                return Err(RegistryError::Storage(format!(
+                    "zip entry escapes staging: {}",
+                    out_path.display()
+                )));
+            }
             if entry.is_dir() {
                 std::fs::create_dir_all(&out_path)?;
                 continue;

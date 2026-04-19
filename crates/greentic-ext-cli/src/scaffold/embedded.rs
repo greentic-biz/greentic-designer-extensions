@@ -55,7 +55,7 @@ mod tests {
     #[test]
     fn wit_files_returns_all_embedded_packages() {
         let files = wit_files();
-        assert_eq!(files.len(), 6);
+        assert_eq!(files.len(), 7);
     }
 
     #[test]

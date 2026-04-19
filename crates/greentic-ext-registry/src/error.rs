@@ -38,6 +38,9 @@ pub enum RegistryError {
     #[error("contract: {0}")]
     Contract(#[from] greentic_ext_contract::ContractError),
 
+    #[error("provider install: {0}")]
+    ProviderInstall(String),
+
     #[error("version already exists in registry (sha256={existing_sha})")]
     VersionExists { existing_sha: String },
 

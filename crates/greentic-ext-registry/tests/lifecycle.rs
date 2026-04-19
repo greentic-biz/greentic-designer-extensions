@@ -30,6 +30,7 @@ async fn installs_from_local_registry() {
             InstallOptions {
                 trust_policy: TrustPolicy::Loose,
                 accept_permissions: true,
+                force: false,
             },
         )
         .await

@@ -8,6 +8,8 @@ pub enum ExtensionKind {
     Bundle,
     #[serde(rename = "DeployExtension")]
     Deploy,
+    #[serde(rename = "ProviderExtension")]
+    Provider,
 }
 
 impl ExtensionKind {
@@ -17,6 +19,7 @@ impl ExtensionKind {
             Self::Design => "design",
             Self::Bundle => "bundle",
             Self::Deploy => "deploy",
+            Self::Provider => "provider",
         }
     }
 }

@@ -26,6 +26,7 @@ pub async fn install_pack(home: &Path, pack: &PackInfo) -> anyhow::Result<Instal
             InstallOptions {
                 trust_policy: TrustPolicy::Loose,
                 accept_permissions: true,
+                force: false,
             },
         )
         .await

@@ -148,6 +148,7 @@ mod tests {
                 component: "extension.wasm".into(),
                 memory_limit_mb: 64,
                 permissions: Permissions::default(),
+                gtpack: None,
             },
             contributions: serde_json::json!({}),
             signature: None,
