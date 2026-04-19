@@ -18,7 +18,7 @@
 
 **Create:**
 - `wit/extension-provider.wit` — new WIT package `greentic:extension-provider@0.1.0`
-- `crates/greentic-ext-contract/src/describe/provider.rs` — `ProviderRuntime` struct + validation
+- `crates/greentic-ext-contract/src/describe/provider.rs` — `RuntimeGtpack` struct + sha256 validator (nested into existing Runtime struct per F1)
 - `docs/how-to-write-a-provider-extension.md` — authoring guide with Telegram walkthrough
 - `crates/greentic-ext-contract/tests/provider_describe.rs` — describe.json fixtures + validation
 - `crates/greentic-ext-registry/tests/provider_lifecycle.rs` — install/uninstall + sha256 + conflict cases
@@ -27,7 +27,7 @@
 
 **Modify:**
 - `crates/greentic-ext-contract/src/kind.rs` — add `Provider` variant + `dir_name`
-- `crates/greentic-ext-contract/src/describe.rs` — wire `ProviderRuntime` when `kind == Provider`
+- `crates/greentic-ext-contract/src/describe.rs` — extend existing `Runtime` with optional `gtpack: Option<RuntimeGtpack>`; add `TryFrom<DescribeJsonRaw>` invariant check on `DescribeJson` (F1)
 - `crates/greentic-ext-contract/src/lib.rs` — re-export provider types
 - `crates/greentic-ext-contract/tests/kind.rs` — `Provider` round-trip
 - `crates/greentic-ext-registry/src/registry.rs` — add `list_by_kind` + `get_describe` trait methods
@@ -165,72 +165,96 @@ git commit -m "feat(contract): add Provider variant to ExtensionKind"
 
 ---
 
-### Task A2: Define `ProviderRuntime` describe schema
+### Task A2: Define `RuntimeGtpack` struct (nested into existing Runtime)
+
+**Design note (F1):** The existing `DescribeJson` struct in `describe/mod.rs` already has a `Runtime` field with `component`/`memoryLimitMB`/`permissions`. We don't create a parallel describe struct — we add `RuntimeGtpack` as an OPTIONAL nested field on the existing `Runtime` struct. See spec §8.2 "Schema integration notes".
 
 **Files:**
-- Create: `crates/greentic-ext-contract/src/describe/provider.rs`
-- Modify: `crates/greentic-ext-contract/src/describe.rs`
-- Modify: `crates/greentic-ext-contract/src/lib.rs`
-- Create: `crates/greentic-ext-contract/tests/provider_describe.rs`
+- Create: `crates/greentic-ext-contract/src/describe/provider.rs` — just `RuntimeGtpack` struct + sha256 validator
+- Modify: `crates/greentic-ext-contract/src/describe.rs` (restructure to module dir: `describe.rs` → `describe/mod.rs`)
+- Modify: `crates/greentic-ext-contract/src/lib.rs` — re-export `RuntimeGtpack`
+- Create: `crates/greentic-ext-contract/tests/runtime_gtpack.rs` — unit tests for struct + sha256 validation
 
-- [ ] **Step 1: Write failing test for struct shape**
+- [ ] **Step 1: Read current describe.rs**
 
-Create `crates/greentic-ext-contract/tests/provider_describe.rs`:
+```bash
+cat crates/greentic-ext-contract/src/describe.rs | head -120
+```
+
+Note the `Runtime` struct shape (line ~79-90 equivalent): `component`, `memory_limit_mb`, `permissions`. We'll extend this in Task A3 — not in this task.
+
+- [ ] **Step 2: Write failing tests first (TDD)**
+
+Create `crates/greentic-ext-contract/tests/runtime_gtpack.rs`:
 
 ```rust
-use greentic_ext_contract::describe::{ProviderRuntime, RuntimeGtpack};
+use greentic_ext_contract::describe::RuntimeGtpack;
 
 #[test]
-fn provider_runtime_parses_from_json() {
+fn runtime_gtpack_parses_from_json() {
     let json = serde_json::json!({
-        "gtpack": {
-            "file": "runtime/provider.gtpack",
-            "sha256": "a".repeat(64),
-            "pack_id": "greentic.provider.telegram",
-            "component_version": "0.6.0"
-        }
+        "file": "runtime/provider.gtpack",
+        "sha256": "a".repeat(64),
+        "pack_id": "greentic.provider.telegram",
+        "component_version": "0.6.0"
     });
-    let rt: ProviderRuntime = serde_json::from_value(json).unwrap();
-    assert_eq!(rt.gtpack.file, "runtime/provider.gtpack");
-    assert_eq!(rt.gtpack.pack_id, "greentic.provider.telegram");
-    assert_eq!(rt.gtpack.component_version, "0.6.0");
+    let rg: RuntimeGtpack = serde_json::from_value(json).unwrap();
+    assert_eq!(rg.file, "runtime/provider.gtpack");
+    assert_eq!(rg.pack_id, "greentic.provider.telegram");
+    assert_eq!(rg.component_version, "0.6.0");
 }
 
 #[test]
-fn provider_runtime_rejects_short_sha256() {
+fn runtime_gtpack_rejects_short_sha256() {
     let json = serde_json::json!({
-        "gtpack": {
-            "file": "runtime/provider.gtpack",
-            "sha256": "abc",
-            "pack_id": "greentic.provider.x",
-            "component_version": "0.6.0"
-        }
+        "file": "runtime/provider.gtpack",
+        "sha256": "abc",
+        "pack_id": "greentic.provider.x",
+        "component_version": "0.6.0"
     });
-    let err = serde_json::from_value::<ProviderRuntime>(json).unwrap_err();
+    let err = serde_json::from_value::<RuntimeGtpack>(json).unwrap_err();
+    assert!(err.to_string().to_lowercase().contains("sha256"));
+}
+
+#[test]
+fn runtime_gtpack_rejects_non_hex_sha256() {
+    let mut json = serde_json::json!({
+        "file": "runtime/provider.gtpack",
+        "sha256": "z".repeat(64),
+        "pack_id": "greentic.provider.x",
+        "component_version": "0.6.0"
+    });
+    // mutation for clarity — actually z.repeat(64) is non-hex
+    let _ = &mut json;
+    let err = serde_json::from_value::<RuntimeGtpack>(serde_json::json!({
+        "file": "runtime/provider.gtpack",
+        "sha256": "z".repeat(64),
+        "pack_id": "greentic.provider.x",
+        "component_version": "0.6.0"
+    })).unwrap_err();
     assert!(err.to_string().to_lowercase().contains("sha256"));
 }
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [ ] **Step 3: Run to verify failure**
 
 ```bash
-cargo test -p greentic-ext-contract --test provider_describe
+cargo test -p greentic-ext-contract --test runtime_gtpack
 ```
 
-Expected: FAIL with "unresolved import".
+Expected: FAIL (unresolved import `RuntimeGtpack`).
 
-- [ ] **Step 3: Create the struct**
+- [ ] **Step 4: Create the struct**
 
 Create `crates/greentic-ext-contract/src/describe/provider.rs`:
 
 ```rust
-use serde::{Deserialize, Deserializer, Serialize};
+//! Provider-specific extensions to the describe schema.
+//!
+//! `RuntimeGtpack` is an optional nested field on `Runtime` — populated when
+//! `kind == ProviderExtension`. Enforces SHA-256 format at parse time.
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct ProviderRuntime {
-    pub gtpack: RuntimeGtpack,
-}
+use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -249,7 +273,7 @@ where
     let s = String::deserialize(d)?;
     if s.len() != 64 || !s.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(serde::de::Error::custom(format!(
-            "invalid sha256: expected 64 hex chars, got {}",
+            "invalid sha256: expected 64 lowercase hex chars, got len={} value={s:?}",
             s.len()
         )));
     }
@@ -257,165 +281,305 @@ where
 }
 ```
 
-Refactor `crates/greentic-ext-contract/src/describe.rs` to make it a module directory:
+- [ ] **Step 5: Restructure describe.rs → describe/mod.rs**
 
-Rename existing `describe.rs` → `describe/mod.rs`, then add at top of `mod.rs`:
+```bash
+mkdir -p crates/greentic-ext-contract/src/describe
+git mv crates/greentic-ext-contract/src/describe.rs crates/greentic-ext-contract/src/describe/mod.rs
+```
+
+At the top of the new `describe/mod.rs`, add:
 ```rust
 pub mod provider;
-pub use provider::{ProviderRuntime, RuntimeGtpack};
+pub use provider::RuntimeGtpack;
 ```
 
-Update `crates/greentic-ext-contract/src/lib.rs` to re-export:
+- [ ] **Step 6: Update lib.rs re-export**
+
+Read `crates/greentic-ext-contract/src/lib.rs`. Find the existing `pub use self::describe::{...}` line. Add `RuntimeGtpack` to it:
 ```rust
-pub use describe::{ProviderRuntime, RuntimeGtpack};
+pub use self::describe::{DescribeJson, RuntimeGtpack, /* existing items */};
 ```
 
-- [ ] **Step 4: Run test to verify pass**
+Do NOT add `ProviderRuntime` — it doesn't exist in F1.
+
+- [ ] **Step 7: Run tests**
 
 ```bash
-cargo test -p greentic-ext-contract --test provider_describe
-```
-
-Expected: PASS (both tests).
-
-- [ ] **Step 5: Run full contract test suite**
-
-```bash
+cargo test -p greentic-ext-contract --test runtime_gtpack
 cargo test -p greentic-ext-contract
+cargo clippy -p greentic-ext-contract --all-targets -- -D warnings
 ```
 
-Expected: all existing tests still green.
+Expected: new tests PASS, full suite PASS, clippy clean.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add crates/greentic-ext-contract/
-git commit -m "feat(contract): add ProviderRuntime describe schema"
+git commit -m "feat(contract): add RuntimeGtpack struct for provider extension artifacts"
 ```
 
 ---
 
-### Task A3: Wire `ProviderRuntime` into top-level Describe struct
+### Task A3: Add optional `gtpack` field to existing `Runtime` struct + enforce kind↔gtpack invariant
+
+**Design note (F1):** We extend the EXISTING `Runtime` struct in `describe/mod.rs` with a new optional `gtpack: Option<RuntimeGtpack>` field. We also enforce on the existing `DescribeJson` struct: `kind == Provider ↔ runtime.gtpack.is_some()`. No new `Describe` struct — `DescribeJson` remains the single source of truth.
 
 **Files:**
-- Modify: `crates/greentic-ext-contract/src/describe/mod.rs`
-- Modify: `crates/greentic-ext-contract/tests/describe_roundtrip.rs`
+- Modify: `crates/greentic-ext-contract/src/describe/mod.rs` — add `gtpack` to `Runtime`, add `TryFrom<DescribeJsonRaw>` validation
+- Modify: `crates/greentic-ext-contract/tests/describe_roundtrip.rs` — add 3 invariant tests
+- Modify any existing test fixtures in `greentic-ext-contract/tests/` that construct `DescribeJson` / `Runtime` to include `gtpack: None` (should be default via `#[serde(default)]` — no change needed if fixtures deserialize from JSON)
 
-- [ ] **Step 1: Read existing Describe struct**
+- [ ] **Step 1: Read current describe/mod.rs**
 
-Read `crates/greentic-ext-contract/src/describe/mod.rs` to understand current top-level struct and where to add `provider_runtime: Option<ProviderRuntime>`.
+```bash
+cat crates/greentic-ext-contract/src/describe/mod.rs
+```
 
-- [ ] **Step 2: Write failing test for full describe.json with kind=provider**
+Note the `Runtime` struct at approx line 79-90 and the `DescribeJson` struct at line 11-26. These are what we modify.
+
+- [ ] **Step 2: Write failing tests (TDD)**
 
 Append to `crates/greentic-ext-contract/tests/describe_roundtrip.rs`:
 
 ```rust
-#[test]
-fn describe_with_kind_provider_roundtrips() {
-    let json = serde_json::json!({
-        "kind": "ProviderExtension",
+fn hex64(c: char) -> String {
+    std::iter::repeat(c).take(64).collect()
+}
+
+fn base_metadata() -> serde_json::Value {
+    serde_json::json!({
         "id": "greentic.provider.telegram",
+        "name": "Telegram",
         "version": "0.1.0",
-        "engine": { "greenticDesigner": "*", "extRuntime": "^0.1.0" },
-        "capabilities": [],
+        "summary": "Telegram messaging provider",
+        "author": { "name": "Greentic" },
+        "license": "Apache-2.0"
+    })
+}
+
+fn base_engine() -> serde_json::Value {
+    serde_json::json!({ "greenticDesigner": "*", "extRuntime": "^0.1.0" })
+}
+
+fn base_capabilities() -> serde_json::Value {
+    serde_json::json!({ "offered": [], "required": [] })
+}
+
+#[test]
+fn describe_with_kind_provider_and_gtpack_roundtrips() {
+    let json = serde_json::json!({
+        "apiVersion": "greentic.ai/v1",
+        "kind": "ProviderExtension",
+        "metadata": base_metadata(),
+        "engine": base_engine(),
+        "capabilities": base_capabilities(),
         "runtime": {
+            "component": "wasm/provider_telegram_ext.wasm",
+            "memoryLimitMB": 64,
+            "permissions": { "network": [], "secrets": [], "callExtensionKinds": [] },
             "gtpack": {
                 "file": "runtime/provider.gtpack",
-                "sha256": "b".repeat(64),
+                "sha256": hex64('b'),
                 "pack_id": "greentic.provider.telegram",
                 "component_version": "0.6.0"
             }
         },
-        "metadata": {
-            "author": { "name": "Greentic" }
-        }
+        "contributions": {}
     });
-    let describe: greentic_ext_contract::Describe =
-        serde_json::from_value(json.clone()).unwrap();
+    let describe: greentic_ext_contract::DescribeJson =
+        serde_json::from_value(json).unwrap();
     assert_eq!(describe.kind, greentic_ext_contract::ExtensionKind::Provider);
-    let serialized = serde_json::to_value(&describe).unwrap();
-    assert_eq!(serialized["runtime"]["gtpack"]["pack_id"], "greentic.provider.telegram");
+    assert!(describe.runtime.gtpack.is_some());
+    let gt = describe.runtime.gtpack.as_ref().unwrap();
+    assert_eq!(gt.pack_id, "greentic.provider.telegram");
+    // Re-serialize and re-parse
+    let v = serde_json::to_value(&describe).unwrap();
+    let _: greentic_ext_contract::DescribeJson = serde_json::from_value(v).unwrap();
 }
 
 #[test]
-fn describe_with_kind_provider_requires_runtime_gtpack() {
+fn describe_with_kind_provider_requires_gtpack() {
     let json = serde_json::json!({
+        "apiVersion": "greentic.ai/v1",
         "kind": "ProviderExtension",
-        "id": "greentic.provider.x",
-        "version": "0.1.0",
-        "engine": { "greenticDesigner": "*", "extRuntime": "^0.1.0" },
-        "capabilities": [],
-        "metadata": { "author": { "name": "X" } }
+        "metadata": base_metadata(),
+        "engine": base_engine(),
+        "capabilities": base_capabilities(),
+        "runtime": {
+            "component": "wasm/provider_telegram_ext.wasm",
+            "memoryLimitMB": 64,
+            "permissions": { "network": [], "secrets": [], "callExtensionKinds": [] }
+        },
+        "contributions": {}
     });
-    let err = serde_json::from_value::<greentic_ext_contract::Describe>(json);
-    assert!(err.is_err(), "expected failure when runtime.gtpack missing");
+    let err = serde_json::from_value::<greentic_ext_contract::DescribeJson>(json)
+        .unwrap_err()
+        .to_string()
+        .to_lowercase();
+    assert!(
+        err.contains("gtpack") || err.contains("provider"),
+        "error should explain missing gtpack field; got: {err}"
+    );
+}
+
+#[test]
+fn describe_non_provider_rejects_gtpack() {
+    let json = serde_json::json!({
+        "apiVersion": "greentic.ai/v1",
+        "kind": "DesignExtension",
+        "metadata": base_metadata(),
+        "engine": base_engine(),
+        "capabilities": base_capabilities(),
+        "runtime": {
+            "component": "wasm/something.wasm",
+            "memoryLimitMB": 64,
+            "permissions": { "network": [], "secrets": [], "callExtensionKinds": [] },
+            "gtpack": {
+                "file": "runtime/provider.gtpack",
+                "sha256": hex64('c'),
+                "pack_id": "x",
+                "component_version": "0.6.0"
+            }
+        },
+        "contributions": {}
+    });
+    let err = serde_json::from_value::<greentic_ext_contract::DescribeJson>(json);
+    assert!(err.is_err(), "non-provider kinds must reject gtpack field");
 }
 ```
 
 - [ ] **Step 3: Run to verify failure**
 
 ```bash
-cargo test -p greentic-ext-contract --test describe_roundtrip describe_with_kind_provider
-```
-
-Expected: FAIL (no `runtime` field on Describe).
-
-- [ ] **Step 4: Add field + validation**
-
-In `describe/mod.rs`, extend the `Describe` struct:
-
-```rust
-#[serde(default, skip_serializing_if = "Option::is_none")]
-pub runtime: Option<ProviderRuntime>,
-```
-
-Add a `#[serde(deserialize_with = "validate_provider_kind")]` on a wrapper, OR implement `TryFrom` on raw intermediate. Simplest: custom `#[serde(try_from = "DescribeRaw")]` with `impl TryFrom<DescribeRaw> for Describe` that enforces `kind=Provider → runtime.is_some()`.
-
-Concrete pattern:
-
-```rust
-#[derive(Deserialize)]
-struct DescribeRaw {
-    kind: ExtensionKind,
-    // ... all other fields copied as-is
-    #[serde(default)]
-    runtime: Option<ProviderRuntime>,
-}
-
-impl TryFrom<DescribeRaw> for Describe {
-    type Error = String;
-    fn try_from(raw: DescribeRaw) -> Result<Self, String> {
-        if raw.kind == ExtensionKind::Provider && raw.runtime.is_none() {
-            return Err("kind=ProviderExtension requires runtime.gtpack".into());
-        }
-        Ok(Describe {
-            kind: raw.kind,
-            // ... copy rest
-            runtime: raw.runtime,
-        })
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "DescribeRaw")]
-pub struct Describe { /* existing fields + runtime */ }
-```
-
-Exact structure depends on current `Describe` shape — the engineer must read current source and adapt. Follow the existing pattern used for other conditional validations (e.g., how Deploy kind validates `execution.kind`).
-
-- [ ] **Step 5: Run test to verify pass**
-
-```bash
 cargo test -p greentic-ext-contract --test describe_roundtrip
 ```
 
-Expected: PASS (both new tests + all existing tests).
+Expected: FAIL (compile error: no `gtpack` field; or validation not present).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Extend `Runtime` struct with optional `gtpack`**
+
+In `crates/greentic-ext-contract/src/describe/mod.rs`, modify the existing `Runtime` struct:
+
+```rust
+use crate::describe::provider::RuntimeGtpack;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Runtime {
+    pub component: String,
+    #[serde(rename = "memoryLimitMB", default = "default_memory")]
+    pub memory_limit_mb: u32,
+    pub permissions: Permissions,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gtpack: Option<RuntimeGtpack>,   // NEW
+}
+```
+
+- [ ] **Step 5: Add `TryFrom` validation on `DescribeJson`**
+
+Apply the `TryFrom<DescribeJsonRaw>` pattern to enforce the invariant. In the same file:
+
+```rust
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DescribeJsonRaw {
+    #[serde(rename = "$schema", skip_serializing_if = "Option::is_none", default)]
+    schema_ref: Option<String>,
+    #[serde(rename = "apiVersion")]
+    api_version: String,
+    kind: crate::kind::ExtensionKind,
+    metadata: Metadata,
+    engine: Engine,
+    capabilities: Capabilities,
+    runtime: Runtime,
+    contributions: serde_json::Value,
+    #[serde(default)]
+    signature: Option<Signature>,
+}
+
+impl TryFrom<DescribeJsonRaw> for DescribeJson {
+    type Error = String;
+
+    fn try_from(raw: DescribeJsonRaw) -> Result<Self, String> {
+        use crate::kind::ExtensionKind;
+        let has_gtpack = raw.runtime.gtpack.is_some();
+        match (raw.kind, has_gtpack) {
+            (ExtensionKind::Provider, false) => Err(
+                "kind=ProviderExtension requires `runtime.gtpack`".into()
+            ),
+            (k, true) if k != ExtensionKind::Provider => Err(format!(
+                "runtime.gtpack only allowed when kind=ProviderExtension (got kind={k:?})"
+            )),
+            _ => Ok(DescribeJson {
+                schema_ref: raw.schema_ref,
+                api_version: raw.api_version,
+                kind: raw.kind,
+                metadata: raw.metadata,
+                engine: raw.engine,
+                capabilities: raw.capabilities,
+                runtime: raw.runtime,
+                contributions: raw.contributions,
+                signature: raw.signature,
+            }),
+        }
+    }
+}
+```
+
+Change the existing `#[derive(Debug, Clone, Serialize, Deserialize)]` on `DescribeJson` to `#[derive(Debug, Clone, Serialize)]` and add `#[serde(try_from = "DescribeJsonRaw")]` for the Deserialize path — or implement `Deserialize` manually that delegates to `DescribeJsonRaw::deserialize(...).and_then(Self::try_from)`.
+
+**Derive approach (cleaner if compiler accepts):**
+
+```rust
+#[derive(Debug, Clone, Serialize)]
+pub struct DescribeJson {
+    /* existing fields unchanged */
+}
+
+impl<'de> Deserialize<'de> for DescribeJson {
+    fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    where D: serde::Deserializer<'de>,
+    {
+        let raw = DescribeJsonRaw::deserialize(d)?;
+        Self::try_from(raw).map_err(serde::de::Error::custom)
+    }
+}
+```
+
+`ExtensionKind` needs `Debug` for the error format — verify this is already derived (A1 confirmed it is).
+
+- [ ] **Step 6: Update existing tests / fixtures that instantiate `Runtime` programmatically**
+
+Search for `Runtime {` in tests:
 
 ```bash
-git add crates/greentic-ext-contract/
-git commit -m "feat(contract): require runtime.gtpack when kind=ProviderExtension"
+grep -rn "Runtime {" crates/greentic-ext-contract/tests/ crates/greentic-ext-contract/src/
+```
+
+For any construction site, add `gtpack: None`. (If fixtures only parse JSON, skip — defaults handle it.)
+
+- [ ] **Step 7: Run tests + clippy**
+
+```bash
+cargo test -p greentic-ext-contract
+cargo clippy -p greentic-ext-contract --all-targets -- -D warnings
+```
+
+Expected: all green, no warnings. Check `cargo test --workspace` later passes too (downstream crates might use Runtime constructor).
+
+```bash
+cargo build --workspace --all-features
+```
+
+If downstream crates fail (`greentic-ext-registry`, `greentic-ext-cli`), add `gtpack: None` to their Runtime constructors.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add crates/
+git commit -m "feat(contract): add optional runtime.gtpack field + kind=Provider invariant"
 ```
 
 ---
@@ -877,7 +1041,7 @@ Read existing `crates/greentic-ext-registry/src/lifecycle.rs` to understand curr
 Sketch of additions to `lifecycle.rs`:
 
 ```rust
-use greentic_ext_contract::{Describe, ExtensionKind, ProviderRuntime};
+use greentic_ext_contract::{DescribeJson, ExtensionKind, RuntimeGtpack};
 use sha2::{Digest, Sha256};
 use std::io::Read;
 
@@ -902,21 +1066,23 @@ pub async fn install_from_path(
 
 async fn install_provider(
     gtxpack_path: &Path,
-    describe: &Describe,
+    describe: &DescribeJson,
     opts: &InstallOptions,
 ) -> Result<(), LifecycleError> {
-    let runtime = describe
+    // F1: gtpack lives on describe.runtime.gtpack; invariant enforced at deserialize.
+    let gtpack = describe
         .runtime
+        .gtpack
         .as_ref()
-        .ok_or_else(|| LifecycleError::Invalid("missing runtime.gtpack".into()))?;
+        .ok_or_else(|| LifecycleError::Invalid("missing runtime.gtpack (TryFrom should have caught this)".into()))?;
 
     // 1. Extract embedded gtpack bytes + verify sha256
-    let gtpack_bytes = read_file_from_zip(gtxpack_path, &runtime.gtpack.file)?;
+    let gtpack_bytes = read_file_from_zip(gtxpack_path, &gtpack.file)?;
     let actual_sha = hex::encode(Sha256::digest(&gtpack_bytes));
-    if actual_sha != runtime.gtpack.sha256 {
+    if actual_sha != gtpack.sha256 {
         return Err(LifecycleError::Invalid(format!(
             "sha256 mismatch: describe={}, actual={}",
-            runtime.gtpack.sha256, actual_sha
+            gtpack.sha256, actual_sha
         )));
     }
 
@@ -925,24 +1091,24 @@ async fn install_provider(
         .install_root
         .join(".greentic/runtime/packs/providers/manual");
     if manual_dir.exists() && !opts.force {
-        check_manual_pack_conflict(&manual_dir, &runtime.gtpack.pack_id)?;
+        check_manual_pack_conflict(&manual_dir, &gtpack.pack_id)?;
     }
 
     // 3. Extract metadata (describe + schemas + i18n + wasm) to extensions dir
     let meta_dir = opts
         .install_root
         .join(".greentic/extensions/provider")
-        .join(&describe.id)
-        .join(&describe.version);
+        .join(&describe.metadata.id)
+        .join(&describe.metadata.version);
     std::fs::create_dir_all(&meta_dir)?;
-    extract_metadata_files(gtxpack_path, &meta_dir, &runtime.gtpack.file)?;
+    extract_metadata_files(gtxpack_path, &meta_dir, &gtpack.file)?;
 
     // 4. Drop gtpack to runner pack directory
     let gtdx_dir = opts
         .install_root
         .join(".greentic/runtime/packs/providers/gtdx");
     std::fs::create_dir_all(&gtdx_dir)?;
-    let out = gtdx_dir.join(format!("{}-{}.gtpack", describe.id, describe.version));
+    let out = gtdx_dir.join(format!("{}-{}.gtpack", describe.metadata.id, describe.metadata.version));
     std::fs::write(&out, &gtpack_bytes)?;
 
     // 5. Register in gtdx.db (existing Storage layer)

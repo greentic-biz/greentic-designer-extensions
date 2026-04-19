@@ -327,17 +327,43 @@ Expected total size: 1.5–4 MB per provider. Upper acceptance bound: 5 MB.
 
 ### 8.2 `describe.json` additions for `kind=provider`
 
+Provider extensions reuse the existing `DescribeJson` schema with ONE additive change: the existing `runtime` object gets an optional `gtpack` sub-field. When `kind=ProviderExtension`, `runtime.gtpack` is required; for other kinds it is forbidden (enforced via `TryFrom` validation at deserialize time).
+
 ```json
 {
-  "kind": "provider",
-  "id": "greentic.provider.slack",
-  "version": "0.1.0",
+  "$schema": "https://greentic.ai/schemas/extension-describe.json",
+  "apiVersion": "greentic.ai/v1",
+  "kind": "ProviderExtension",
+  "metadata": {
+    "id": "greentic.provider.slack",
+    "name": "Slack Messaging Provider",
+    "version": "0.1.0",
+    "summary": "Send and receive Slack messages via Bot API",
+    "author": {
+      "name": "Greentic",
+      "publicKey": "S6cnfmdoj3wKx3cxPsNsP8fErvK4S12a5AtzTExPrvQ="
+    },
+    "license": "Apache-2.0"
+  },
   "engine": {
     "greenticDesigner": "*",
     "extRuntime": "^0.1.0"
   },
-  "capabilities": ["messaging", "event-sink"],
+  "capabilities": {
+    "offered": [
+      { "id": "greentic:provider.messaging", "version": "0.1.0" },
+      { "id": "greentic:provider.event-sink", "version": "0.1.0" }
+    ],
+    "required": []
+  },
   "runtime": {
+    "component": "wasm/provider_slack_ext.wasm",
+    "memoryLimitMB": 64,
+    "permissions": {
+      "network": [],
+      "secrets": ["secrets://{env}/{tenant}/{team}/greentic.provider.slack/*"],
+      "callExtensionKinds": []
+    },
     "gtpack": {
       "file": "runtime/provider.gtpack",
       "sha256": "<64-char hex>",
@@ -345,21 +371,27 @@ Expected total size: 1.5–4 MB per provider. Upper acceptance bound: 5 MB.
       "component_version": "0.6.0"
     }
   },
-  "metadata": {
-    "author": {
-      "name": "Greentic",
-      "publicKey": "S6cnfmdoj3wKx3cxPsNsP8fErvK4S12a5AtzTExPrvQ=",
-      "signature": "<base64 ed25519 sig>"
+  "contributions": {
+    "oauth": {
+      "provider": "slack",
+      "scopes_requested": ["chat:write", "channels:read"],
+      "callback_url_pattern": "https://{deployment_host}/oauth/callback/slack",
+      "token_storage": "per-tenant"
     }
   },
-  "oauth": {
-    "provider": "slack",
-    "scopes_requested": ["chat:write", "channels:read"],
-    "callback_url_pattern": "https://{deployment_host}/oauth/callback/slack",
-    "token_storage": "per-tenant"
+  "signature": {
+    "algorithm": "ed25519",
+    "publicKey": "<base64>",
+    "value": "<base64>"
   }
 }
 ```
+
+**Schema integration notes:**
+- `runtime.gtpack` is an *optional* field on the existing `Runtime` struct in `greentic-ext-contract::describe::Runtime`
+- `runtime.component` still points to the extension WASM (metadata-query component, `wasm32-wasip1`). For providers, this is the same `provider_*_ext.wasm` that lives in `wasm/`
+- Invariant enforced at deserialize: `kind == ProviderExtension ↔ runtime.gtpack.is_some()`
+- Provider-specific OAuth/channel/trigger metadata goes under `contributions` (existing free-form field) rather than top-level — keeps schema additive
 
 `oauth` field optional — only providers with OAuth flows populate it. Introduced in Batch 2 with Slack.
 
