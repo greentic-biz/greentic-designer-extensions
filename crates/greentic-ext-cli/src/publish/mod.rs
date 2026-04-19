@@ -231,9 +231,10 @@ pub async fn run_publish(cfg: &PublishConfig) -> Result<PublishOutcome, PublishE
             .map_err(|e| PublishError::Other(anyhow::anyhow!("{e}")))?;
         greentic_ext_contract::sign_describe(&mut describe, &signing_key)
             .map_err(|e| PublishError::Other(anyhow::anyhow!("sign: {e}")))?;
-        let sig = describe.signature.as_ref().ok_or_else(|| {
-            PublishError::Other(anyhow::anyhow!("signing produced no signature"))
-        })?;
+        let sig = describe
+            .signature
+            .as_ref()
+            .ok_or_else(|| PublishError::Other(anyhow::anyhow!("signing produced no signature")))?;
         Some(SignatureBlob {
             algorithm: sig.algorithm.clone(),
             public_key: sig.public_key.clone(),
@@ -309,9 +310,9 @@ pub async fn run_publish(cfg: &PublishConfig) -> Result<PublishOutcome, PublishE
 
 fn map_registry_err(e: RegistryError) -> PublishError {
     match e {
-        RegistryError::VersionExists { existing_sha } => PublishError::VersionExists(format!(
-            "version already exists (sha256={existing_sha})"
-        )),
+        RegistryError::VersionExists { existing_sha } => {
+            PublishError::VersionExists(format!("version already exists (sha256={existing_sha})"))
+        }
         RegistryError::AuthRequired(m) | RegistryError::AuthFailed(m) => {
             PublishError::AuthRequired(m)
         }

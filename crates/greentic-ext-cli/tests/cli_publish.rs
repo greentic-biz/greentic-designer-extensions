@@ -190,9 +190,12 @@ fn publish_to_local_then_install_round_trip() {
     );
 
     // Hierarchical publish wrote .gtxpack under <home>/registries/local/<id>/<version>/
-    let pack_path = home
-        .join("registries/local/com.example.demo/0.1.0/demo-0.1.0.gtxpack");
-    assert!(pack_path.is_file(), "publish must write {}", pack_path.display());
+    let pack_path = home.join("registries/local/com.example.demo/0.1.0/demo-0.1.0.gtxpack");
+    assert!(
+        pack_path.is_file(),
+        "publish must write {}",
+        pack_path.display()
+    );
 
     // Install from the pack path into a SECOND home — proves round-trip.
     let home2 = tmp.path().join("home2");
@@ -206,7 +209,11 @@ fn publish_to_local_then_install_round_trip() {
     assert!(ok, "gtdx install failed: {o}\n{e}");
 
     let installed = home2.join("extensions/design/com.example.demo-0.1.0");
-    assert!(installed.exists(), "expected install at {}", installed.display());
+    assert!(
+        installed.exists(),
+        "expected install at {}",
+        installed.display()
+    );
     assert!(installed.join("describe.json").exists());
     assert!(installed.join("extension.wasm").exists());
 }
