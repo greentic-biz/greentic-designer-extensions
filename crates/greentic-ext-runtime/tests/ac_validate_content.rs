@@ -46,5 +46,8 @@ fn validate_content_on_ac_extension_accepts_minimal_card() {
         .iter()
         .filter(|d| d.severity == Severity::Error)
         .count();
-    assert_eq!(errors, 0, "expected zero error diagnostics, got: {result:#?}");
+    assert_eq!(
+        errors, 0,
+        "expected zero error diagnostics, got: {result:#?}"
+    );
 }
