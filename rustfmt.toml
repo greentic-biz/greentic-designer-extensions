@@ -1,5 +1,6 @@
+# Canonical rustfmt config for all Greentic repos.
+# Source: greenticai/.github/toolchain/rustfmt.toml
+# Sync: ./sync-toolchain.sh (from workspace root)
+# Do not edit per-repo.
+
 edition = "2024"
-max_width = 100
-reorder_imports = true
-# `imports_granularity` + `group_imports` require nightly rustfmt. Tracked in
-# follow-up; on stable we accept whatever ordering rustc produces.
