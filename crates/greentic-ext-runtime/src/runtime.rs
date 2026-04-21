@@ -313,6 +313,91 @@ impl ExtensionRuntime {
 }
 
 impl ExtensionRuntime {
+    /// Validate extension-specific content against the extension's schema.
+    ///
+    /// Calls `greentic:extension-design/validation@0.1.0::validate-content`.
+    /// `content_type` is an extension-defined label (e.g. `"AdaptiveCard"`
+    /// for the adaptive-cards extension); `content_json` is the content
+    /// payload as a JSON string.
+    ///
+    /// Returns a [`types::ValidateResult`] with a `valid` flag and a list of
+    /// diagnostics (error/warning/info/hint severities). Extensions that
+    /// don't export this interface surface a `Wasmtime` error — callers
+    /// that want graceful degradation should treat "interface not exported"
+    /// as "no validation available" rather than a hard failure.
+    pub fn validate_content(
+        &self,
+        ext_id: &str,
+        content_type: &str,
+        content_json: &str,
+    ) -> Result<crate::types::ValidateResult, RuntimeError> {
+        use crate::host_bindings::exports::greentic::extension_design::validation::{
+            Diagnostic as WitDiagnostic, ValidateResult as WitValidateResult,
+        };
+        use crate::host_bindings::greentic::extension_base::types::Severity as WitSeverity;
+
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine)
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_name = "greentic:extension-design/validation@0.1.0";
+        let iface_idx = instance
+            .get_export_index(&mut store, None, iface_name)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{iface_name}'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "validate-content")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'validate-content'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(String, String), (WitValidateResult,)>(&mut store, &func_idx)
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (result,) = func
+            .call(
+                &mut store,
+                (content_type.to_string(), content_json.to_string()),
+            )
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let diagnostics = result
+            .diagnostics
+            .into_iter()
+            .map(|d: WitDiagnostic| crate::types::Diagnostic {
+                severity: match d.severity {
+                    WitSeverity::Error => crate::types::Severity::Error,
+                    WitSeverity::Warning => crate::types::Severity::Warning,
+                    WitSeverity::Info => crate::types::Severity::Info,
+                    WitSeverity::Hint => crate::types::Severity::Hint,
+                },
+                code: d.code,
+                message: d.message,
+                path: d.path,
+            })
+            .collect();
+
+        Ok(crate::types::ValidateResult {
+            valid: result.valid,
+            diagnostics,
+        })
+    }
+}
+
+impl ExtensionRuntime {
     /// List all tools exposed by a loaded design extension.
     ///
     /// Calls `greentic:extension-design/tools@0.1.0::list-tools`.

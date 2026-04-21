@@ -33,3 +33,30 @@ pub struct KnowledgeEntry {
     pub tags: Vec<String>,
     pub content_json: String,
 }
+
+/// Host-side mirror of WIT `greentic:extension-base/types@0.1.0::severity`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    Error,
+    Warning,
+    Info,
+    Hint,
+}
+
+/// Host-side mirror of WIT `greentic:extension-base/types@0.1.0::diagnostic`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Diagnostic {
+    pub severity: Severity,
+    pub code: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+/// Host-side mirror of WIT `greentic:extension-design/validation@0.1.0::validate-result`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ValidateResult {
+    pub valid: bool,
+    pub diagnostics: Vec<Diagnostic>,
+}

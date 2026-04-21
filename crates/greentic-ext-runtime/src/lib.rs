@@ -21,4 +21,7 @@ pub use self::health::{ExtensionHealth, HealthReason};
 pub use self::host_state::HostState;
 pub use self::loaded::{ExtensionId, LoadedExtension, LoadedExtensionRef};
 pub use self::runtime::{ExtensionRuntime, RuntimeConfig, RuntimeEvent, WatcherGuard};
-pub use self::types::{KnowledgeEntry, KnowledgeEntrySummary, PromptFragment, ToolDefinition};
+pub use self::types::{
+    Diagnostic, KnowledgeEntry, KnowledgeEntrySummary, PromptFragment, Severity, ToolDefinition,
+    ValidateResult,
+};
