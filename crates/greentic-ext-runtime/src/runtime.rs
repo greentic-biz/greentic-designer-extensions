@@ -901,7 +901,7 @@ mod deploy_tests {
         let config = RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
         let rt = ExtensionRuntime::new(config).unwrap();
         let err = rt
-            .validate_credentials("does-not-exist", "target", r#"{}"#)
+            .validate_credentials("does-not-exist", "target", r"{}")
             .unwrap_err();
         assert!(matches!(err, RuntimeError::NotFound(_)));
     }

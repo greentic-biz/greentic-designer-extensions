@@ -91,6 +91,6 @@ mod target_summary_tests {
         let json = serde_json::to_string(&t).unwrap();
         let back: TargetSummary = serde_json::from_str(&json).unwrap();
         assert_eq!(back.id, t.id);
-        assert_eq!(back.supports_rollback, true);
+        assert!(back.supports_rollback);
     }
 }
