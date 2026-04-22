@@ -22,6 +22,6 @@ pub use self::host_state::HostState;
 pub use self::loaded::{ExtensionId, LoadedExtension, LoadedExtensionRef};
 pub use self::runtime::{ExtensionRuntime, RuntimeConfig, RuntimeEvent, WatcherGuard};
 pub use self::types::{
-    Diagnostic, KnowledgeEntry, KnowledgeEntrySummary, PromptFragment, Severity, ToolDefinition,
-    ValidateResult,
+    Diagnostic, KnowledgeEntry, KnowledgeEntrySummary, PromptFragment, Severity, TargetSummary,
+    ToolDefinition, ValidateResult,
 };
