@@ -682,6 +682,180 @@ fn wit_summary_to_host(
     }
 }
 
+impl ExtensionRuntime {
+    /// Ask a deploy extension to validate a credentials JSON payload for the
+    /// given target. Returns diagnostics; empty slice means valid.
+    pub fn validate_credentials(
+        &self,
+        ext_id: &str,
+        target_id: &str,
+        credentials_json: &str,
+    ) -> Result<Vec<crate::types::Diagnostic>, RuntimeError> {
+        use crate::host_bindings::deploy::exports::greentic::extension_deploy::targets::Diagnostic as WitDiagnostic;
+        use crate::host_bindings::deploy::greentic::extension_base::types::Severity as WitSeverity;
+
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine)
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_name = "greentic:extension-deploy/targets@0.1.0";
+        let iface_idx = instance
+            .get_export_index(&mut store, None, iface_name)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{iface_name}'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "validate-credentials")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'validate-credentials'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(String, String), (Vec<WitDiagnostic>,)>(&mut store, &func_idx)
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (result,) = func
+            .call(
+                &mut store,
+                (target_id.to_string(), credentials_json.to_string()),
+            )
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        Ok(result
+            .into_iter()
+            .map(|d| crate::types::Diagnostic {
+                severity: match d.severity {
+                    WitSeverity::Error => crate::types::Severity::Error,
+                    WitSeverity::Warning => crate::types::Severity::Warning,
+                    WitSeverity::Info => crate::types::Severity::Info,
+                    WitSeverity::Hint => crate::types::Severity::Hint,
+                },
+                code: d.code,
+                message: d.message,
+                path: d.path,
+            })
+            .collect())
+    }
+}
+
+impl ExtensionRuntime {
+    /// Return the JSON Schema (as a string) describing credentials required
+    /// by the given deploy target.
+    pub fn credential_schema(&self, ext_id: &str, target_id: &str) -> Result<String, RuntimeError> {
+        use crate::host_bindings::deploy::greentic::extension_base::types::ExtensionError;
+
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine)
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_name = "greentic:extension-deploy/targets@0.1.0";
+        let iface_idx = instance
+            .get_export_index(&mut store, None, iface_name)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{iface_name}'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "credential-schema")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'credential-schema'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(String,), (Result<String, ExtensionError>,)>(&mut store, &func_idx)
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (result,) = func
+            .call(&mut store, (target_id.to_string(),))
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        result.map_err(|e| {
+            RuntimeError::Wasmtime(anyhow::anyhow!(
+                "extension returned error for credential-schema target '{target_id}': {e:?}"
+            ))
+        })
+    }
+}
+
+impl ExtensionRuntime {
+    /// Enumerate targets exported by a loaded deploy extension.
+    ///
+    /// Returns the `list-targets` output as host-side `TargetSummary` values.
+    pub fn list_targets(
+        &self,
+        ext_id: &str,
+    ) -> Result<Vec<crate::types::TargetSummary>, RuntimeError> {
+        use crate::host_bindings::deploy::exports::greentic::extension_deploy::targets::TargetSummary as WitTargetSummary;
+
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine)
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_name = "greentic:extension-deploy/targets@0.1.0";
+        let iface_idx = instance
+            .get_export_index(&mut store, None, iface_name)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{iface_name}'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "list-targets")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'list-targets'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(), (Vec<WitTargetSummary>,)>(&mut store, &func_idx)
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (result,) = func
+            .call(&mut store, ())
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        Ok(result
+            .into_iter()
+            .map(|t| crate::types::TargetSummary {
+                id: t.id,
+                display_name: t.display_name,
+                description: t.description,
+                icon_path: t.icon_path,
+                supports_rollback: t.supports_rollback,
+            })
+            .collect())
+    }
+}
+
 fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut cur = p;
     loop {
@@ -689,5 +863,47 @@ fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {
             return Some(cur.to_path_buf());
         }
         cur = cur.parent()?;
+    }
+}
+
+#[cfg(test)]
+mod deploy_tests {
+    use super::*;
+
+    #[test]
+    fn list_targets_returns_error_for_unknown_extension() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config =
+            RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
+        let rt = ExtensionRuntime::new(config).unwrap();
+        let err = rt.list_targets("does-not-exist").unwrap_err();
+        match err {
+            RuntimeError::NotFound(id) => assert_eq!(id, "does-not-exist"),
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn credential_schema_returns_error_for_unknown_extension() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config =
+            RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
+        let rt = ExtensionRuntime::new(config).unwrap();
+        let err = rt
+            .credential_schema("does-not-exist", "some-target")
+            .unwrap_err();
+        assert!(matches!(err, RuntimeError::NotFound(_)));
+    }
+
+    #[test]
+    fn validate_credentials_returns_error_for_unknown_extension() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config =
+            RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
+        let rt = ExtensionRuntime::new(config).unwrap();
+        let err = rt
+            .validate_credentials("does-not-exist", "target", r"{}")
+            .unwrap_err();
+        assert!(matches!(err, RuntimeError::NotFound(_)));
     }
 }
