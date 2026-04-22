@@ -2,6 +2,7 @@
 name = "_wit-lint"
 version.workspace = true
 edition.workspace = true
+rust-version = "1.95"
 publish = false
 
 [dev-dependencies]
