@@ -752,11 +752,7 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// Return the JSON Schema (as a string) describing credentials required
     /// by the given deploy target.
-    pub fn credential_schema(
-        &self,
-        ext_id: &str,
-        target_id: &str,
-    ) -> Result<String, RuntimeError> {
+    pub fn credential_schema(&self, ext_id: &str, target_id: &str) -> Result<String, RuntimeError> {
         use crate::host_bindings::deploy::greentic::extension_base::types::ExtensionError;
 
         let loaded = self
@@ -877,7 +873,8 @@ mod deploy_tests {
     #[test]
     fn list_targets_returns_error_for_unknown_extension() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let config = RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
+        let config =
+            RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
         let rt = ExtensionRuntime::new(config).unwrap();
         let err = rt.list_targets("does-not-exist").unwrap_err();
         match err {
@@ -889,16 +886,20 @@ mod deploy_tests {
     #[test]
     fn credential_schema_returns_error_for_unknown_extension() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let config = RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
+        let config =
+            RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
         let rt = ExtensionRuntime::new(config).unwrap();
-        let err = rt.credential_schema("does-not-exist", "some-target").unwrap_err();
+        let err = rt
+            .credential_schema("does-not-exist", "some-target")
+            .unwrap_err();
         assert!(matches!(err, RuntimeError::NotFound(_)));
     }
 
     #[test]
     fn validate_credentials_returns_error_for_unknown_extension() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let config = RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
+        let config =
+            RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
         let rt = ExtensionRuntime::new(config).unwrap();
         let err = rt
             .validate_credentials("does-not-exist", "target", r"{}")

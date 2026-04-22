@@ -86,6 +86,9 @@ fn validate_credentials_returns_diagnostics_slice() {
         .expect("validate_credentials should succeed");
     // Sanity check: if diagnostics are present, each one has non-empty message.
     for d in &result {
-        assert!(!d.message.is_empty(), "diagnostic message should be non-empty");
+        assert!(
+            !d.message.is_empty(),
+            "diagnostic message should be non-empty"
+        );
     }
 }
