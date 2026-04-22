@@ -35,7 +35,7 @@ async fn hot_reload_picks_up_new_extension() {
     }
 
     // Wait for the debouncer (500ms) + processing time.
-    tokio::time::sleep(Duration::from_millis(2000)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     let loaded = rt.loaded();
     // guard drops here, cleanly stopping the watcher thread.
