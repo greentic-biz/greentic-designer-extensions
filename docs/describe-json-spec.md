@@ -227,6 +227,30 @@ cannot make any outbound HTTP calls even if it imports `greentic:extension-host/
 binary (WASI Preview 2, `wasm32-wasip2`). The path is relative to the root
 of the unpacked `.gtxpack` archive.
 
+#### `runtime.gtpack`
+
+An optional object embedding a runtime `.gtpack` inside the `.gtxpack` so
+the extension and its runtime pack install atomically.
+
+```json
+"runtime": {
+  "component": "extension.wasm",
+  "gtpack": {
+    "file": "runtime/my-component.gtpack",
+    "sha256": "<hex>",
+    "pack_id": "myco.my-node",
+    "component_version": "0.6.0"
+  }
+}
+```
+
+`runtime.gtpack` is permitted on two extension kinds:
+
+- `ProviderExtension` — required. The provider catalog metadata and the runtime `.gtpack` are both part of the same artifact.
+- `DesignExtension` — optional. Only permitted when `contributions.nodeTypes` contains at least one node descriptor. This enables node-providing design extensions that ship both a palette entry and the WASM component that executes it at runtime.
+
+On any other kind, setting `runtime.gtpack` is a validation error.
+
 ---
 
 ### `contributions`
