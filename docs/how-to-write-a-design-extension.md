@@ -174,6 +174,49 @@ will land inside the `.gtxpack`.
 
 ---
 
+## Step 4a — (Optional) Node-providing design extensions
+
+If your extension teaches the designer a new node type that is *executed at runtime* by a WASM component, you can embed the runtime `.gtpack` inside your `.gtxpack` so both install atomically.
+
+Requirements:
+- `kind` is still `DesignExtension`.
+- `contributions.nodeTypes` must be a non-empty array describing the palette entry (type_id, label, category, color, complexity, config_schema, output_ports).
+- `runtime.gtpack` must be set to the embedded pack (file path + sha256 + pack_id + component_version).
+
+Skeleton:
+
+```json
+{
+  "kind": "DesignExtension",
+  "runtime": {
+    "component": "extension.wasm",
+    "memoryLimitMB": 32,
+    "permissions": { "network": [], "secrets": ["*"], "callExtensionKinds": [] },
+    "gtpack": {
+      "file": "runtime/my-component.gtpack",
+      "sha256": "<computed at build>",
+      "pack_id": "myco.my-node",
+      "component_version": "0.6.0"
+    }
+  },
+  "contributions": {
+    "nodeTypes": [{
+      "type_id": "my-node",
+      "label": "My Node",
+      "category": "integration",
+      "color": "#6366f1",
+      "complexity": "simple",
+      "config_schema": "<stringified JSON Schema>",
+      "output_ports": [{"name": "default", "label": "Next"}]
+    }]
+  }
+}
+```
+
+`gtdx install` extracts the embedded `.gtpack` to the runner pack directory; the runner picks it up via its existing pack-index poll. Your extension's WASM handles design-time tools (validate, test, etc.); the embedded runtime handles flow execution.
+
+---
+
 ## Step 5 — `src/lib.rs` — Implement the WIT exports
 
 Run `cargo component build` once to generate the WIT bindings into

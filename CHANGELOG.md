@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## [0.3.0] - 2026-04-22
+
+### Changed
+
+- **Contract:** `runtime.gtpack` is now permitted on `DesignExtension` when `contributions.nodeTypes` is non-empty. Previously only `ProviderExtension` could embed a runtime `.gtpack`. This enables node-providing design extensions (first consumer: `greentic.llm-openai`). The invariant remains tight: embedding a runtime requires contributing at least one node type.
+- **Schema:** `describe-v1.json` gains a matching top-level `allOf` conditional mirroring the Rust invariant for `DesignExtension + runtime.gtpack`.
 
 ### Fixed
 - `gtdx publish` now embeds `runtime.gtpack.file` (with sha256 verification)
