@@ -114,10 +114,10 @@ pub fn format_human(event: &DevEvent) -> String {
             fmt_secs(*duration_ms),
         ),
         DevEvent::PackOk { pack_name, size } => {
-            format!("[{ts}] \u{2713} packed {pack_name} ({} KB)", size / 1024,)
+            format!("[{ts}] \u{2713} packed {pack_name} ({} KB)", size / 1024)
         }
         DevEvent::InstallOk { registry, version } => {
-            format!("[{ts}] \u{2713} installed {version} into {registry}. ready.",)
+            format!("[{ts}] \u{2713} installed {version} into {registry}. ready.")
         }
         DevEvent::InstallSkipped { reason } => format!("[{ts}] skipped install: {reason}"),
         DevEvent::Idle { last_build_ok } => {

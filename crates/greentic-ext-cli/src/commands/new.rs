@@ -284,8 +284,7 @@ fn wit_package_subdir_for(filename: &str) -> &'static str {
 fn now_iso8601() -> String {
     let secs = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs());
     let d = civil_date(secs);
     format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
