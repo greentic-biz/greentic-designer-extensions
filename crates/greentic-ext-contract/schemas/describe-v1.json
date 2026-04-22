@@ -3,83 +3,218 @@
   "$id": "https://store.greentic.ai/schemas/describe-v1.json",
   "title": "Greentic Designer Extension describe.json v1",
   "type": "object",
-  "required": ["apiVersion", "kind", "metadata", "engine", "capabilities", "runtime", "contributions"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "engine",
+    "capabilities",
+    "runtime",
+    "contributions"
+  ],
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
-    "apiVersion": { "const": "greentic.ai/v1" },
-    "kind": { "enum": ["DesignExtension", "BundleExtension", "DeployExtension", "ProviderExtension"] },
-    "metadata": { "$ref": "#/$defs/metadata" },
-    "engine": { "$ref": "#/$defs/engine" },
-    "capabilities": { "$ref": "#/$defs/capabilities" },
-    "runtime": { "$ref": "#/$defs/runtime" },
-    "contributions": { "type": "object" },
-    "signature": { "$ref": "#/$defs/signature" }
+    "$schema": {
+      "type": "string"
+    },
+    "apiVersion": {
+      "const": "greentic.ai/v1"
+    },
+    "kind": {
+      "enum": [
+        "DesignExtension",
+        "BundleExtension",
+        "DeployExtension",
+        "ProviderExtension"
+      ]
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "engine": {
+      "$ref": "#/$defs/engine"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/capabilities"
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtime"
+    },
+    "execution": {
+      "type": "object",
+      "description": "BundleExtension dispatch config (builtin vs wasm). Ignored for other kinds."
+    },
+    "contributions": {
+      "type": "object"
+    },
+    "signature": {
+      "$ref": "#/$defs/signature"
+    }
   },
   "$defs": {
     "metadata": {
       "type": "object",
-      "required": ["id", "name", "version", "summary", "author", "license"],
+      "required": [
+        "id",
+        "name",
+        "version",
+        "summary",
+        "author",
+        "license"
+      ],
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z][a-z0-9.-]*\\.[a-z0-9.-]+$" },
-        "name": { "type": "string", "minLength": 1 },
-        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$" },
-        "summary": { "type": "string", "maxLength": 200 },
-        "description": { "type": "string" },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9.-]*\\.[a-z0-9.-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$"
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string"
+        },
         "author": {
           "type": "object",
-          "required": ["name"],
+          "required": [
+            "name"
+          ],
           "properties": {
-            "name": { "type": "string" },
-            "email": { "type": "string" },
-            "publicKey": { "type": "string" }
+            "name": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string"
+            },
+            "publicKey": {
+              "type": "string"
+            }
           }
         },
-        "license": { "type": "string" },
-        "homepage": { "type": "string", "format": "uri" },
-        "repository": { "type": "string", "format": "uri" },
-        "keywords": { "type": "array", "items": { "type": "string" } },
-        "icon": { "type": "string" },
-        "screenshots": { "type": "array", "items": { "type": "string" } }
+        "license": {
+          "type": "string"
+        },
+        "homepage": {
+          "type": "string",
+          "format": "uri"
+        },
+        "repository": {
+          "type": "string",
+          "format": "uri"
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "icon": {
+          "type": "string"
+        },
+        "screenshots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "engine": {
       "type": "object",
-      "required": ["greenticDesigner", "extRuntime"],
+      "required": [
+        "greenticDesigner",
+        "extRuntime"
+      ],
       "properties": {
-        "greenticDesigner": { "type": "string" },
-        "extRuntime": { "type": "string" }
+        "greenticDesigner": {
+          "type": "string"
+        },
+        "extRuntime": {
+          "type": "string"
+        }
       }
     },
     "capabilities": {
       "type": "object",
       "properties": {
-        "offered": { "type": "array", "items": { "$ref": "#/$defs/capRef" } },
-        "required": { "type": "array", "items": { "$ref": "#/$defs/capRef" } }
+        "offered": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/capRef"
+          }
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/capRef"
+          }
+        }
       }
     },
     "capRef": {
       "type": "object",
-      "required": ["id", "version"],
+      "required": [
+        "id",
+        "version"
+      ],
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9/._-]*$" },
-        "version": { "type": "string" }
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9/._-]*$"
+        },
+        "version": {
+          "type": "string"
+        }
       }
     },
     "runtime": {
       "type": "object",
-      "required": ["component", "permissions"],
+      "required": [
+        "component",
+        "permissions"
+      ],
       "properties": {
-        "component": { "type": "string" },
-        "memoryLimitMB": { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "component": {
+          "type": "string"
+        },
+        "memoryLimitMB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
         "permissions": {
           "type": "object",
           "properties": {
-            "network": { "type": "array", "items": { "type": "string" } },
-            "secrets": { "type": "array", "items": { "type": "string" } },
+            "network": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "secrets": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "callExtensionKinds": {
               "type": "array",
-              "items": { "enum": ["design", "bundle", "deploy", "provider"] }
+              "items": {
+                "enum": [
+                  "design",
+                  "bundle",
+                  "deploy",
+                  "provider"
+                ]
+              }
             }
           }
         }
@@ -87,11 +222,21 @@
     },
     "signature": {
       "type": "object",
-      "required": ["algorithm", "publicKey", "value"],
+      "required": [
+        "algorithm",
+        "publicKey",
+        "value"
+      ],
       "properties": {
-        "algorithm": { "const": "ed25519" },
-        "publicKey": { "type": "string" },
-        "value": { "type": "string" }
+        "algorithm": {
+          "const": "ed25519"
+        },
+        "publicKey": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
       }
     }
   }
