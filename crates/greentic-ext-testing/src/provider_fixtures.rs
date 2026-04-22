@@ -78,6 +78,7 @@ pub fn build_provider_fixture_gtxpack(
                 component_version: "0.6.0".into(),
             }),
         },
+        execution: None,
         contributions: serde_json::json!({}),
         signature: None,
     };

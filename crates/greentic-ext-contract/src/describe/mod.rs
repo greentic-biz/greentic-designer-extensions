@@ -8,8 +8,13 @@ pub use provider::RuntimeGtpack;
 
 /// Top-level descriptor for a Greentic extension.
 ///
-/// Invariant enforced at deserialize time:
-/// `kind == ProviderExtension  ↔  runtime.gtpack.is_some()`
+/// Invariants enforced at deserialize time:
+/// - `kind == ProviderExtension  ↔  runtime.gtpack.is_some()`
+/// - `execution.is_some()` only when `kind == BundleExtension`
+///
+/// `execution` is a pass-through `serde_json::Value` at contract level;
+/// each `BundleExtension`'s own reader parses the typed shape
+/// (`{kind: "builtin", builtinId: "..."}` or `{kind: "wasm"}`).
 #[derive(Debug, Clone, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DescribeJson {
@@ -22,13 +27,15 @@ pub struct DescribeJson {
     pub engine: Engine,
     pub capabilities: Capabilities,
     pub runtime: Runtime,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<serde_json::Value>,
     pub contributions: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<Signature>,
 }
 
 /// Private intermediate for deserialization — identical shape to `DescribeJson`.
-/// `TryFrom` validates the kind ↔ gtpack invariant before constructing the real type.
+/// `TryFrom` validates the kind-specific invariants before constructing the real type.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DescribeJsonRaw {
@@ -41,6 +48,8 @@ struct DescribeJsonRaw {
     engine: Engine,
     capabilities: Capabilities,
     runtime: Runtime,
+    #[serde(default)]
+    execution: Option<serde_json::Value>,
     contributions: serde_json::Value,
     #[serde(default)]
     signature: Option<Signature>,
@@ -53,23 +62,33 @@ impl TryFrom<DescribeJsonRaw> for DescribeJson {
         let has_gtpack = raw.runtime.gtpack.is_some();
         match (raw.kind, has_gtpack) {
             (ExtensionKind::Provider, false) => {
-                Err("kind=ProviderExtension requires `runtime.gtpack` to be set".into())
+                return Err("kind=ProviderExtension requires `runtime.gtpack` to be set".into());
             }
-            (k, true) if k != ExtensionKind::Provider => Err(format!(
-                "runtime.gtpack is only allowed when kind=ProviderExtension (got kind={k:?})"
-            )),
-            _ => Ok(DescribeJson {
-                schema_ref: raw.schema_ref,
-                api_version: raw.api_version,
-                kind: raw.kind,
-                metadata: raw.metadata,
-                engine: raw.engine,
-                capabilities: raw.capabilities,
-                runtime: raw.runtime,
-                contributions: raw.contributions,
-                signature: raw.signature,
-            }),
+            (k, true) if k != ExtensionKind::Provider => {
+                return Err(format!(
+                    "runtime.gtpack is only allowed when kind=ProviderExtension (got kind={k:?})"
+                ));
+            }
+            _ => {}
         }
+        if raw.execution.is_some() && raw.kind != ExtensionKind::Bundle {
+            return Err(format!(
+                "`execution` is only allowed when kind=BundleExtension (got kind={:?})",
+                raw.kind
+            ));
+        }
+        Ok(DescribeJson {
+            schema_ref: raw.schema_ref,
+            api_version: raw.api_version,
+            kind: raw.kind,
+            metadata: raw.metadata,
+            engine: raw.engine,
+            capabilities: raw.capabilities,
+            runtime: raw.runtime,
+            execution: raw.execution,
+            contributions: raw.contributions,
+            signature: raw.signature,
+        })
     }
 }
 
