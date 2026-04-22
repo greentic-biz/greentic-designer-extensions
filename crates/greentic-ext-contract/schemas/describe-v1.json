@@ -51,6 +51,34 @@
       "$ref": "#/$defs/signature"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": { "const": "DesignExtension" },
+          "runtime": {
+            "required": ["gtpack"]
+          }
+        },
+        "required": ["kind", "runtime"]
+      },
+      "then": {
+        "properties": {
+          "contributions": {
+            "type": "object",
+            "required": ["nodeTypes"],
+            "properties": {
+              "nodeTypes": {
+                "type": "array",
+                "minItems": 1
+              }
+            }
+          }
+        },
+        "required": ["contributions"]
+      }
+    }
+  ],
   "$defs": {
     "metadata": {
       "type": "object",

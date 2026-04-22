@@ -9,8 +9,11 @@ pub use provider::RuntimeGtpack;
 /// Top-level descriptor for a Greentic extension.
 ///
 /// Invariants enforced at deserialize time:
-/// - `kind == ProviderExtension  ↔  runtime.gtpack.is_some()`
-/// - `execution.is_some()` only when `kind == BundleExtension`
+/// - `kind == Provider`  ↔  `runtime.gtpack.is_some()` (required)
+/// - `kind == Design` with `runtime.gtpack.is_some()` requires `contributions.nodeTypes`
+///   to be a non-empty array (node-providing design extension)
+/// - `runtime.gtpack.is_some()` is forbidden on all other kinds
+/// - `execution.is_some()` only when `kind == Bundle`
 ///
 /// `execution` is a pass-through `serde_json::Value` at contract level;
 /// each `BundleExtension`'s own reader parses the typed shape
@@ -60,13 +63,27 @@ impl TryFrom<DescribeJsonRaw> for DescribeJson {
 
     fn try_from(raw: DescribeJsonRaw) -> Result<Self, String> {
         let has_gtpack = raw.runtime.gtpack.is_some();
+        let has_node_types = raw
+            .contributions
+            .get("nodeTypes")
+            .and_then(|v| v.as_array())
+            .is_some_and(|a| !a.is_empty());
+
         match (raw.kind, has_gtpack) {
             (ExtensionKind::Provider, false) => {
                 return Err("kind=ProviderExtension requires `runtime.gtpack` to be set".into());
             }
-            (k, true) if k != ExtensionKind::Provider => {
+            (ExtensionKind::Design, true) if !has_node_types => {
+                return Err(
+                    "DesignExtension with `runtime.gtpack` must contribute `nodeTypes` \
+                     (gtpack is only justified when the extension teaches the runtime new node types)"
+                        .into(),
+                );
+            }
+            (k, true) if k != ExtensionKind::Provider && k != ExtensionKind::Design => {
                 return Err(format!(
-                    "runtime.gtpack is only allowed when kind=ProviderExtension (got kind={k:?})"
+                    "runtime.gtpack is only allowed for ProviderExtension, or for \
+                     DesignExtension that contributes `nodeTypes` (got kind={k:?})"
                 ));
             }
             _ => {}
