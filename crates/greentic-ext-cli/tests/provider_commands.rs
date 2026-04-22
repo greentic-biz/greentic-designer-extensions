@@ -60,6 +60,7 @@ fn write_design_fixture(extensions_root: &std::path::Path) {
             permissions: Permissions::default(),
             gtpack: None,
         },
+        execution: None,
         contributions: serde_json::json!({}),
         signature: None,
     };
@@ -122,6 +123,7 @@ fn write_provider_fixture(extensions_root: &std::path::Path) {
                 component_version: "0.6.0".into(),
             }),
         },
+        execution: None,
         contributions: serde_json::json!({}),
         signature: None,
     };
@@ -336,6 +338,7 @@ fn write_provider_fixture_with_capabilities(
                 component_version: "0.6.0".into(),
             }),
         },
+        execution: None,
         contributions: serde_json::json!({}),
         signature: None,
     };

@@ -157,3 +157,101 @@ fn round_trips_without_data_loss() {
     let parsed_back: DescribeJson = serde_json::from_str(&serialized).unwrap();
     assert_eq!(parsed_back.metadata.id, d.metadata.id);
 }
+
+const BUNDLE_STANDARD_FIXTURE: &str = r#"{
+  "apiVersion": "greentic.ai/v1",
+  "kind": "BundleExtension",
+  "metadata": {
+    "id": "greentic.bundle-standard",
+    "name": "Standard Bundle Recipe",
+    "version": "0.1.0",
+    "summary": "Package designer session into a Greentic pack (.gtpack ZIP)",
+    "author": { "name": "Greentic" },
+    "license": "MIT"
+  },
+  "engine": {
+    "greenticDesigner": ">=0.6.0",
+    "extRuntime": "^0.1.0"
+  },
+  "capabilities": {
+    "offered": [{ "id": "greentic:bundle/standard", "version": "0.1.0" }],
+    "required": []
+  },
+  "runtime": {
+    "component": "extension.wasm",
+    "memoryLimitMB": 128,
+    "permissions": { "network": [], "secrets": [], "callExtensionKinds": [] }
+  },
+  "execution": {
+    "kind": "builtin",
+    "builtinId": "standard"
+  },
+  "contributions": {
+    "recipes": [
+      {
+        "id": "standard",
+        "displayName": "Standard Greentic Pack",
+        "description": "Package designer session into a .gtpack archive",
+        "configSchema": "schemas/standard.config.schema.json"
+      }
+    ]
+  }
+}"#;
+
+#[test]
+fn bundle_extension_with_execution_parses() {
+    let d: DescribeJson = serde_json::from_str(BUNDLE_STANDARD_FIXTURE).unwrap();
+    assert_eq!(d.metadata.id, "greentic.bundle-standard");
+    assert_eq!(d.kind, greentic_ext_contract::ExtensionKind::Bundle);
+    let exec = d.execution.as_ref().expect("execution present");
+    assert_eq!(exec["kind"], "builtin");
+    assert_eq!(exec["builtinId"], "standard");
+}
+
+#[test]
+fn bundle_extension_without_execution_also_parses() {
+    // `execution` is optional at contract level — bundle-specific readers
+    // enforce its presence for kind=Bundle. The unified contract just
+    // shouldn't reject BundleExtension descriptors that omit it.
+    let json = BUNDLE_STANDARD_FIXTURE.replace(
+        "\"execution\": {\n    \"kind\": \"builtin\",\n    \"builtinId\": \"standard\"\n  },\n  ",
+        "",
+    );
+    let d: DescribeJson = serde_json::from_str(&json).unwrap();
+    assert!(d.execution.is_none());
+    assert_eq!(d.kind, greentic_ext_contract::ExtensionKind::Bundle);
+}
+
+#[test]
+fn non_bundle_rejects_execution() {
+    let json = serde_json::json!({
+        "apiVersion": "greentic.ai/v1",
+        "kind": "DesignExtension",
+        "metadata": base_metadata(),
+        "engine": base_engine(),
+        "capabilities": base_capabilities(),
+        "runtime": {
+            "component": "extension.wasm",
+            "memoryLimitMB": 64,
+            "permissions": base_permissions()
+        },
+        "execution": { "kind": "builtin", "builtinId": "standard" },
+        "contributions": {}
+    });
+    let err = serde_json::from_value::<DescribeJson>(json)
+        .unwrap_err()
+        .to_string()
+        .to_lowercase();
+    assert!(
+        err.contains("execution") && err.contains("bundleextension"),
+        "error should explain execution-on-non-bundle; got: {err}"
+    );
+}
+
+#[test]
+fn bundle_extension_roundtrips_execution() {
+    let d: DescribeJson = serde_json::from_str(BUNDLE_STANDARD_FIXTURE).unwrap();
+    let serialized = serde_json::to_string(&d).unwrap();
+    let parsed_back: DescribeJson = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(parsed_back.execution, d.execution);
+}

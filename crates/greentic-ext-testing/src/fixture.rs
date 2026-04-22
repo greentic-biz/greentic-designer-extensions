@@ -109,6 +109,7 @@ impl ExtensionFixtureBuilder {
                 permissions: greentic_ext_contract::describe::Permissions::default(),
                 gtpack: None,
             },
+            execution: None,
             contributions: serde_json::json!({}),
             signature: None,
         };

@@ -43,6 +43,7 @@ fn sample_describe(version: &str) -> DescribeJson {
             permissions: Permissions::default(),
             gtpack: None,
         },
+        execution: None,
         contributions: serde_json::json!({}),
         signature: None,
     }

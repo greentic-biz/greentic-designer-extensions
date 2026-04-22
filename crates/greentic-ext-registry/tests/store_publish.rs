@@ -53,6 +53,7 @@ fn sample_req() -> PublishRequest {
                 permissions: Permissions::default(),
                 gtpack: None,
             },
+            execution: None,
             contributions: serde_json::json!({}),
             signature: None,
         },
