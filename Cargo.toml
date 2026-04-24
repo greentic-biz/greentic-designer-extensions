@@ -53,7 +53,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 walkdir = "2"
 wasmtime = { version = "43", features = ["component-model", "async"] }
-which = "6"
+which = "8"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 wasmtime-wasi = "43"
 wasmtime-wasi-http = "43"
