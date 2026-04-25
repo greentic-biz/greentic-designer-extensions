@@ -54,6 +54,17 @@ impl ExtensionState {
         let key = format!("{ext_id}@{version}");
         self.default.enabled.insert(key, enabled);
     }
+
+    /// Persist this state atomically to `<home>/extensions-state.json`.
+    ///
+    /// Uses `tmp + fsync + rename` so concurrent readers always see a
+    /// complete snapshot, never a half-written file. Concurrent writers
+    /// are gated by an advisory `.lock` file with bounded retries.
+    pub fn save_atomic(&self, home: &Path) -> Result<(), crate::StateError> {
+        let path = state_path(home);
+        let content = serde_json::to_vec_pretty(self)?;
+        crate::atomic::write_atomic(&path, &content)
+    }
 }
 
 pub(crate) fn state_path(home: &Path) -> PathBuf {

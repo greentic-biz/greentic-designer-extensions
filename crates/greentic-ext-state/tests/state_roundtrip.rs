@@ -36,3 +36,29 @@ fn set_enabled_then_query() {
     state.set_enabled("ext.x", "0.1.0", true);
     assert!(state.is_enabled("ext.x", "0.1.0"));
 }
+
+#[test]
+fn save_atomic_writes_then_reload_returns_same_data() {
+    let tmp = TempDir::new().unwrap();
+    let mut state = ExtensionState::default();
+    state.set_enabled("ext.x", "0.1.0", false);
+    state.save_atomic(tmp.path()).unwrap();
+
+    let reloaded = ExtensionState::load(tmp.path()).unwrap();
+    assert!(!reloaded.is_enabled("ext.x", "0.1.0"));
+    assert!(reloaded.is_enabled("ext.y", "0.1.0")); // default true
+}
+
+#[test]
+fn save_atomic_does_not_leave_tmp_or_lock_on_disk() {
+    let tmp = TempDir::new().unwrap();
+    let state = ExtensionState::default();
+    state.save_atomic(tmp.path()).unwrap();
+
+    let names: Vec<_> = std::fs::read_dir(tmp.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(names.len(), 1, "expected one file, got: {names:?}");
+    assert_eq!(names[0], "extensions-state.json");
+}
