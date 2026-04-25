@@ -8,6 +8,7 @@ members = [
     "crates/greentic-ext-testing",
     "crates/greentic-ext-registry",
     "crates/greentic-ext-state",
+    "crates/greentic-pack-registry",
 ]
 
 [workspace.package]
