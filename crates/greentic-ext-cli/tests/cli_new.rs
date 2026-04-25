@@ -293,20 +293,20 @@ fn scaffolded_describe_json_validates_against_schema() {
 #[test]
 fn new_wasm_component_accepts_node_type_id_and_label() {
     let tmp = tempfile::tempdir().unwrap();
-    let status = std::process::Command::new(env!("CARGO_BIN_EXE_gtdx"))
-        .args([
-            "new",
-            "greentic.test-tool",
-            "--kind",
-            "wasm-component",
-            "--node-type-id",
-            "test-tool",
-            "--label",
-            "Test Tool",
-        ])
-        .current_dir(tmp.path())
-        .status()
-        .unwrap();
-    assert!(status.success());
-    assert!(tmp.path().join("greentic.test-tool/describe.json").exists());
+    let proj = tmp.path().join("greentic.test-tool");
+    let (ok, stdout, stderr) = run(Command::new(gtdx_bin())
+        .arg("new")
+        .arg("greentic.test-tool")
+        .arg("--kind")
+        .arg("wasm-component")
+        .arg("--node-type-id")
+        .arg("test-tool")
+        .arg("--label")
+        .arg("Test Tool")
+        .arg("--dir")
+        .arg(&proj)
+        .arg("-y")
+        .arg("--no-git"));
+    assert!(ok, "gtdx new failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+    assert!(proj.join("describe.json").exists());
 }

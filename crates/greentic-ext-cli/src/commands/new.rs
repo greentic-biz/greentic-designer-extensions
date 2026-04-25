@@ -118,6 +118,7 @@ fn build_context(args: &Args, id: &str, author: &str) -> Context {
     let mut ctx = Context::new();
     ctx.set("name", args.name.clone());
     ctx.set("kind", args.kind.as_str());
+    // Assumes ASCII kebab-case `name`; non-ASCII or all-uppercase input may produce odd labels.
     let derived_id = args
         .name
         .split('.')
