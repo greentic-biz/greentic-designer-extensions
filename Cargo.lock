@@ -1450,6 +1450,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "greentic-ext-state"
+version = "0.4.0"
+dependencies = [
+ "fs2",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "greentic-ext-testing"
 version = "0.4.0"
 dependencies = [
