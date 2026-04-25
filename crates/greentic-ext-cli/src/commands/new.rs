@@ -18,13 +18,7 @@ use crate::scaffold::{
 #[derive(ClapArgs, Debug)]
 pub struct Args {
     /// Project folder name (kebab-case). Also default id suffix.
-    /// Can be supplied positionally or via `--name`.
-    #[arg(value_name = "NAME")]
-    pub name_positional: Option<String>,
-
-    /// Project folder name (kebab-case) as a long flag alternative.
-    #[arg(long = "name", conflicts_with = "name_positional")]
-    pub name_flag: Option<String>,
+    pub name: String,
 
     /// Extension kind
     #[arg(short = 'k', long, value_enum, default_value = "design")]
@@ -71,28 +65,15 @@ pub struct Args {
     pub label: Option<String>,
 }
 
-impl Args {
-    /// Resolve the project name from either the positional arg or `--name` flag.
-    pub fn name(&self) -> anyhow::Result<&str> {
-        match (&self.name_positional, &self.name_flag) {
-            (Some(s), None) | (None, Some(s)) => Ok(s.as_str()),
-            (Some(_), Some(_)) => {
-                anyhow::bail!("provide name either positionally or via --name, not both")
-            }
-            (None, None) => {
-                anyhow::bail!("project name is required (positional or --name)")
-            }
-        }
-    }
-}
-
 pub fn run(args: &Args, _home: &Path) -> anyhow::Result<()> {
-    let name = args.name()?.to_string();
-    let target = args.dir.clone().unwrap_or_else(|| PathBuf::from(&name));
+    let target = args
+        .dir
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(&args.name));
     let id = args
         .id
         .clone()
-        .unwrap_or_else(|| format!("com.example.{name}"));
+        .unwrap_or_else(|| format!("com.example.{}", args.name));
     let author = args.author.clone().unwrap_or_else(detect_git_author);
     validate_id(&id)?;
     validate_version(&args.version)?;
@@ -100,7 +81,7 @@ pub fn run(args: &Args, _home: &Path) -> anyhow::Result<()> {
     run_preflight(&target, args.force)?;
     prepare_target(&target, args.force)?;
 
-    let ctx = build_context(args, &name, &id, &author);
+    let ctx = build_context(args, &id, &author);
     let mut files_written = render_templates(&ctx, args.kind.as_str(), &target)?;
     files_written += write_wit_and_lock(args.kind.as_str(), &target)?;
 
@@ -133,11 +114,16 @@ fn prepare_target(target: &Path, force: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_context(args: &Args, name: &str, id: &str, author: &str) -> Context {
+fn build_context(args: &Args, id: &str, author: &str) -> Context {
     let mut ctx = Context::new();
-    ctx.set("name", name.to_string());
+    ctx.set("name", args.name.clone());
     ctx.set("kind", args.kind.as_str());
-    let derived_id = name.split('.').next_back().unwrap_or(name).to_string();
+    let derived_id = args
+        .name
+        .split('.')
+        .next_back()
+        .unwrap_or(&args.name)
+        .to_string();
     let node_type_id = args
         .node_type_id
         .clone()

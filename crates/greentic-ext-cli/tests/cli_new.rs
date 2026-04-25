@@ -296,10 +296,9 @@ fn new_wasm_component_accepts_node_type_id_and_label() {
     let status = std::process::Command::new(env!("CARGO_BIN_EXE_gtdx"))
         .args([
             "new",
+            "greentic.test-tool",
             "--kind",
             "wasm-component",
-            "--name",
-            "greentic.test-tool",
             "--node-type-id",
             "test-tool",
             "--label",
