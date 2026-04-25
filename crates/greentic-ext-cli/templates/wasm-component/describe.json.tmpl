@@ -1,15 +1,24 @@
 {
+  "$schema": "https://store.greentic.ai/schemas/describe-v1.json",
   "apiVersion": "greentic.ai/v1",
   "kind": "DesignExtension",
   "metadata": {
     "id": "{{id}}",
     "name": "{{name}}",
     "version": "{{version}}",
-    "author": "{{author}}"
+    "summary": "A Greentic Designer extension that wraps a WASM component as a node.",
+    "author": {
+      "name": "{{author}}"
+    },
+    "license": "{{license}}"
   },
   "engine": {
-    "greenticDesigner": "^0.x",
-    "extRuntime": "^0.10"
+    "greenticDesigner": "^{{contract_version}}",
+    "extRuntime": "^{{contract_version}}"
+  },
+  "capabilities": {
+    "offered": [],
+    "required": []
   },
   "contributions": {
     "nodeTypes": [
@@ -35,11 +44,11 @@
       "sha256": "REPLACE_AT_BUILD",
       "pack_id": "{{id}}",
       "component_version": "0.1.0"
+    },
+    "permissions": {
+      "network": [],
+      "secrets": [],
+      "callExtensionKinds": []
     }
-  },
-  "permissions": {
-    "network": [],
-    "secrets": [],
-    "callExtensionKinds": []
   }
 }
