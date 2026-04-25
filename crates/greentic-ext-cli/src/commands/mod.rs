@@ -1,5 +1,6 @@
 pub mod dev;
 pub mod doctor;
+pub mod enable;
 pub mod info;
 pub mod install;
 pub mod keygen;

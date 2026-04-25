@@ -24,6 +24,7 @@ ed25519-dalek = { workspace = true, features = ["pkcs8", "pem"] }
 greentic-ext-contract = { path = "../greentic-ext-contract" }
 greentic-ext-registry = { path = "../greentic-ext-registry" }
 greentic-ext-runtime = { path = "../greentic-ext-runtime" }
+greentic-ext-state = { path = "../greentic-ext-state" }
 include_dir = { workspace = true }
 notify-debouncer-full = { workspace = true }
 pkcs8 = { workspace = true }

@@ -1355,6 +1355,7 @@ dependencies = [
  "greentic-ext-contract",
  "greentic-ext-registry",
  "greentic-ext-runtime",
+ "greentic-ext-state",
  "greentic-ext-testing",
  "include_dir",
  "jsonschema",

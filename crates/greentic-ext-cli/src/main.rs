@@ -46,6 +46,8 @@ enum Command {
     Registries(commands::registries::Args),
     /// Diagnose installed extensions
     Doctor(commands::doctor::Args),
+    /// Enable an installed extension
+    Enable(commands::enable::EnableArgs),
     /// Sign a describe.json in-place with ed25519
     Sign(commands::sign::Args),
     /// Verify an extension's signature (file, directory, or .gtxpack)
@@ -78,6 +80,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Logout(args) => commands::login::run_logout(&args, &home),
         Command::Registries(args) => commands::registries::run(args, &home),
         Command::Doctor(args) => commands::doctor::run(args, &home).await,
+        Command::Enable(args) => commands::enable::run(&args, &home),
         Command::Sign(args) => commands::sign::run(&args, &home),
         Command::Verify(args) => commands::verify::run(&args, &home),
         Command::Version => {
