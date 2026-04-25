@@ -289,3 +289,25 @@ fn scaffolded_describe_json_validates_against_schema() {
         }
     }
 }
+
+#[test]
+fn new_wasm_component_accepts_node_type_id_and_label() {
+    let tmp = tempfile::tempdir().unwrap();
+    let status = std::process::Command::new(env!("CARGO_BIN_EXE_gtdx"))
+        .args([
+            "new",
+            "--kind",
+            "wasm-component",
+            "--name",
+            "greentic.test-tool",
+            "--node-type-id",
+            "test-tool",
+            "--label",
+            "Test Tool",
+        ])
+        .current_dir(tmp.path())
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert!(tmp.path().join("greentic.test-tool/describe.json").exists());
+}
