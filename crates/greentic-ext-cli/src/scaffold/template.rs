@@ -9,6 +9,8 @@ static TEMPLATES_DESIGN: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/d
 static TEMPLATES_BUNDLE: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/bundle");
 static TEMPLATES_DEPLOY: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/deploy");
 static TEMPLATES_PROVIDER: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/provider");
+static TEMPLATES_WASM_COMPONENT: Dir<'_> =
+    include_dir!("$CARGO_MANIFEST_DIR/templates/wasm-component");
 
 #[derive(Debug, Clone)]
 pub struct TemplateEntry {
@@ -58,6 +60,7 @@ pub fn load_templates_kind(kind: &str) -> Vec<TemplateEntry> {
         "bundle" => collect(&TEMPLATES_BUNDLE),
         "deploy" => collect(&TEMPLATES_DEPLOY),
         "provider" => collect(&TEMPLATES_PROVIDER),
+        "wasm-component" => collect(&TEMPLATES_WASM_COMPONENT),
         _ => Vec::new(),
     }
 }
