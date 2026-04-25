@@ -55,6 +55,14 @@ pub struct Args {
     /// Skip interactive prompts
     #[arg(short = 'y', long)]
     pub yes: bool,
+
+    /// Node type ID (defaults to derived suffix of --name).
+    #[arg(long)]
+    pub node_type_id: Option<String>,
+
+    /// Display label for the node (defaults to humanized --name).
+    #[arg(long)]
+    pub label: Option<String>,
 }
 
 pub fn run(args: &Args, _home: &Path) -> anyhow::Result<()> {
@@ -109,7 +117,36 @@ fn prepare_target(target: &Path, force: bool) -> anyhow::Result<()> {
 fn build_context(args: &Args, id: &str, author: &str) -> Context {
     let mut ctx = Context::new();
     ctx.set("name", args.name.clone());
+    let name_cargo = args.name.replace('.', "-");
+    ctx.set("name_cargo", &name_cargo);
     ctx.set("kind", args.kind.as_str());
+    // Assumes ASCII kebab-case `name`; non-ASCII or all-uppercase input may produce odd labels.
+    let derived_id = args
+        .name
+        .split('.')
+        .next_back()
+        .unwrap_or(&args.name)
+        .to_string();
+    let node_type_id = args
+        .node_type_id
+        .clone()
+        .unwrap_or_else(|| derived_id.clone());
+    let label = args.label.clone().unwrap_or_else(|| {
+        derived_id
+            .replace('-', " ")
+            .split(' ')
+            .map(|w| {
+                let mut c = w.chars();
+                match c.next() {
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    });
+    ctx.set("node_type_id", &node_type_id);
+    ctx.set("label", &label);
     ctx.set("id", id);
     ctx.set("id_wit", id_to_wit_package(id));
     ctx.set("version", &args.version);

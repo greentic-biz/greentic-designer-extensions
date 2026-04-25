@@ -12,6 +12,7 @@ pub enum Kind {
     Bundle,
     Deploy,
     Provider,
+    WasmComponent,
 }
 
 impl Kind {
@@ -21,6 +22,17 @@ impl Kind {
             Kind::Bundle => "bundle",
             Kind::Deploy => "deploy",
             Kind::Provider => "provider",
+            Kind::WasmComponent => "wasm-component",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wasm_component_kind_str() {
+        assert_eq!(Kind::WasmComponent.as_str(), "wasm-component");
     }
 }
