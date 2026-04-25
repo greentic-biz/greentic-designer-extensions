@@ -389,3 +389,42 @@ fn new_wasm_component_produces_expected_tree() {
         "nodeTypes[0].label mismatch: {first}"
     );
 }
+
+/// Smoke test: scaffold a wasm-component extension and confirm the generated
+/// extension crate compiles to `wasm32-wasip2`. Gated with `#[ignore]` because
+/// it needs the `wasm32-wasip2` rustup target and network access for cargo
+/// dependency resolution. Run explicitly with:
+/// `cargo test -p greentic-ext-cli -- --ignored new_wasm_component_compiles_to_wasi_p2`.
+#[test]
+#[ignore = "requires wasm32-wasip2 toolchain; run with `cargo test -- --ignored`"]
+fn new_wasm_component_compiles_to_wasi_p2() {
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = tmp.path().join("greentic.compile-test");
+    let (ok, stdout, stderr) = run(Command::new(gtdx_bin())
+        .arg("new")
+        .arg("greentic.compile-test")
+        .arg("--kind")
+        .arg("wasm-component")
+        .arg("--dir")
+        .arg(&proj)
+        .arg("-y")
+        .arg("--no-git"));
+    assert!(ok, "gtdx new failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+
+    let manifest = proj.join("extension/Cargo.toml");
+    assert!(
+        manifest.exists(),
+        "extension/Cargo.toml missing after scaffold"
+    );
+
+    let (ok, build_stdout, build_stderr) = run(Command::new("cargo")
+        .arg("build")
+        .arg("--target")
+        .arg("wasm32-wasip2")
+        .arg("--manifest-path")
+        .arg(&manifest));
+    assert!(
+        ok,
+        "cargo build --target wasm32-wasip2 failed\nstdout:\n{build_stdout}\nstderr:\n{build_stderr}"
+    );
+}
