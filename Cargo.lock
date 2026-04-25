@@ -1476,6 +1476,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "greentic-pack-registry"
+version = "0.4.0"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "wiremock",
+]
+
+[[package]]
 name = "h2"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
