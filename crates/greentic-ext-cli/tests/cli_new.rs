@@ -310,3 +310,82 @@ fn new_wasm_component_accepts_node_type_id_and_label() {
     assert!(ok, "gtdx new failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
     assert!(proj.join("describe.json").exists());
 }
+
+#[test]
+fn new_wasm_component_produces_expected_tree() {
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = tmp.path().join("greentic.snap-test");
+    let (ok, stdout, stderr) = run(Command::new(gtdx_bin())
+        .arg("new")
+        .arg("greentic.snap-test")
+        .arg("--kind")
+        .arg("wasm-component")
+        .arg("--id")
+        .arg("greentic.snap-test")
+        .arg("--author")
+        .arg("Test Author")
+        .arg("--node-type-id")
+        .arg("snap")
+        .arg("--label")
+        .arg("Snap")
+        .arg("--dir")
+        .arg(&proj)
+        .arg("-y")
+        .arg("--no-git"));
+    assert!(ok, "gtdx new failed\nstdout:\n{stdout}\nstderr:\n{stderr}");
+
+    for rel in [
+        "Cargo.toml",
+        "describe.json",
+        "README.md",
+        ".gitignore",
+        "rust-toolchain.toml",
+        "extension/Cargo.toml",
+        "extension/src/lib.rs",
+        "extension/wit/world.wit",
+        "runtime/README.md",
+    ] {
+        assert!(
+            proj.join(rel).exists(),
+            "missing expected file: {rel}\nstdout:\n{stdout}"
+        );
+    }
+
+    let describe_bytes = std::fs::read(proj.join("describe.json")).unwrap();
+    let describe: serde_json::Value = serde_json::from_slice(&describe_bytes).unwrap();
+
+    assert_eq!(
+        describe
+            .get("metadata")
+            .and_then(|m| m.get("id"))
+            .and_then(|v| v.as_str()),
+        Some("greentic.snap-test"),
+        "describe.json metadata.id mismatch: {describe}"
+    );
+    assert_eq!(
+        describe
+            .get("metadata")
+            .and_then(|m| m.get("author"))
+            .and_then(|a| a.get("name"))
+            .and_then(|v| v.as_str()),
+        Some("Test Author"),
+        "describe.json metadata.author.name mismatch: {describe}"
+    );
+
+    let node_types = describe
+        .get("contributions")
+        .and_then(|c| c.get("nodeTypes"))
+        .and_then(|n| n.as_array())
+        .expect("contributions.nodeTypes must be an array");
+    let first = node_types.first().expect("nodeTypes must have one entry");
+    assert_eq!(
+        first.get("type_id").and_then(|v| v.as_str()),
+        Some("snap"),
+        "nodeTypes[0].type_id mismatch: {first}"
+    );
+    assert_eq!(
+        first.get("label").and_then(|v| v.as_str()),
+        Some("Snap"),
+        "nodeTypes[0].label mismatch: {first}"
+    );
+}
