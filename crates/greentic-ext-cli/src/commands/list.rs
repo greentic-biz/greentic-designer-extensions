@@ -34,6 +34,9 @@ impl KindArg {
 pub struct Args {
     #[arg(long, value_enum, default_value_t = KindArg::All)]
     pub kind: KindArg,
+    /// Show enabled/disabled status column.
+    #[arg(long)]
+    pub status: bool,
 }
 
 pub fn run(args: Args, home: &Path) -> anyhow::Result<()> {
@@ -48,6 +51,12 @@ pub fn run(args: Args, home: &Path) -> anyhow::Result<()> {
             ExtensionKind::Deploy,
             ExtensionKind::Provider,
         ]
+    };
+
+    let state = if args.status {
+        Some(greentic_ext_state::ExtensionState::load(home).unwrap_or_default())
+    } else {
+        None
     };
 
     for kind in kinds {
@@ -72,10 +81,22 @@ pub fn run(args: Args, home: &Path) -> anyhow::Result<()> {
                 println!("[{}]", kind.dir_name());
                 any = true;
             }
-            println!(
-                "  {}@{}  {}",
-                d.metadata.id, d.metadata.version, d.metadata.summary
-            );
+            if let Some(state) = state.as_ref() {
+                let status_label = if state.is_enabled(&d.metadata.id, &d.metadata.version) {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
+                println!(
+                    "  {:<40} {:<12} {:<10} {}",
+                    d.metadata.id, d.metadata.version, status_label, d.metadata.summary
+                );
+            } else {
+                println!(
+                    "  {}@{}  {}",
+                    d.metadata.id, d.metadata.version, d.metadata.summary
+                );
+            }
         }
     }
     Ok(())
