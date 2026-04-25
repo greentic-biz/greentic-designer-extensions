@@ -62,3 +62,25 @@ fn save_atomic_does_not_leave_tmp_or_lock_on_disk() {
     assert_eq!(names.len(), 1, "expected one file, got: {names:?}");
     assert_eq!(names[0], "extensions-state.json");
 }
+
+#[test]
+fn concurrent_writers_do_not_corrupt_file() {
+    use std::sync::Arc;
+    let tmp = Arc::new(TempDir::new().unwrap());
+    let mut handles = vec![];
+    for i in 0..10 {
+        let tmp = tmp.clone();
+        handles.push(std::thread::spawn(move || {
+            let mut state = ExtensionState::load(tmp.path()).unwrap();
+            state.set_enabled(&format!("ext.{i}"), "0.1.0", i % 2 == 0);
+            // Best-effort save; LockContention is acceptable under contention.
+            let _ = state.save_atomic(tmp.path());
+        }));
+    }
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    // File must parse cleanly after the dust settles.
+    let _final_state = ExtensionState::load(tmp.path()).unwrap();
+}
