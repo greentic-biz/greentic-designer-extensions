@@ -35,6 +35,8 @@ GREENTIC_HOME=./.gtdx-test gtdx list
 - [list](#list)
 - [install](#install)
 - [uninstall](#uninstall)
+- [enable](#enable)
+- [disable](#disable)
 - [search](#search)
 - [info](#info)
 - [login](#login)
@@ -166,10 +168,14 @@ List installed extensions.
 **Synopsis:**
 
 ```
-gtdx list
+gtdx list [--status]
 ```
 
-**Arguments:** None.
+**Arguments:**
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--status` | No | false | Append an `enabled`/`disabled` column derived from `<home>/extensions-state.json`. Extensions absent from the state file are reported as `enabled` (the default). |
 
 **Description:**
 
@@ -191,6 +197,23 @@ $ gtdx list
 ```
 
 If no extensions are installed the output is empty.
+
+**Example with `--status`:**
+
+```
+$ gtdx list --status
+[design]
+  greentic.adaptive-cards@1.6.0  enabled   Design and validate Microsoft Adaptive Cards v1.6
+  greentic.llm-openai@0.1.0      disabled  OpenAI-backed LLM nodes
+
+[bundle]
+  greentic.hosted-webchat@1.0.0  enabled   Package designer output as a hosted WebChat pack
+
+[deploy]
+```
+
+See [Lifecycle Management](./lifecycle-management.md) for the state file
+format and atomic-write semantics.
 
 ---
 
@@ -295,6 +318,92 @@ If no matching installation is found:
 $ gtdx uninstall greentic.adaptive-cards
 nothing to remove for greentic.adaptive-cards
 ```
+
+---
+
+## `enable`
+
+Enable an installed extension.
+
+**Synopsis:**
+
+```
+gtdx enable <TARGET>
+```
+
+**Arguments:**
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `TARGET` | Yes | — | Extension id, optionally with `@<version>` (e.g. `greentic.adaptive-cards@1.6.0`). When the version is omitted and only one is installed, it is inferred. With multiple installed versions, the command errors and lists them. |
+
+**Description:**
+
+- Verifies the extension is installed under
+  `<home>/extensions/<kind>/<id>-<version>/` before writing state.
+- Writes `enabled: true` to `<home>/extensions-state.json` atomically.
+- Idempotent — re-enabling an already-enabled extension prints the success
+  message and exits 0.
+
+**Example:**
+
+```
+$ gtdx enable greentic.adaptive-cards
+✓ enabled greentic.adaptive-cards@1.6.0
+
+$ gtdx enable greentic.llm-openai@0.1.0
+✓ enabled greentic.llm-openai@0.1.0
+```
+
+See [Lifecycle Management](./lifecycle-management.md) for the state file
+format.
+
+---
+
+## `disable`
+
+Disable an installed extension. Disabled extensions stay installed but
+contribute no palette nodes; consumers like `greentic-designer` skip them
+at boot and on hot reload.
+
+**Synopsis:**
+
+```
+gtdx disable <TARGET>
+```
+
+**Arguments:**
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `TARGET` | Yes | — | Same form as `enable`: extension id, optionally with `@<version>`. |
+
+**Description:**
+
+- Same install verification and atomic state write as `enable` (just
+  `enabled: false`).
+- Scans peer extensions and warns to stderr when any of them declare a
+  `capabilities.required` entry that matches a `capabilities.offered`
+  entry from the target. The warning is informational; the disable still
+  proceeds. Cascade resolution is intentionally out of scope for the MVP.
+
+**Example:**
+
+```
+$ gtdx disable greentic.adaptive-cards
+✓ disabled greentic.adaptive-cards@1.6.0
+```
+
+**With dependency warning:**
+
+```
+$ gtdx disable greentic.adaptive-cards
+warning: greentic.flow-designer@0.2.0 requires capability 'adaptive-cards.render' offered by greentic.adaptive-cards
+✓ disabled greentic.adaptive-cards@1.6.0
+```
+
+See [Lifecycle Management](./lifecycle-management.md) for hot-reload
+behavior and the state file format.
 
 ---
 
