@@ -1355,6 +1355,7 @@ dependencies = [
  "greentic-ext-contract",
  "greentic-ext-registry",
  "greentic-ext-runtime",
+ "greentic-ext-state",
  "greentic-ext-testing",
  "include_dir",
  "jsonschema",
@@ -1447,6 +1448,17 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wat",
+]
+
+[[package]]
+name = "greentic-ext-state"
+version = "0.4.0"
+dependencies = [
+ "fs2",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
