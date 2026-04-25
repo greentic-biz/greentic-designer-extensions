@@ -117,6 +117,8 @@ fn prepare_target(target: &Path, force: bool) -> anyhow::Result<()> {
 fn build_context(args: &Args, id: &str, author: &str) -> Context {
     let mut ctx = Context::new();
     ctx.set("name", args.name.clone());
+    let name_cargo = args.name.replace('.', "-");
+    ctx.set("name_cargo", &name_cargo);
     ctx.set("kind", args.kind.as_str());
     // Assumes ASCII kebab-case `name`; non-ASCII or all-uppercase input may produce odd labels.
     let derived_id = args
