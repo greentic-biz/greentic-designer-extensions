@@ -29,6 +29,16 @@ impl DiscoveryPaths {
         }
         v
     }
+
+    /// Return the inferred greentic home directory — the parent of the
+    /// `user` extensions root. By convention `user` is the directory that
+    /// holds per-kind subdirs (e.g. `<home>/extensions/`), so its parent
+    /// is the home dir where `extensions-state.json` lives. Returns
+    /// `None` if `user` has no parent (e.g. `/`).
+    #[must_use]
+    pub fn home(&self) -> Option<&Path> {
+        self.user.parent()
+    }
 }
 
 /// Scan a single kind directory (e.g. `~/.greentic/extensions/design/`).

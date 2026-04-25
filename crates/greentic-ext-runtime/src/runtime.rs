@@ -10,6 +10,13 @@ use crate::discovery::DiscoveryPaths;
 use crate::error::RuntimeError;
 use crate::loaded::{ExtensionId, LoadedExtension, LoadedExtensionRef};
 
+/// Filename of the persistent enable/disable state document, located at
+/// `<home>/extensions-state.json`. Kept in sync with the constant of the
+/// same name in `greentic-ext-state` (single source of truth lives there;
+/// this duplicate exists only because the runtime intentionally does not
+/// depend on `greentic-ext-state` to avoid a circular crate dependency).
+const STATE_FILENAME: &str = "extensions-state.json";
+
 #[derive(Clone, Debug)]
 pub struct RuntimeConfig {
     pub paths: DiscoveryPaths,
@@ -168,7 +175,18 @@ impl ExtensionRuntime {
     /// sending on it signals the watcher thread to exit. Also returns the
     /// thread `JoinHandle` for callers that want to wait for clean shutdown.
     pub fn start_watcher(self: Arc<Self>) -> Result<WatcherGuard, RuntimeError> {
-        let paths: Vec<std::path::PathBuf> = self.config.paths.all().into_iter().cloned().collect();
+        let mut paths: Vec<std::path::PathBuf> =
+            self.config.paths.all().into_iter().cloned().collect();
+        // Also watch the parent of the extensions root so we receive events
+        // for `<home>/extensions-state.json`. Best-effort: if the home dir
+        // doesn't exist or has no parent we silently skip — the kind dirs
+        // are still watched.
+        if let Some(home) = self.config.paths.home()
+            && home.exists()
+            && !paths.iter().any(|p| p == home)
+        {
+            paths.push(home.to_path_buf());
+        }
         let (rx, watch_handle) = crate::watcher::watch(&paths)?;
         let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
         let this = self.clone();
@@ -204,6 +222,16 @@ impl ExtensionRuntime {
         let path = match event {
             FsEvent::Added(p) | FsEvent::Modified(p) | FsEvent::Removed(p) => p.clone(),
         };
+
+        // Classify state file events first. The state file lives at
+        // `<home>/extensions-state.json`, which is outside the per-kind
+        // extension dirs, so `find_extension_dir` would return None — but
+        // matching by filename is cheaper and unambiguous.
+        if path.file_name().is_some_and(|n| n == STATE_FILENAME) {
+            let _ = self.events.send(RuntimeEvent::StateFileChanged);
+            return Ok(());
+        }
+
         let ext_dir = find_extension_dir(&path);
         match event {
             FsEvent::Removed(_) => {
