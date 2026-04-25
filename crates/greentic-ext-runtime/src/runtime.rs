@@ -39,6 +39,9 @@ pub enum RuntimeEvent {
     },
     ExtensionRemoved(ExtensionId),
     CapabilityRegistryRebuilt,
+    /// `~/.greentic/extensions-state.json` was created or modified. Subscribers
+    /// should reload extension state and re-apply their enable/disable filter.
+    StateFileChanged,
 }
 
 /// Returned by [`ExtensionRuntime::start_watcher`]. Dropping this stops the
