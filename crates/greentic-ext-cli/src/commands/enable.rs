@@ -41,6 +41,7 @@ pub(crate) fn parse_target(target: &str, home: &Path) -> Result<(String, String)
 }
 
 pub(crate) fn installed_versions(home: &Path, id: &str) -> Result<Vec<String>> {
+    let prefix = format!("{id}-");
     let mut out = vec![];
     for kind in ["design", "deploy", "bundle", "provider"] {
         let dir = home.join("extensions").join(kind);
@@ -50,9 +51,16 @@ pub(crate) fn installed_versions(home: &Path, id: &str) -> Result<Vec<String>> {
         for entry in std::fs::read_dir(&dir)? {
             let entry = entry?;
             let name = entry.file_name().into_string().unwrap_or_default();
-            if let Some(rest) = name.strip_prefix(&format!("{id}-")) {
-                out.push(rest.to_string());
+            let Some(rest) = name.strip_prefix(&prefix) else {
+                continue;
+            };
+            // Reject when `rest` is not a valid semver — this filters out
+            // dirs whose id itself contains a dash (e.g., looking for
+            // `greentic.foo` should not match `greentic.foo-bar-0.1.0`).
+            if semver::Version::parse(rest).is_err() {
+                continue;
             }
+            out.push(rest.to_string());
         }
     }
     out.sort();
