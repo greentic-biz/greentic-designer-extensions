@@ -30,6 +30,7 @@ GREENTIC_HOME=./.gtdx-test gtdx list
 
 ## Table of Contents
 
+- [new](#new)
 - [validate](#validate)
 - [list](#list)
 - [install](#install)
@@ -41,6 +42,77 @@ GREENTIC_HOME=./.gtdx-test gtdx list
 - [registries](#registries)
 - [doctor](#doctor)
 - [version](#version)
+
+---
+
+## `new`
+
+Scaffold a new extension project from a built-in template.
+
+**Synopsis:**
+
+```
+gtdx new <NAME> [--kind KIND] [--id ID] [--version VERSION] [--author NAME]
+              [--license SPDX] [--dir PATH] [--node-type-id ID]
+              [--label TEXT] [--force] [--no-git] [-y]
+```
+
+**Arguments:**
+
+| Argument / Flag | Required | Default | Description |
+|-----------------|----------|---------|-------------|
+| `NAME` | Yes | — | Project folder name (kebab-case). Also used as the default suffix when `--id` is omitted. |
+| `-k`, `--kind KIND` | No | `design` | Extension kind. One of: `design`, `bundle`, `deploy`, `provider`, `wasm-component`. |
+| `-i`, `--id ID` | No | `com.example.<NAME>` | Reverse-DNS extension id (e.g. `myco.my-tool`). |
+| `-v`, `--version VERSION` | No | `0.1.0` | Initial semver. |
+| `--author NAME` | No | `git config user.name` | Author name written into `describe.json` and Cargo metadata. |
+| `--license SPDX` | No | `Apache-2.0` | SPDX license id. |
+| `--dir PATH` | No | `./<NAME>` | Output directory. |
+| `--node-type-id ID` | No | last `.`-separated segment of `<NAME>` | **`wasm-component` only.** Sets `contributions.nodeTypes[0].type_id` in `describe.json`. |
+| `--label TEXT` | No | humanized form of derived `--node-type-id` | **`wasm-component` only.** Sets `contributions.nodeTypes[0].label`. |
+| `--force` | No | false | Overwrite the target directory if it already exists. |
+| `--no-git` | No | false | Skip `git init` after scaffolding. |
+| `-y`, `--yes` | No | false | Skip interactive prompts. |
+
+**Kinds:**
+
+- **`design`** — full design extension (validation, prompting, knowledge,
+  multi-tool). See
+  [how-to-write-a-design-extension.md](./how-to-write-a-design-extension.md).
+- **`bundle`** — packages designer output into Application Packs. See
+  [how-to-write-a-bundle-extension.md](./how-to-write-a-bundle-extension.md).
+- **`deploy`** — deploys Application Packs to targets. See
+  [how-to-write-a-deploy-extension.md](./how-to-write-a-deploy-extension.md).
+- **`provider`** — messaging / event provider. See
+  [how-to-write-a-provider-extension.md](./how-to-write-a-provider-extension.md).
+- **`wasm-component`** — convenience flavor for wrapping a pre-built WASM
+  runtime `.gtpack` as a single designer canvas node. Use this when you
+  already have a working component and only need to surface it as a node.
+  See
+  [how-to-write-a-wasm-component-extension.md](./how-to-write-a-wasm-component-extension.md).
+
+**Example — design extension (default):**
+
+```
+$ gtdx new my-ext --id com.example.my-ext
+Scaffolded design extension at ./my-ext (12 files, contract 0.1.0).
+```
+
+**Example — wasm-component flavor:**
+
+```
+$ gtdx new myco.my-tool \
+    --kind wasm-component \
+    --node-type-id my-tool \
+    --label "My Tool" \
+    --dir ./my-tool \
+    -y --no-git
+Scaffolded wasm-component extension at ./my-tool (10 files, contract 0.1.0).
+```
+
+The output directory contains a Cargo workspace, the extension WASM crate
+under `extension/`, a `runtime/` subdirectory ready for your pre-built
+`.gtpack`, and a pre-wired `describe.json` with one `nodeTypes` entry.
 
 ---
 
