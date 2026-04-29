@@ -11,7 +11,7 @@ publish = false
 [dependencies]
 anyhow = { workspace = true }
 arc-swap = { workspace = true }
-greentic-extension-sdk-contract = { git = "https://github.com/greenticai/greentic-designer-sdk", branch = "main", package = "greentic-extension-sdk-contract" }
+greentic-extension-sdk-contract = "0.4"
 notify = { workspace = true }
 notify-debouncer-full = { workspace = true }
 semver = { workspace = true }
@@ -25,7 +25,7 @@ wasmtime-wasi = { workspace = true }
 
 [dev-dependencies]
 ed25519-dalek = { workspace = true }
-greentic-extension-sdk-testing = { git = "https://github.com/greenticai/greentic-designer-sdk", branch = "main", package = "greentic-extension-sdk-testing" }
+greentic-extension-sdk-testing = "0.4"
 rand = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
