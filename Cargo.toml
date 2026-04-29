@@ -2,13 +2,12 @@
 resolver = "2"
 members = [
     "crates/_wit-lint",
-    "crates/greentic-ext-contract",
     "crates/greentic-ext-runtime",
-    "crates/greentic-ext-cli",
-    "crates/greentic-ext-testing",
-    "crates/greentic-ext-registry",
-    "crates/greentic-ext-state",
 ]
+# greentic-ext-contract, greentic-ext-state, greentic-ext-registry,
+# greentic-ext-testing, and greentic-ext-cli (gtdx) extracted to the public SDK
+# repo at https://github.com/greenticai/greentic-designer-sdk and consumed via
+# git dep below until they land on crates.io.
 
 [workspace.package]
 edition = "2024"
