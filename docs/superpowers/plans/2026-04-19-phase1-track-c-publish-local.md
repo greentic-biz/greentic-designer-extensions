@@ -4,9 +4,9 @@
 
 **Goal:** Add `gtdx publish` subcommand that validates, builds, and atomically publishes a scaffolded Greentic Designer Extension as a deterministic `.gtxpack` into `$GTDX_HOME/registries/local/`. Wires `ExtensionRegistry::publish()` end-to-end for the filesystem backend; Store/OCI backends return `NotImplemented` with actionable hints.
 
-**Architecture:** Shared deterministic ZIP writer moves into `greentic-ext-contract::pack_writer` and is consumed by both Track B (`gtdx dev`'s packer) and Track C (`gtdx publish`). `LocalFilesystemRegistry::publish()` writes the hierarchical `<id>/<version>/<id>-<version>.gtxpack` layout with atomic rename + `fs2` advisory file lock on `index.json`. `GreenticStoreRegistry` and `OciRegistry` override `publish()` to return `RegistryError::NotImplemented`. A new `publish_cmd.rs` orchestrates build → validate → pack → publish → receipt. Describe.json validation aggregates errors (not bail-on-first). Optional `--sign` reuses the existing JCS `sign_describe` (Wave 1 signing is already merged — we do NOT ship the spec's "phase1-artifact-sig-only" workaround).
+**Architecture:** Shared deterministic ZIP writer moves into `greentic-extension-sdk-contract::pack_writer` and is consumed by both Track B (`gtdx dev`'s packer) and Track C (`gtdx publish`). `LocalFilesystemRegistry::publish()` writes the hierarchical `<id>/<version>/<id>-<version>.gtxpack` layout with atomic rename + `fs2` advisory file lock on `index.json`. `GreenticStoreRegistry` and `OciRegistry` override `publish()` to return `RegistryError::NotImplemented`. A new `publish_cmd.rs` orchestrates build → validate → pack → publish → receipt. Describe.json validation aggregates errors (not bail-on-first). Optional `--sign` reuses the existing JCS `sign_describe` (Wave 1 signing is already merged — we do NOT ship the spec's "phase1-artifact-sig-only" workaround).
 
-**Tech Stack:** Rust 1.94, edition 2024, async-trait, serde, serde_json, fs2 (new workspace dep), zip, sha2, chrono, tempfile, existing `greentic-ext-contract::signature::sign_describe`, existing `wit-bindgen 0.41` surface.
+**Tech Stack:** Rust 1.94, edition 2024, async-trait, serde, serde_json, fs2 (new workspace dep), zip, sha2, chrono, tempfile, existing `greentic-extension-sdk-contract::signature::sign_describe`, existing `wit-bindgen 0.41` surface.
 
 **Spec:** `docs/superpowers/specs/2026-04-18-phase1-publish-local-design.md`
 **Parent:** `docs/superpowers/specs/2026-04-18-dx-10-10-roadmap.md` (subsystem S3)
@@ -17,7 +17,7 @@
 
 ### Create
 
-- `crates/greentic-ext-contract/src/pack_writer.rs` (~200 LOC) — deterministic ZIP writer with sorted entries, zeroed timestamps, normalized Unix modes, LF line-ending normalization for text files. Exported as `pub use` from `lib.rs`.
+- `crates/greentic-extension-sdk-contract/src/pack_writer.rs` (~200 LOC) — deterministic ZIP writer with sorted entries, zeroed timestamps, normalized Unix modes, LF line-ending normalization for text files. Exported as `pub use` from `lib.rs`.
 - `crates/greentic-ext-registry/src/publish.rs` (~70 LOC) — `PublishRequest` + `PublishReceipt` types; re-exported from registry lib.
 - `crates/greentic-ext-registry/src/local_publish.rs` (~220 LOC) — `LocalFilesystemRegistry::publish` impl, index.json updater, advisory locking.
 - `crates/greentic-ext-cli/src/commands/publish.rs` (~260 LOC) — clap `Args`, orchestrator, human/JSON format output.
@@ -30,8 +30,8 @@
 ### Modify
 
 - `Cargo.toml` (workspace root) — add `fs2 = "0.4"`, `chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }` (chrono may already be transitive; add explicit).
-- `crates/greentic-ext-contract/src/lib.rs` — declare `pub mod pack_writer;` and re-export key types.
-- `crates/greentic-ext-contract/Cargo.toml` — add deps `zip`, `sha2` (may already be dev-deps; promote to regular if needed).
+- `crates/greentic-extension-sdk-contract/src/lib.rs` — declare `pub mod pack_writer;` and re-export key types.
+- `crates/greentic-extension-sdk-contract/Cargo.toml` — add deps `zip`, `sha2` (may already be dev-deps; promote to regular if needed).
 - `crates/greentic-ext-registry/Cargo.toml` — add deps `fs2`, `chrono`.
 - `crates/greentic-ext-registry/src/lib.rs` — declare `pub mod publish;` + `pub mod local_publish;` and re-export `PublishRequest`/`PublishReceipt`.
 - `crates/greentic-ext-registry/src/registry.rs` — change `publish()` trait default to return `RegistryError::NotImplemented`; update signature to take `PublishRequest`.
@@ -51,7 +51,7 @@
 
 **Files:**
 - Modify: `Cargo.toml`
-- Modify: `crates/greentic-ext-contract/Cargo.toml`
+- Modify: `crates/greentic-extension-sdk-contract/Cargo.toml`
 - Modify: `crates/greentic-ext-registry/Cargo.toml`
 - Modify: `crates/greentic-ext-cli/Cargo.toml`
 
@@ -66,7 +66,7 @@ fs2 = "0.4"
 
 - [ ] **Step 2: ext-contract deps**
 
-Edit `crates/greentic-ext-contract/Cargo.toml`, under `[dependencies]`, ensure present (add if missing):
+Edit `crates/greentic-extension-sdk-contract/Cargo.toml`, under `[dependencies]`, ensure present (add if missing):
 
 ```toml
 zip = { workspace = true }
@@ -98,7 +98,7 @@ Expected: exit 0.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Cargo.toml crates/greentic-ext-contract/Cargo.toml crates/greentic-ext-registry/Cargo.toml crates/greentic-ext-cli/Cargo.toml
+git add Cargo.toml crates/greentic-extension-sdk-contract/Cargo.toml crates/greentic-ext-registry/Cargo.toml crates/greentic-ext-cli/Cargo.toml
 git commit -m "chore: add fs2 + chrono deps for Track C publish path"
 ```
 
@@ -107,12 +107,12 @@ git commit -m "chore: add fs2 + chrono deps for Track C publish path"
 ## Task 2: Deterministic pack writer in ext-contract
 
 **Files:**
-- Create: `crates/greentic-ext-contract/src/pack_writer.rs`
-- Modify: `crates/greentic-ext-contract/src/lib.rs`
+- Create: `crates/greentic-extension-sdk-contract/src/pack_writer.rs`
+- Modify: `crates/greentic-extension-sdk-contract/src/lib.rs`
 
 - [ ] **Step 1: Write module + tests**
 
-Create `crates/greentic-ext-contract/src/pack_writer.rs`:
+Create `crates/greentic-extension-sdk-contract/src/pack_writer.rs`:
 
 ```rust
 //! Deterministic `.gtxpack` writer shared between `gtdx dev` and `gtdx publish`.
@@ -300,7 +300,7 @@ mod tests {
 
 - [ ] **Step 2: Wire into lib.rs**
 
-Edit `crates/greentic-ext-contract/src/lib.rs`. Add module declaration (keep alphabetical — between `kind` and `schema`):
+Edit `crates/greentic-extension-sdk-contract/src/lib.rs`. Add module declaration (keep alphabetical — between `kind` and `schema`):
 
 ```rust
 pub mod pack_writer;
@@ -314,13 +314,13 @@ pub use self::pack_writer::{PackEntry, PackWriterError, build_gtxpack, sha256_he
 
 - [ ] **Step 3: Verify**
 
-Run: `cargo test -p greentic-ext-contract --lib pack_writer 2>&1 | tail -15`
+Run: `cargo test -p greentic-extension-sdk-contract --lib pack_writer 2>&1 | tail -15`
 Expected: 6 passed.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/src/pack_writer.rs crates/greentic-ext-contract/src/lib.rs
+git add crates/greentic-extension-sdk-contract/src/pack_writer.rs crates/greentic-extension-sdk-contract/src/lib.rs
 git commit -m "feat(ext-contract): deterministic pack_writer with sorted entries, zeroed timestamps, LF normalization"
 ```
 
@@ -339,11 +339,11 @@ Replace `crates/greentic-ext-cli/src/dev/packer.rs` entirely:
 
 ```rust
 //! `.gtxpack` builder: stages describe + wasm + assets and hands off to the
-//! shared `greentic-ext-contract::pack_writer` for deterministic ZIP emission.
+//! shared `greentic-extension-sdk-contract::pack_writer` for deterministic ZIP emission.
 
 use std::path::{Path, PathBuf};
 
-use greentic_ext_contract::pack_writer::{PackEntry, build_gtxpack, sha256_hex};
+use greentic_extension_sdk_contract::pack_writer::{PackEntry, build_gtxpack, sha256_hex};
 use walkdir::WalkDir;
 
 /// Summary of a packed `.gtxpack`.
@@ -529,7 +529,7 @@ Expected: 4 passed (one new test for determinism).
 
 ```bash
 git add crates/greentic-ext-cli/src/dev/packer.rs
-git commit -m "refactor(ext-cli): dev packer delegates to greentic-ext-contract::pack_writer"
+git commit -m "refactor(ext-cli): dev packer delegates to greentic-extension-sdk-contract::pack_writer"
 ```
 
 ---
@@ -546,7 +546,7 @@ git commit -m "refactor(ext-cli): dev packer delegates to greentic-ext-contract:
 //! Types for `ExtensionRegistry::publish()` requests + receipts.
 
 use chrono::{DateTime, Utc};
-use greentic_ext_contract::{DescribeJson, ExtensionKind};
+use greentic_extension_sdk_contract::{DescribeJson, ExtensionKind};
 use serde::{Deserialize, Serialize};
 
 /// One publish invocation: self-contained, backend-agnostic.
@@ -1063,7 +1063,7 @@ pub mod validator;
 ```rust
 //! Aggregated pre-publish describe.json validation.
 
-use greentic_ext_contract::DescribeJson;
+use greentic_extension_sdk_contract::DescribeJson;
 use semver::Version;
 
 /// Validate describe for publish. All violations are collected before returning.
@@ -1167,7 +1167,7 @@ pub fn format_errors(errors: &[ValidationError]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use greentic_ext_contract::{
+    use greentic_extension_sdk_contract::{
         describe::{Author, Capabilities, Engine, Metadata, Permissions, Runtime},
         DescribeJson, ExtensionKind,
     };
@@ -1472,7 +1472,7 @@ Append to `crates/greentic-ext-cli/src/publish/mod.rs`:
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
-use greentic_ext_contract::DescribeJson;
+use greentic_extension_sdk_contract::DescribeJson;
 use greentic_ext_registry::local::LocalFilesystemRegistry;
 use greentic_ext_registry::publish::{PublishRequest, SignatureBlob};
 use greentic_ext_registry::registry::ExtensionRegistry;
@@ -1505,7 +1505,7 @@ pub async fn run_publish(cfg: &PublishConfig) -> anyhow::Result<PublishOutcome> 
         .map_err(|e| anyhow::anyhow!("read describe.json: {e}"))?;
     let describe_value: serde_json::Value = serde_json::from_slice(&describe_bytes)
         .map_err(|e| anyhow::anyhow!("parse describe.json: {e}"))?;
-    greentic_ext_contract::schema::validate_describe_json(&describe_value)
+    greentic_extension_sdk_contract::schema::validate_describe_json(&describe_value)
         .map_err(|e| anyhow::anyhow!("describe.json schema: {e}"))?;
     let mut describe: DescribeJson = serde_json::from_value(describe_value)?;
     if let Some(v) = &cfg.version_override {
@@ -1558,7 +1558,7 @@ pub async fn run_publish(cfg: &PublishConfig) -> anyhow::Result<PublishOutcome> 
             .clone()
             .ok_or_else(|| anyhow::anyhow!("--sign requires --key-id"))?;
         let signing_key = load_signing_key(&cfg.home, &key_id)?;
-        greentic_ext_contract::sign_describe(&mut describe, &signing_key)
+        greentic_extension_sdk_contract::sign_describe(&mut describe, &signing_key)
             .map_err(|e| anyhow::anyhow!("sign: {e}"))?;
         let sig = describe
             .signature
@@ -1819,7 +1819,7 @@ git commit -m "feat(ext-cli): publish orchestrator wires build + validate + pack
 
 ```rust
 use chrono::Utc;
-use greentic_ext_contract::{
+use greentic_extension_sdk_contract::{
     describe::{Author, Capabilities, Engine, Metadata, Permissions, Runtime},
     DescribeJson, ExtensionKind,
 };
@@ -2156,7 +2156,7 @@ Under `## Unreleased` → `### Added`, append:
   `--force`, `--sign --key-id <id>`, `--version` override, and `--verify-only`.
   Writes a receipt at `./dist/publish-<id>-<version>.json`. Store and OCI
   registries return `NotImplemented` for now (Phase 2).
-- `greentic-ext-contract::pack_writer` — deterministic ZIP writer (sorted
+- `greentic-extension-sdk-contract::pack_writer` — deterministic ZIP writer (sorted
   entries, zeroed timestamps, LF normalization) shared by `gtdx dev` and
   `gtdx publish`.
 ```

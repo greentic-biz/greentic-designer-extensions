@@ -1,4 +1,4 @@
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_runtime::{Broker, BrokerError};
 
 #[test]

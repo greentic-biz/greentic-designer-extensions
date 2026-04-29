@@ -509,7 +509,7 @@ gtdx install myco.my-extension --version 0.1.0
   `suggest_entries` with meaningful data.
 - Add i18n support: create `i18n/en.json` and reference it in
   `contributions.i18n`.
-- Add integration tests using `greentic-ext-testing` (see
+- Add integration tests using `greentic-extension-sdk-testing` (see
   `reference-extensions/adaptive-cards/tests/`).
 
 For publishing with a permanent key and countersigning, see

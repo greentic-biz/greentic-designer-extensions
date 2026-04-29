@@ -12,8 +12,8 @@
 
 `greentic-biz/greentic-designer-extensions` already ships most of an ed25519 signing stack:
 
-- `greentic-ext-contract::signature::verify_ed25519(pubkey_b64, sig_b64, payload)` — production-ready.
-- `greentic-ext-contract::describe::Signature { algorithm, publicKey, value }` — schema field exists, optional.
+- `greentic-extension-sdk-contract::signature::verify_ed25519(pubkey_b64, sig_b64, payload)` — production-ready.
+- `greentic-extension-sdk-contract::describe::Signature { algorithm, publicKey, value }` — schema field exists, optional.
 - `greentic-ext-registry::lifecycle::verify_signature` — trust policies (`Strict` / `Normal` / `Loose`) defined.
 - Test roundtrip in `tests/signature_rt.rs` — primitive sign/verify confirmed.
 
@@ -56,7 +56,7 @@ End-to-end signed extensions with:
 | --- | --- |
 | `greentic-biz/greentic-designer-extensions` | **Wave 1.** Fix canonicalization, add `sign_describe` / `verify_describe` helpers, add `sign / verify / keygen` subcommands to `gtdx`, add runtime verify hook, update registry to new canonical path, bump `greentic-ext-runtime` patch. |
 | `greentic-biz/greentic-deployer-extensions` | **Wave 2.** `build.sh` env-aware signing, `deploy-desktop@0.2.0` signed rebuild, new `deploy-single-vm@0.1.0` crate, CI `EXT_SIGNING_KEY_PEM` secret wired, `CI_REQUIRE_SIGNED` guardrail, gtdx installed in CI. |
-| `greenticai/greentic-deployer` | **Wave 3.** Bump pinned rev of `greentic-ext-runtime` + `greentic-ext-contract`. Add `BuiltinBackendId::SingleVm` + `BuiltinBackendHandlerId::SingleVm` variants with `FromStr` / `as_str` / `handler_matches`. Adjust `tests/ext_{loader,dispatch}.rs` to set `GREENTIC_EXT_ALLOW_UNSIGNED=1` for in-repo fixture. Bump `0.4.53 → 0.4.54`. |
+| `greenticai/greentic-deployer` | **Wave 3.** Bump pinned rev of `greentic-ext-runtime` + `greentic-extension-sdk-contract`. Add `BuiltinBackendId::SingleVm` + `BuiltinBackendHandlerId::SingleVm` variants with `FromStr` / `as_str` / `handler_matches`. Adjust `tests/ext_{loader,dispatch}.rs` to set `GREENTIC_EXT_ALLOW_UNSIGNED=1` for in-repo fixture. Bump `0.4.53 → 0.4.54`. |
 
 ### Ship order
 
@@ -95,7 +95,7 @@ Load time (deployer / runner):
        │     tracing::warn! "signature verification skipped"
        │     return Ok(())
        ├─ else:
-       │     greentic_ext_contract::verify_describe(&describe)
+       │     greentic_extension_sdk_contract::verify_describe(&describe)
        │       • describe.signature.ok_or(missing)?
        │       • canonical = jcs::to_vec(&strip_signature(&describe))
        │       • verify_ed25519(sig.publicKey, sig.value, canonical)
@@ -144,16 +144,16 @@ Public key prefix (first 16 chars) documented in each consumer README for audit.
 
 | File | Change |
 | --- | --- |
-| `crates/greentic-ext-contract/Cargo.toml` | Add dep `serde_jcs = "0.1"` |
-| `crates/greentic-ext-contract/src/signature.rs` | Add `canonical_signing_payload`, `sign_describe`, `verify_describe` |
-| `crates/greentic-ext-contract/src/lib.rs` | Re-export new helpers |
-| `crates/greentic-ext-contract/tests/signature_rt.rs` | 3 new tests |
+| `crates/greentic-extension-sdk-contract/Cargo.toml` | Add dep `serde_jcs = "0.1"` |
+| `crates/greentic-extension-sdk-contract/src/signature.rs` | Add `canonical_signing_payload`, `sign_describe`, `verify_describe` |
+| `crates/greentic-extension-sdk-contract/src/lib.rs` | Re-export new helpers |
+| `crates/greentic-extension-sdk-contract/tests/signature_rt.rs` | 3 new tests |
 | `crates/greentic-ext-registry/src/lifecycle.rs` | Replace buggy `verify_signature` body with `verify_describe` call |
 
 ### `canonical_signing_payload`
 
 ```rust
-// crates/greentic-ext-contract/src/signature.rs
+// crates/greentic-extension-sdk-contract/src/signature.rs
 use crate::describe::DescribeJson;
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
@@ -234,7 +234,7 @@ fn verify_signature(
     match policy {
         TrustPolicy::Loose => Ok(()),
         TrustPolicy::Strict | TrustPolicy::Normal => {
-            greentic_ext_contract::verify_describe(&artifact.describe)
+            greentic_extension_sdk_contract::verify_describe(&artifact.describe)
                 .map_err(|e| RegistryError::SignatureInvalid(e.to_string()))
         }
     }
@@ -244,8 +244,8 @@ fn verify_signature(
 ### Contract tests
 
 ```rust
-// crates/greentic-ext-contract/tests/signature_rt.rs
-use greentic_ext_contract::*;
+// crates/greentic-extension-sdk-contract/tests/signature_rt.rs
+use greentic_extension_sdk_contract::*;
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 
@@ -290,9 +290,9 @@ fn sample_describe() -> DescribeJson {
 
 ### Wave 1 commit order
 
-1. `crates/greentic-ext-contract/src/signature.rs` — add `canonical_signing_payload`, `sign_describe`, `verify_describe` + `ContractError::Canonicalize` variant.
-2. Add `serde_jcs` dep to `greentic-ext-contract/Cargo.toml`.
-3. `crates/greentic-ext-contract/tests/signature_rt.rs` — 3 new tests.
+1. `crates/greentic-extension-sdk-contract/src/signature.rs` — add `canonical_signing_payload`, `sign_describe`, `verify_describe` + `ContractError::Canonicalize` variant.
+2. Add `serde_jcs` dep to `greentic-extension-sdk-contract/Cargo.toml`.
+3. `crates/greentic-extension-sdk-contract/tests/signature_rt.rs` — 3 new tests.
 4. `crates/greentic-ext-registry/src/lifecycle.rs` — replace `verify_signature` body with `verify_describe` call.
 5. Runtime hook (see §4).
 6. gtdx CLI subcommands (see §5).
@@ -312,7 +312,7 @@ fn sample_describe() -> DescribeJson {
 
 ```rust
 // crates/greentic-ext-runtime/src/runtime.rs
-use greentic_ext_contract::{verify_describe, DescribeJson};
+use greentic_extension_sdk_contract::{verify_describe, DescribeJson};
 
 impl ExtensionRuntime {
     pub fn register_loaded_from_dir(&mut self, dir: &Path) -> Result<(), RuntimeError> {
@@ -519,7 +519,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use ed25519_dalek::pkcs8::DecodePrivateKey;
 use ed25519_dalek::SigningKey;
-use greentic_ext_contract::DescribeJson;
+use greentic_extension_sdk_contract::DescribeJson;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -555,7 +555,7 @@ pub fn run(args: Args) -> Result<()> {
         .with_context(|| format!("read {}", args.describe_path.display()))?;
     let mut describe: DescribeJson = serde_json::from_str(&raw).context("parse describe.json")?;
 
-    greentic_ext_contract::sign_describe(&mut describe, &signing_key).context("sign describe")?;
+    greentic_extension_sdk_contract::sign_describe(&mut describe, &signing_key).context("sign describe")?;
 
     // Pretty-print for diff-friendly commits. JCS canonicalization happens inside
     // sign_describe regardless of on-disk formatting, so readability is free.
@@ -579,7 +579,7 @@ pub fn run(args: Args) -> Result<()> {
 // crates/greentic-ext-cli/src/commands/verify.rs
 use anyhow::{Context, Result};
 use clap::Parser;
-use greentic_ext_contract::DescribeJson;
+use greentic_extension_sdk_contract::DescribeJson;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
@@ -593,7 +593,7 @@ pub struct Args {
 
 pub fn run(args: Args) -> Result<()> {
     let describe = load_describe_from_any_source(&args.path)?;
-    greentic_ext_contract::verify_describe(&describe)
+    greentic_extension_sdk_contract::verify_describe(&describe)
         .map_err(|e| anyhow::anyhow!("signature invalid: {e}"))?;
     let pub_b64 = &describe.signature.as_ref().unwrap().public_key;
     println!(
@@ -890,7 +890,7 @@ Add a "Signing" section documenting:
 
 ```toml
 greentic-ext-runtime  = { git = "https://github.com/greentic-biz/greentic-designer-extensions", rev = "<wave1-rev>", optional = true, package = "greentic-ext-runtime" }
-greentic-ext-contract = { git = "https://github.com/greentic-biz/greentic-designer-extensions", rev = "<wave1-rev>", optional = true, package = "greentic-ext-contract" }
+greentic-extension-sdk-contract = { git = "https://github.com/greentic-biz/greentic-designer-extensions", rev = "<wave1-rev>", optional = true, package = "greentic-extension-sdk-contract" }
 ```
 
 The exact rev is the merge commit SHA of Wave 1 into `greentic-designer-extensions` `main`.
@@ -986,7 +986,7 @@ The `env_set` helper mirrors the scoped guard pattern already used in deployer l
 ## 0.4.54 (2026-04-NN)
 
 - feat(ext): add BuiltinBackendId::SingleVm variant
-- chore: bump greentic-ext-runtime + greentic-ext-contract rev to pull in
+- chore: bump greentic-ext-runtime + greentic-extension-sdk-contract rev to pull in
   extension signature verification. Installed extensions without a valid
   signature are rejected at runtime load; set GREENTIC_EXT_ALLOW_UNSIGNED=1
   to bypass for dev.
@@ -996,7 +996,7 @@ The `env_set` helper mirrors the scoped guard pattern already used in deployer l
 
 ## 8. Error handling
 
-### `greentic-ext-contract::ContractError`
+### `greentic-extension-sdk-contract::ContractError`
 
 ```rust
 SignatureInvalid(String)   // existing
@@ -1037,7 +1037,7 @@ Surfaced via `anyhow::Context`. No domain enum.
 
 | Crate | Test file | New cases |
 | --- | --- | --- |
-| `greentic-ext-contract` | `tests/signature_rt.rs` | `sign_describe_roundtrip`, `sign_describe_tamper_detected`, `sign_describe_reencoding_stable` |
+| `greentic-extension-sdk-contract` | `tests/signature_rt.rs` | `sign_describe_roundtrip`, `sign_describe_tamper_detected`, `sign_describe_reencoding_stable` |
 | `greentic-ext-cli` | `tests/sign_verify_cmd.rs` | 8 CLI integration tests (keygen / sign / verify paths) |
 | `greentic-ext-runtime` | `tests/signature_gate.rs` | 5 gate tests (unsigned reject, tampered reject, signed accept, env bypass, env bypass even when tampered) |
 | `greentic-deployer-extensions` | CI `ci/local_check.sh` | Builds + validates both signed ref exts |
@@ -1067,7 +1067,7 @@ After all 3 waves land:
 2. `gtdx keygen` produces valid PKCS8 PEM to stdout; `--out /path` writes file 0600; refuses to overwrite.
 3. `gtdx sign <describe.json>` mutates in place with valid `signature` field; succeeds via env var or `--key`.
 4. `gtdx verify <describe.json|dir|.gtxpack>` exits 0 on valid, 1 on invalid/missing.
-5. `greentic-ext-contract::verify_describe` roundtrips through serde re-encoding (canonicalization independent of field order).
+5. `greentic-extension-sdk-contract::verify_describe` roundtrips through serde re-encoding (canonicalization independent of field order).
 6. `greentic-ext-runtime::ExtensionRuntime::register_loaded_from_dir` rejects unsigned; accepts signed; bypasses when `GREENTIC_EXT_ALLOW_UNSIGNED=1`.
 7. `cd greentic-deployer-extensions && bash ci/local_check.sh` — builds both ref exts, validates.
 8. CI on main-branch push with `CI_REQUIRE_SIGNED=1`: signature required; fails if missing.

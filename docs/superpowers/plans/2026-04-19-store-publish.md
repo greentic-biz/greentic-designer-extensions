@@ -126,7 +126,7 @@ struct PublishMetadata<'a> {
     ext_id: &'a str,
     ext_name: &'a str,
     version: &'a str,
-    kind: greentic_ext_contract::ExtensionKind,
+    kind: greentic_extension_sdk_contract::ExtensionKind,
     artifact_sha256: &'a str,
     describe: &'a serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -189,7 +189,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 ```rust
 use chrono::Utc;
-use greentic_ext_contract::{
+use greentic_extension_sdk_contract::{
     DescribeJson, ExtensionKind,
     describe::{Author, Capabilities, Engine, Metadata, Permissions, Runtime},
 };

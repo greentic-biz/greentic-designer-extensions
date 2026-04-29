@@ -42,7 +42,7 @@ Event providers (cron, webhook triggers, etc.) follow the same gtpack pattern.
 ### 4.2 Current extension ecosystem
 
 `greentic-biz/greentic-designer-extensions` ships since 2026-04-17:
-- `greentic-ext-contract` — types, describe.json validator, Ed25519 signatures
+- `greentic-extension-sdk-contract` — types, describe.json validator, Ed25519 signatures
 - `greentic-ext-runtime` — wasmtime Component loader, capability registry, hot reload
 - `greentic-ext-registry` — registry traits + 3 implementations, installer lifecycle
 - `greentic-ext-cli` (`gtdx`) — 11 subcommands
@@ -388,7 +388,7 @@ Provider extensions reuse the existing `DescribeJson` schema with ONE additive c
 ```
 
 **Schema integration notes:**
-- `runtime.gtpack` is an *optional* field on the existing `Runtime` struct in `greentic-ext-contract::describe::Runtime`
+- `runtime.gtpack` is an *optional* field on the existing `Runtime` struct in `greentic-extension-sdk-contract::describe::Runtime`
 - `runtime.component` still points to the extension WASM (metadata-query component, `wasm32-wasip1`). For providers, this is the same `provider_*_ext.wasm` that lives in `wasm/`
 - Invariant enforced at deserialize: `kind == ProviderExtension ↔ runtime.gtpack.is_some()`
 - Provider-specific OAuth/channel/trigger metadata goes under `contributions` (existing free-form field) rather than top-level — keeps schema additive
@@ -449,7 +449,7 @@ pub trait ExtensionRegistry {
 }
 ```
 
-`ExtensionKind::Provider` variant added to `greentic-ext-contract`.
+`ExtensionKind::Provider` variant added to `greentic-extension-sdk-contract`.
 
 ### 9.2 Greentic Designer
 
@@ -491,7 +491,7 @@ i18n: load from `~/.greentic/extensions/provider/<id>/<version>/i18n/<locale>.js
 
 1. `greentic-biz/greentic-designer-extensions`:
    - Publish `extension-provider.wit@0.1.0`
-   - Add `ExtensionKind::Provider` to `greentic-ext-contract`
+   - Add `ExtensionKind::Provider` to `greentic-extension-sdk-contract`
    - Bump package to v0.7.0
    - Extend `greentic-ext-registry::lifecycle::install` for `runtime.gtpack.{file, sha256}`
    - Add `list_by_kind` + `get_describe` to registry trait + all 3 implementations
@@ -579,7 +579,7 @@ Each batch updates `greentic-docs`:
 ### 11.1 Unit tests
 
 **`greentic-designer-extensions`:**
-- `greentic-ext-contract` — `ExtensionKind::Provider` round-trip, describe.json validator for `kind=provider`, `runtime.gtpack` required
+- `greentic-extension-sdk-contract` — `ExtensionKind::Provider` round-trip, describe.json validator for `kind=provider`, `runtime.gtpack` required
 - `greentic-ext-registry::lifecycle::install` — mock `.gtxpack` install cycle, sha256 check, conflict detection against `manual/`
 - `greentic-ext-runtime::invoke_tool` — mock provider WASM dispatch
 

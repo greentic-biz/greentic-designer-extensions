@@ -68,7 +68,7 @@ git commit -m "chore(ext-cli): add jsonschema dev-dep for scaffold schema confor
 **Files:**
 - Modify: `crates/greentic-ext-cli/templates/design/describe.json.tmpl`
 
-The current describe emits `"kind": "design"` and uses pre-schema fields (`description`, `authors`, top-level `permissions`, `engine.contract`, no `contributions`). The schema (`crates/greentic-ext-contract/schemas/describe-v1.json`) requires: `kind ∈ {DesignExtension,BundleExtension,DeployExtension}`, `metadata.{id,name,version,summary,author:{name},license}`, `engine.{greenticDesigner,extRuntime}`, `runtime.{component,permissions}`, `contributions` (object).
+The current describe emits `"kind": "design"` and uses pre-schema fields (`description`, `authors`, top-level `permissions`, `engine.contract`, no `contributions`). The schema (`crates/greentic-extension-sdk-contract/schemas/describe-v1.json`) requires: `kind ∈ {DesignExtension,BundleExtension,DeployExtension}`, `metadata.{id,name,version,summary,author:{name},license}`, `engine.{greenticDesigner,extRuntime}`, `runtime.{component,permissions}`, `contributions` (object).
 
 - [ ] **Step 1: Replace file with schema-compliant template**
 
@@ -754,7 +754,7 @@ fn scaffolded_describe_json_validates_against_schema() {
     let schema_path = {
         let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         p.pop();
-        p.push("greentic-ext-contract/schemas/describe-v1.json");
+        p.push("greentic-extension-sdk-contract/schemas/describe-v1.json");
         p
     };
     let schema_bytes = std::fs::read(&schema_path)
@@ -906,7 +906,7 @@ Expected: push succeeds. PR URL printed.
 
 **2. Placeholder scan:** Every rust/json/wit snippet is complete. The inline `// TODO:` markers live INSIDE generated user code — that's intentional scaffolding (Task A already used this pattern). ✓
 
-**3. Type consistency:** `ExtensionKind` enum variants (`Design`/`Bundle`/`Deploy`) serialize to `"DesignExtension"`/`"BundleExtension"`/`"DeployExtension"` per `crates/greentic-ext-contract/src/kind.rs`. Scaffolded describes use the serialized form. `types::Kind` inside wit-bindgen output mirrors the WIT enum variants. Consistency holds. ✓
+**3. Type consistency:** `ExtensionKind` enum variants (`Design`/`Bundle`/`Deploy`) serialize to `"DesignExtension"`/`"BundleExtension"`/`"DeployExtension"` per `crates/greentic-extension-sdk-contract/src/kind.rs`. Scaffolded describes use the serialized form. `types::Kind` inside wit-bindgen output mirrors the WIT enum variants. Consistency holds. ✓
 
 **4. Risk notes:**
 - `wit-bindgen 0.35` in Cargo.toml.tmpl is old but matches Track A as shipped; do not touch unless Task 13 build fails.

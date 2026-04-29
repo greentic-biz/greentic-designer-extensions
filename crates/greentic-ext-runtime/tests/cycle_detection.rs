@@ -1,4 +1,4 @@
-use greentic_ext_contract::{CapabilityRef, ExtensionKind};
+use greentic_extension_sdk_contract::{CapabilityRef, ExtensionKind};
 use greentic_ext_runtime::{CapabilityRegistry, OfferedBinding};
 
 fn offer(ext: &str, cap: &str, v: &str) -> OfferedBinding {

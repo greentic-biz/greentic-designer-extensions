@@ -139,11 +139,11 @@ greentic-designer-extensions/
 │   └── runtime-side.wit              # Host-side world (bindgen target)
 │
 ├── crates/
-│   ├── greentic-ext-contract/        # Types, describe.json schema, signatures
+│   ├── greentic-extension-sdk-contract/        # Types, describe.json schema, signatures
 │   ├── greentic-ext-runtime/         # Wasmtime loader, capability registry, broker
 │   ├── greentic-ext-registry/        # 3 registry impls + lifecycle
 │   ├── greentic-ext-cli/             # `gtdx` binary, 11 subcommands
-│   ├── greentic-ext-testing/         # Test utilities for extension authors
+│   ├── greentic-extension-sdk-testing/         # Test utilities for extension authors
 │   └── _wit-lint/                    # WIT parser lint test
 │
 ├── docs/                             # docs (see docs/README.md for index)
@@ -166,7 +166,7 @@ Designer (separate repo) consumes this extension system as a Cargo dependency:
 # greentic-designer/Cargo.toml
 [dependencies]
 greentic-ext-runtime  = { git = "ssh://git@github.com/greentic-biz/greentic-designer-extensions", tag = "v0.5.0" }
-greentic-ext-contract = { git = "ssh://git@github.com/greentic-biz/greentic-designer-extensions", tag = "v0.5.0" }
+greentic-extension-sdk-contract = { git = "ssh://git@github.com/greentic-biz/greentic-designer-extensions", tag = "v0.5.0" }
 ```
 
 Then in `src/main.rs`:

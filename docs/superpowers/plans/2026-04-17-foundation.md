@@ -4,7 +4,7 @@
 
 **Goal:** Ship the extension foundation — Cargo workspace, WIT interfaces, contract crate (types + JSON Schema validator + WIT bindings), and runtime crate (wasmtime loader + capability registry + host broker + hot reload). End state: runtime can discover, load, invoke test WASM extensions via integration tests.
 
-**Architecture:** Four-crate workspace: `greentic-ext-contract` defines pure types + `describe.json` schema + WIT bindgen re-exports; `greentic-ext-runtime` implements wasmtime-based loader, capability registry with semver matching, host broker with permission gates, and `notify`-based hot reload using `ArcSwap` for lockless reads; `greentic-ext-testing` provides test utilities (fixture builders, in-memory filesystem); `greentic-ext-cli` scaffolded here but implementation in Plan 2.
+**Architecture:** Four-crate workspace: `greentic-extension-sdk-contract` defines pure types + `describe.json` schema + WIT bindgen re-exports; `greentic-ext-runtime` implements wasmtime-based loader, capability registry with semver matching, host broker with permission gates, and `notify`-based hot reload using `ArcSwap` for lockless reads; `greentic-extension-sdk-testing` provides test utilities (fixture builders, in-memory filesystem); `greentic-ext-cli` scaffolded here but implementation in Plan 2.
 
 **Tech Stack:** Rust 1.91 edition 2024, wasmtime 43 + Component Model, wit-bindgen 0.35, cargo-component, `notify` + `debouncer`, `arc-swap`, `semver`, `ed25519-dalek`, `jsonschema`, `serde` + `serde_json`, `tokio`, `tracing`, `thiserror`/`anyhow`.
 
@@ -46,10 +46,10 @@ reorder_imports = true
 [workspace]
 resolver = "2"
 members = [
-    "crates/greentic-ext-contract",
+    "crates/greentic-extension-sdk-contract",
     "crates/greentic-ext-runtime",
     "crates/greentic-ext-cli",
-    "crates/greentic-ext-testing",
+    "crates/greentic-extension-sdk-testing",
 ]
 
 [workspace.package]
@@ -668,19 +668,19 @@ git commit -m "test: add WIT parser lint test"
 
 ---
 
-## Phase 3 — `greentic-ext-contract` crate — types + schemas
+## Phase 3 — `greentic-extension-sdk-contract` crate — types + schemas
 
 ### Task 3.1: Scaffold contract crate
 
 **Files:**
-- Create: `crates/greentic-ext-contract/Cargo.toml`
-- Create: `crates/greentic-ext-contract/src/lib.rs`
+- Create: `crates/greentic-extension-sdk-contract/Cargo.toml`
+- Create: `crates/greentic-extension-sdk-contract/src/lib.rs`
 
 - [ ] **Step 1: Create `Cargo.toml`**
 
 ```toml
 [package]
-name = "greentic-ext-contract"
+name = "greentic-extension-sdk-contract"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -726,26 +726,26 @@ pub use self::error::ContractError;
 
 - [ ] **Step 3: Build the crate**
 
-Run: `cargo check -p greentic-ext-contract`
+Run: `cargo check -p greentic-extension-sdk-contract`
 Expected: fails with "file not found" for the referenced modules. Fine — we build them next.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/
+git add crates/greentic-extension-sdk-contract/
 git commit -m "feat(contract): scaffold crate"
 ```
 
 ### Task 3.2: Implement `kind` module
 
 **Files:**
-- Create: `crates/greentic-ext-contract/src/kind.rs`
-- Create: `crates/greentic-ext-contract/tests/kind.rs`
+- Create: `crates/greentic-extension-sdk-contract/src/kind.rs`
+- Create: `crates/greentic-extension-sdk-contract/tests/kind.rs`
 
 - [ ] **Step 1: Write the failing test `tests/kind.rs`**
 
 ```rust
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 
 #[test]
 fn serializes_as_pascal_case_string() {
@@ -786,7 +786,7 @@ fn dir_name_matches_spec() {
 
 - [ ] **Step 2: Run test to confirm it fails**
 
-Run: `cargo test -p greentic-ext-contract --test kind`
+Run: `cargo test -p greentic-extension-sdk-contract --test kind`
 Expected: FAIL (missing types)
 
 - [ ] **Step 3: Write minimal implementation `src/kind.rs`**
@@ -818,20 +818,20 @@ impl ExtensionKind {
 
 - [ ] **Step 4: Run test to confirm it passes**
 
-Run: `cargo test -p greentic-ext-contract --test kind`
+Run: `cargo test -p greentic-extension-sdk-contract --test kind`
 Expected: PASS (3 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/src/kind.rs crates/greentic-ext-contract/tests/kind.rs
+git add crates/greentic-extension-sdk-contract/src/kind.rs crates/greentic-extension-sdk-contract/tests/kind.rs
 git commit -m "feat(contract): add ExtensionKind enum"
 ```
 
 ### Task 3.3: Implement `error` module
 
 **Files:**
-- Create: `crates/greentic-ext-contract/src/error.rs`
+- Create: `crates/greentic-extension-sdk-contract/src/error.rs`
 
 - [ ] **Step 1: Write `src/error.rs`**
 
@@ -865,26 +865,26 @@ pub enum ContractError {
 
 - [ ] **Step 2: Confirm crate compiles**
 
-Run: `cargo check -p greentic-ext-contract`
+Run: `cargo check -p greentic-extension-sdk-contract`
 Expected: succeeds with warnings for unused modules
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/src/error.rs
+git add crates/greentic-extension-sdk-contract/src/error.rs
 git commit -m "feat(contract): add ContractError enum"
 ```
 
 ### Task 3.4: Implement `capability` module
 
 **Files:**
-- Create: `crates/greentic-ext-contract/src/capability.rs`
-- Create: `crates/greentic-ext-contract/tests/capability.rs`
+- Create: `crates/greentic-extension-sdk-contract/src/capability.rs`
+- Create: `crates/greentic-extension-sdk-contract/tests/capability.rs`
 
 - [ ] **Step 1: Write failing test `tests/capability.rs`**
 
 ```rust
-use greentic_ext_contract::{CapabilityId, CapabilityRef};
+use greentic_extension_sdk_contract::{CapabilityId, CapabilityRef};
 
 #[test]
 fn parses_canonical_cap_id() {
@@ -991,21 +991,21 @@ impl CapabilityRef {
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p greentic-ext-contract --test capability`
+Run: `cargo test -p greentic-extension-sdk-contract --test capability`
 Expected: PASS (4 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/src/capability.rs crates/greentic-ext-contract/tests/capability.rs
+git add crates/greentic-extension-sdk-contract/src/capability.rs crates/greentic-extension-sdk-contract/tests/capability.rs
 git commit -m "feat(contract): add CapabilityId + CapabilityRef"
 ```
 
 ### Task 3.5: `describe.json` Rust types
 
 **Files:**
-- Create: `crates/greentic-ext-contract/src/describe.rs`
-- Create: `crates/greentic-ext-contract/tests/describe_roundtrip.rs`
+- Create: `crates/greentic-extension-sdk-contract/src/describe.rs`
+- Create: `crates/greentic-extension-sdk-contract/tests/describe_roundtrip.rs`
 
 - [ ] **Step 1: Write `src/describe.rs`**
 
@@ -1132,7 +1132,7 @@ impl DescribeJson {
 - [ ] **Step 2: Write `tests/describe_roundtrip.rs`**
 
 ```rust
-use greentic_ext_contract::DescribeJson;
+use greentic_extension_sdk_contract::DescribeJson;
 
 const AC_FIXTURE: &str = r#"{
   "apiVersion": "greentic.ai/v1",
@@ -1181,23 +1181,23 @@ fn round_trips_without_data_loss() {
 
 - [ ] **Step 3: Run tests**
 
-Run: `cargo test -p greentic-ext-contract --test describe_roundtrip`
+Run: `cargo test -p greentic-extension-sdk-contract --test describe_roundtrip`
 Expected: PASS (2 tests)
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/src/describe.rs \
-        crates/greentic-ext-contract/tests/describe_roundtrip.rs
+git add crates/greentic-extension-sdk-contract/src/describe.rs \
+        crates/greentic-extension-sdk-contract/tests/describe_roundtrip.rs
 git commit -m "feat(contract): add DescribeJson types with serde round-trip"
 ```
 
 ### Task 3.6: `describe.json` JSON Schema file + validator
 
 **Files:**
-- Create: `crates/greentic-ext-contract/schemas/describe-v1.json`
-- Create: `crates/greentic-ext-contract/src/schema.rs`
-- Create: `crates/greentic-ext-contract/tests/schema_validate.rs`
+- Create: `crates/greentic-extension-sdk-contract/schemas/describe-v1.json`
+- Create: `crates/greentic-extension-sdk-contract/src/schema.rs`
+- Create: `crates/greentic-extension-sdk-contract/tests/schema_validate.rs`
 
 - [ ] **Step 1: Write `schemas/describe-v1.json`**
 
@@ -1416,7 +1416,7 @@ pub fn validate_describe_json(value: &serde_json::Value) -> Result<(), ContractE
 
 - [ ] **Step 3: Add `once_cell` to Cargo.toml**
 
-Edit `crates/greentic-ext-contract/Cargo.toml` dependencies:
+Edit `crates/greentic-extension-sdk-contract/Cargo.toml` dependencies:
 
 ```toml
 once_cell = "1"
@@ -1425,7 +1425,7 @@ once_cell = "1"
 - [ ] **Step 4: Write `tests/schema_validate.rs`**
 
 ```rust
-use greentic_ext_contract::schema::validate_describe_json;
+use greentic_extension_sdk_contract::schema::validate_describe_json;
 
 #[test]
 fn accepts_valid_design_ext() {
@@ -1493,24 +1493,24 @@ const BASE_OK: &str = r#"{
 
 - [ ] **Step 5: Run tests**
 
-Run: `cargo test -p greentic-ext-contract --test schema_validate`
+Run: `cargo test -p greentic-extension-sdk-contract --test schema_validate`
 Expected: PASS (3 tests)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/schemas/ \
-        crates/greentic-ext-contract/src/schema.rs \
-        crates/greentic-ext-contract/tests/schema_validate.rs \
-        crates/greentic-ext-contract/Cargo.toml
+git add crates/greentic-extension-sdk-contract/schemas/ \
+        crates/greentic-extension-sdk-contract/src/schema.rs \
+        crates/greentic-extension-sdk-contract/tests/schema_validate.rs \
+        crates/greentic-extension-sdk-contract/Cargo.toml
 git commit -m "feat(contract): add describe.json JSON Schema validator"
 ```
 
 ### Task 3.7: Signature types + SHA256 canonicalization
 
 **Files:**
-- Create: `crates/greentic-ext-contract/src/signature.rs`
-- Create: `crates/greentic-ext-contract/tests/signature_rt.rs`
+- Create: `crates/greentic-extension-sdk-contract/src/signature.rs`
+- Create: `crates/greentic-extension-sdk-contract/tests/signature_rt.rs`
 
 - [ ] **Step 1: Write `src/signature.rs`**
 
@@ -1577,7 +1577,7 @@ pub use self::signature::{artifact_sha256, sign_ed25519, verify_ed25519};
 
 ```rust
 use ed25519_dalek::SigningKey;
-use greentic_ext_contract::{artifact_sha256, sign_ed25519, verify_ed25519};
+use greentic_extension_sdk_contract::{artifact_sha256, sign_ed25519, verify_ed25519};
 use rand::rngs::OsRng;
 
 #[test]
@@ -1623,34 +1623,34 @@ base64 = { workspace = true }
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p greentic-ext-contract --test signature_rt`
+Run: `cargo test -p greentic-extension-sdk-contract --test signature_rt`
 Expected: PASS (3 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/src/signature.rs \
-        crates/greentic-ext-contract/src/lib.rs \
-        crates/greentic-ext-contract/tests/signature_rt.rs \
-        crates/greentic-ext-contract/Cargo.toml
+git add crates/greentic-extension-sdk-contract/src/signature.rs \
+        crates/greentic-extension-sdk-contract/src/lib.rs \
+        crates/greentic-extension-sdk-contract/tests/signature_rt.rs \
+        crates/greentic-extension-sdk-contract/Cargo.toml
 git commit -m "feat(contract): add ed25519 signing + sha256 helpers"
 ```
 
 ---
 
-## Phase 4 — `greentic-ext-testing` crate
+## Phase 4 — `greentic-extension-sdk-testing` crate
 
 ### Task 4.1: Scaffold testing crate
 
 **Files:**
-- Create: `crates/greentic-ext-testing/Cargo.toml`
-- Create: `crates/greentic-ext-testing/src/lib.rs`
+- Create: `crates/greentic-extension-sdk-testing/Cargo.toml`
+- Create: `crates/greentic-extension-sdk-testing/src/lib.rs`
 
 - [ ] **Step 1: Create `Cargo.toml`**
 
 ```toml
 [package]
-name = "greentic-ext-testing"
+name = "greentic-extension-sdk-testing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -1660,7 +1660,7 @@ description = "Test utilities for Greentic Designer Extensions"
 
 [dependencies]
 anyhow = { workspace = true }
-greentic-ext-contract = { path = "../greentic-ext-contract" }
+greentic-extension-sdk-contract = { path = "../greentic-extension-sdk-contract" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
@@ -1691,7 +1691,7 @@ pub use self::gtxpack::{pack_directory, unpack_to_dir};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use greentic_ext_contract::{DescribeJson, ExtensionKind};
+use greentic_extension_sdk_contract::{DescribeJson, ExtensionKind};
 use tempfile::TempDir;
 
 pub struct ExtensionFixture {
@@ -1747,13 +1747,13 @@ impl ExtensionFixtureBuilder {
             schema_ref: None,
             api_version: "greentic.ai/v1".into(),
             kind: self.kind,
-            metadata: greentic_ext_contract::describe::Metadata {
+            metadata: greentic_extension_sdk_contract::describe::Metadata {
                 id: self.id.clone(),
                 name: self.id.clone(),
                 version: self.version.clone(),
                 summary: "test".into(),
                 description: None,
-                author: greentic_ext_contract::describe::Author {
+                author: greentic_extension_sdk_contract::describe::Author {
                     name: "test".into(),
                     email: None,
                     public_key: None,
@@ -1765,15 +1765,15 @@ impl ExtensionFixtureBuilder {
                 icon: None,
                 screenshots: vec![],
             },
-            engine: greentic_ext_contract::describe::Engine {
+            engine: greentic_extension_sdk_contract::describe::Engine {
                 greentic_designer: "*".into(),
                 ext_runtime: "*".into(),
             },
-            capabilities: greentic_ext_contract::describe::Capabilities {
+            capabilities: greentic_extension_sdk_contract::describe::Capabilities {
                 offered: self
                     .offered
                     .into_iter()
-                    .map(|(id, v)| greentic_ext_contract::CapabilityRef {
+                    .map(|(id, v)| greentic_extension_sdk_contract::CapabilityRef {
                         id: id.parse().unwrap(),
                         version: v,
                     })
@@ -1781,13 +1781,13 @@ impl ExtensionFixtureBuilder {
                 required: self
                     .required
                     .into_iter()
-                    .map(|(id, v)| greentic_ext_contract::CapabilityRef {
+                    .map(|(id, v)| greentic_extension_sdk_contract::CapabilityRef {
                         id: id.parse().unwrap(),
                         version: v,
                     })
                     .collect(),
             },
-            runtime: greentic_ext_contract::describe::Runtime {
+            runtime: greentic_extension_sdk_contract::describe::Runtime {
                 component: "extension.wasm".into(),
                 memory_limit_mb: 64,
                 permissions: Default::default(),
@@ -1882,11 +1882,11 @@ fn walkdir(root: &Path) -> impl Iterator<Item = std::io::Result<std::path::PathB
 
 - [ ] **Step 5: Compile and commit**
 
-Run: `cargo check -p greentic-ext-testing`
+Run: `cargo check -p greentic-extension-sdk-testing`
 Expected: clean
 
 ```bash
-git add crates/greentic-ext-testing/
+git add crates/greentic-extension-sdk-testing/
 git commit -m "feat(testing): add ExtensionFixture builder + gtxpack helpers"
 ```
 
@@ -1915,7 +1915,7 @@ description = "Wasmtime-based runtime for Greentic Designer Extensions"
 [dependencies]
 anyhow = { workspace = true }
 arc-swap = { workspace = true }
-greentic-ext-contract = { path = "../greentic-ext-contract" }
+greentic-extension-sdk-contract = { path = "../greentic-extension-sdk-contract" }
 notify = { workspace = true }
 notify-debouncer-full = { workspace = true }
 semver = { workspace = true }
@@ -1928,7 +1928,7 @@ wasmtime = { workspace = true }
 wasmtime-wasi = { workspace = true }
 
 [dev-dependencies]
-greentic-ext-testing = { path = "../greentic-ext-testing" }
+greentic-extension-sdk-testing = { path = "../greentic-extension-sdk-testing" }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -1993,7 +1993,7 @@ pub enum RuntimeError {
     NotFound(String),
 
     #[error("contract error: {0}")]
-    Contract(#[from] greentic_ext_contract::ContractError),
+    Contract(#[from] greentic_extension_sdk_contract::ContractError),
 
     #[error("wasmtime: {0}")]
     Wasmtime(#[from] anyhow::Error),
@@ -2062,7 +2062,7 @@ git commit -m "feat(runtime): add RuntimeError + ExtensionHealth"
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use greentic_ext_contract::{DescribeJson, ExtensionKind};
+use greentic_extension_sdk_contract::{DescribeJson, ExtensionKind};
 use wasmtime::component::Component;
 
 use crate::health::ExtensionHealth;
@@ -2101,7 +2101,7 @@ impl LoadedExtension {
         let describe_path = source_dir.join("describe.json");
         let describe_bytes = std::fs::read(&describe_path)?;
         let describe_value: serde_json::Value = serde_json::from_slice(&describe_bytes)?;
-        greentic_ext_contract::schema::validate_describe_json(&describe_value)
+        greentic_extension_sdk_contract::schema::validate_describe_json(&describe_value)
             .map_err(|e| anyhow::anyhow!("invalid describe.json: {e}"))?;
         let describe: DescribeJson = serde_json::from_value(describe_value)?;
         let id = ExtensionId::from_describe(&describe);
@@ -2421,7 +2421,7 @@ git commit -m "feat(runtime): implement InstancePool with free list"
 - [ ] **Step 1: Write failing test `tests/capability_registry.rs`**
 
 ```rust
-use greentic_ext_contract::{CapabilityRef, ExtensionKind};
+use greentic_extension_sdk_contract::{CapabilityRef, ExtensionKind};
 use greentic_ext_runtime::{CapabilityRegistry, OfferedBinding};
 
 fn cap_ref(id: &str, v: &str) -> CapabilityRef {
@@ -2482,7 +2482,7 @@ Expected: FAIL (missing types)
 ```rust
 use std::collections::HashMap;
 
-use greentic_ext_contract::{CapabilityId, CapabilityRef, ExtensionKind};
+use greentic_extension_sdk_contract::{CapabilityId, CapabilityRef, ExtensionKind};
 use semver::{Version, VersionReq};
 
 #[derive(Debug, Clone)]
@@ -2576,7 +2576,7 @@ git commit -m "feat(runtime): add CapabilityRegistry with semver matching"
 - [ ] **Step 1: Write failing test `tests/cycle_detection.rs`**
 
 ```rust
-use greentic_ext_contract::{CapabilityRef, ExtensionKind};
+use greentic_extension_sdk_contract::{CapabilityRef, ExtensionKind};
 use greentic_ext_runtime::{CapabilityRegistry, OfferedBinding};
 
 fn offer(ext: &str, cap: &str, v: &str) -> OfferedBinding {
@@ -2703,9 +2703,9 @@ git commit -m "feat(runtime): add dependency cycle detection"
 ```rust
 use std::path::PathBuf;
 
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_runtime::{ExtensionRuntime, RuntimeConfig};
-use greentic_ext_testing::ExtensionFixtureBuilder;
+use greentic_extension_sdk_testing::ExtensionFixtureBuilder;
 
 #[tokio::test]
 async fn loads_extension_and_registers_caps() {
@@ -2801,7 +2801,7 @@ git commit -m "feat(runtime): wire register_loaded_from_dir + cap registry rebui
 - [ ] **Step 1: Write failing test `tests/broker.rs`**
 
 ```rust
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_runtime::{Broker, BrokerError};
 
 #[test]
@@ -2836,7 +2836,7 @@ fn enforces_max_depth() {
 - [ ] **Step 2: Replace `src/broker.rs`**
 
 ```rust
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 
 pub type BrokerResult<T> = Result<T, BrokerError>;
 
@@ -2923,9 +2923,9 @@ git commit -m "feat(runtime): add Broker with permission + depth checks"
 ```rust
 use std::fs;
 
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_runtime::discovery::scan_kind_dir;
-use greentic_ext_testing::ExtensionFixtureBuilder;
+use greentic_extension_sdk_testing::ExtensionFixtureBuilder;
 use tempfile::TempDir;
 
 #[test]
@@ -3242,9 +3242,9 @@ use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_runtime::{DiscoveryPaths, ExtensionRuntime, RuntimeConfig};
-use greentic_ext_testing::ExtensionFixtureBuilder;
+use greentic_extension_sdk_testing::ExtensionFixtureBuilder;
 use tempfile::TempDir;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -3316,9 +3316,9 @@ git commit -m "feat(runtime): integrate file watcher with runtime state"
 use std::fs;
 use std::sync::Arc;
 
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_runtime::{DiscoveryPaths, ExtensionRuntime, RuntimeConfig};
-use greentic_ext_testing::ExtensionFixtureBuilder;
+use greentic_extension_sdk_testing::ExtensionFixtureBuilder;
 use tempfile::TempDir;
 
 async fn copy_fixture(src: &std::path::Path, dst: &std::path::Path) {
@@ -3377,7 +3377,7 @@ async fn end_to_end_discovery_and_capability_resolution() {
     let registry = rt.capability_registry();
     let plan = registry.resolve(
         "greentic.consumer",
-        &[greentic_ext_contract::CapabilityRef {
+        &[greentic_extension_sdk_contract::CapabilityRef {
             id: "greentic:x/service".parse().unwrap(),
             version: "^1.0".into(),
         }],
@@ -3446,7 +3446,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
-greentic-ext-contract = { path = "../greentic-ext-contract" }
+greentic-extension-sdk-contract = { path = "../greentic-extension-sdk-contract" }
 greentic-ext-runtime = { path = "../greentic-ext-runtime" }
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -3492,7 +3492,7 @@ fn main() -> anyhow::Result<()> {
             let describe_path = std::path::Path::new(&path).join("describe.json");
             let bytes = std::fs::read(&describe_path)?;
             let value: serde_json::Value = serde_json::from_slice(&bytes)?;
-            greentic_ext_contract::schema::validate_describe_json(&value)
+            greentic_extension_sdk_contract::schema::validate_describe_json(&value)
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             println!("✓ {} valid", describe_path.display());
         }

@@ -48,8 +48,8 @@
 - `gtdx info <name>` — local-first lookup, renders provider runtime pack +
   component version, uniform capabilities line
 - `gtdx install <.gtxpack>` now routes `kind=Provider` through `post_install_provider`
-- Shared provider fixture helpers in `greentic-ext-testing::provider_fixtures`
-- `greentic-ext-contract::hex` — centralized hex encoder
+- Shared provider fixture helpers in `greentic-extension-sdk-testing::provider_fixtures`
+- `greentic-extension-sdk-contract::hex` — centralized hex encoder
 - `gtdx new <name>` — scaffold a new design/bundle/deploy extension with
   vendored WIT contract and `.gtdx-contract.lock` (Phase 1 Track A, S1).
 - `gtdx dev` subcommand: inner-loop build + pack + install for extension authors.
@@ -64,7 +64,7 @@
   `--force`, `--sign --key-id <id>`, `--version` override, and `--verify-only`.
   Writes a receipt at `./dist/publish-<id>-<version>.json`. Store and OCI
   registries return `NotImplemented` for now (Phase 2).
-- `greentic-ext-contract::pack_writer` — deterministic ZIP writer (sorted
+- `greentic-extension-sdk-contract::pack_writer` — deterministic ZIP writer (sorted
   entries, zeroed timestamps, LF normalization) shared by `gtdx dev` and
   `gtdx publish`.
 - `gtdx publish --registry <name>` now uploads `.gtxpack` artifacts to a

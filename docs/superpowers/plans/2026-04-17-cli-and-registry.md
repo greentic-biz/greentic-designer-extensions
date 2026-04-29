@@ -51,7 +51,7 @@ publish = false
 anyhow = { workspace = true }
 async-trait = "0.1"
 dialoguer = { workspace = true }
-greentic-ext-contract = { path = "../greentic-ext-contract" }
+greentic-extension-sdk-contract = { path = "../greentic-extension-sdk-contract" }
 oci-client = { workspace = true }
 reqwest = { workspace = true }
 semver = { workspace = true }
@@ -66,7 +66,7 @@ tracing = { workspace = true }
 zip = { workspace = true }
 
 [dev-dependencies]
-greentic-ext-testing = { path = "../greentic-ext-testing" }
+greentic-extension-sdk-testing = { path = "../greentic-extension-sdk-testing" }
 wiremock = "0.6"
 
 [lints]
@@ -156,14 +156,14 @@ pub enum RegistryError {
     Toml(#[from] toml::de::Error),
 
     #[error("contract: {0}")]
-    Contract(#[from] greentic_ext_contract::ContractError),
+    Contract(#[from] greentic_extension_sdk_contract::ContractError),
 }
 ```
 
 - [ ] **Step 2: Write `src/types.rs`**
 
 ```rust
-use greentic_ext_contract::{DescribeJson, ExtensionKind};
+use greentic_extension_sdk_contract::{DescribeJson, ExtensionKind};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -308,10 +308,10 @@ git commit -m "feat(registry): add ExtensionRegistry trait"
 - [ ] **Step 1: Write failing test `tests/local_registry.rs`**
 
 ```rust
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_registry::local::LocalFilesystemRegistry;
 use greentic_ext_registry::{ExtensionRegistry, SearchQuery};
-use greentic_ext_testing::{pack_directory, ExtensionFixtureBuilder};
+use greentic_extension_sdk_testing::{pack_directory, ExtensionFixtureBuilder};
 use tempfile::TempDir;
 
 #[tokio::test]
@@ -356,7 +356,7 @@ async fn local_registry_finds_and_fetches_packed_extension() {
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
-use greentic_ext_contract::DescribeJson;
+use greentic_extension_sdk_contract::DescribeJson;
 use serde_json::Value;
 
 use crate::error::RegistryError;
@@ -403,7 +403,7 @@ impl LocalFilesystemRegistry {
             .by_name("describe.json")
             .map_err(|e| RegistryError::Storage(format!("describe.json missing: {e}")))?;
         let value: Value = serde_json::from_reader(&mut describe_entry)?;
-        greentic_ext_contract::schema::validate_describe_json(&value)?;
+        greentic_extension_sdk_contract::schema::validate_describe_json(&value)?;
         let describe: DescribeJson = serde_json::from_value(value)?;
         Ok(describe)
     }
@@ -484,7 +484,7 @@ impl ExtensionRegistry for LocalFilesystemRegistry {
         }
         let describe = Self::read_describe_from_pack(&path)?;
         let bytes = Self::read_artifact_bytes(&path)?;
-        let sha = greentic_ext_contract::artifact_sha256(&bytes);
+        let sha = greentic_extension_sdk_contract::artifact_sha256(&bytes);
         Ok(ExtensionMetadata {
             name: describe.metadata.id.clone(),
             version: describe.metadata.version.clone(),
@@ -584,7 +584,7 @@ async fn store_registry_search_returns_parsed_results() {
 
     let reg = GreenticStoreRegistry::new("default", server.uri(), None);
     let q = SearchQuery {
-        kind: Some(greentic_ext_contract::ExtensionKind::Design),
+        kind: Some(greentic_extension_sdk_contract::ExtensionKind::Design),
         ..Default::default()
     };
     let results = reg.search(q).await.unwrap();
@@ -594,7 +594,7 @@ async fn store_registry_search_returns_parsed_results() {
 
 #[tokio::test]
 async fn store_registry_fetch_downloads_artifact() {
-    use greentic_ext_contract::{DescribeJson, ExtensionKind};
+    use greentic_extension_sdk_contract::{DescribeJson, ExtensionKind};
 
     let server = MockServer::start().await;
     let describe_json = serde_json::json!({
@@ -690,7 +690,7 @@ impl GreenticStoreRegistry {
 struct SummaryDto {
     name: String,
     latest_version: String,
-    kind: greentic_ext_contract::ExtensionKind,
+    kind: greentic_extension_sdk_contract::ExtensionKind,
     summary: String,
     #[serde(default)]
     downloads: u64,
@@ -699,7 +699,7 @@ struct SummaryDto {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MetadataDto {
-    describe: greentic_ext_contract::DescribeJson,
+    describe: greentic_extension_sdk_contract::DescribeJson,
     artifact_sha256: String,
     #[serde(default)]
     published_at: String,
@@ -710,7 +710,7 @@ struct MetadataDto {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PublishRequest<'a> {
-    describe: &'a greentic_ext_contract::DescribeJson,
+    describe: &'a greentic_extension_sdk_contract::DescribeJson,
     signature: Option<&'a str>,
     artifact_sha256: String,
 }
@@ -806,7 +806,7 @@ impl ExtensionRegistry for GreenticStoreRegistry {
         artifact: ExtensionArtifact,
         auth: &AuthToken,
     ) -> Result<(), RegistryError> {
-        let sha = greentic_ext_contract::artifact_sha256(&artifact.bytes);
+        let sha = greentic_extension_sdk_contract::artifact_sha256(&artifact.bytes);
         let body = PublishRequest {
             describe: &artifact.describe,
             signature: artifact.signature.as_deref(),
@@ -983,8 +983,8 @@ impl ExtensionRegistry for OciRegistry {
             .by_name("describe.json")
             .map_err(|e| RegistryError::Storage(format!("describe missing: {e}")))?;
         let value: serde_json::Value = serde_json::from_reader(&mut describe_entry)?;
-        greentic_ext_contract::schema::validate_describe_json(&value)?;
-        let describe: greentic_ext_contract::DescribeJson = serde_json::from_value(value)?;
+        greentic_extension_sdk_contract::schema::validate_describe_json(&value)?;
+        let describe: greentic_extension_sdk_contract::DescribeJson = serde_json::from_value(value)?;
 
         Ok(ExtensionArtifact {
             name: describe.metadata.id.clone(),
@@ -1072,7 +1072,7 @@ fn computes_extension_dir_for_kind() {
     let tmp = TempDir::new().unwrap();
     let storage = Storage::new(tmp.path());
     let dir = storage.extension_dir(
-        greentic_ext_contract::ExtensionKind::Design,
+        greentic_extension_sdk_contract::ExtensionKind::Design,
         "greentic.x",
         "1.2.3",
     );
@@ -1085,7 +1085,7 @@ fn stage_and_commit_atomic_move() {
     let storage = Storage::new(tmp.path());
     let (staging, final_dir) = storage
         .begin_install(
-            greentic_ext_contract::ExtensionKind::Design,
+            greentic_extension_sdk_contract::ExtensionKind::Design,
             "greentic.x",
             "1.0.0",
         )
@@ -1102,7 +1102,7 @@ fn stage_and_commit_atomic_move() {
 ```rust
 use std::path::{Path, PathBuf};
 
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 
 use crate::error::RegistryError;
 
@@ -1190,11 +1190,11 @@ git commit -m "feat(registry): add Storage layout helper"
 - [ ] **Step 1: Write test at `tests/lifecycle.rs`**
 
 ```rust
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_registry::lifecycle::{InstallOptions, Installer};
 use greentic_ext_registry::local::LocalFilesystemRegistry;
 use greentic_ext_registry::storage::Storage;
-use greentic_ext_testing::{pack_directory, ExtensionFixtureBuilder};
+use greentic_extension_sdk_testing::{pack_directory, ExtensionFixtureBuilder};
 use tempfile::TempDir;
 
 #[tokio::test]
@@ -1355,7 +1355,7 @@ impl<'a, R: ExtensionRegistry + ?Sized> Installer<'a, R> {
                     ));
                 };
                 let payload = serde_json::to_vec(&artifact.describe)?;
-                greentic_ext_contract::verify_ed25519(
+                greentic_extension_sdk_contract::verify_ed25519(
                     &sig.public_key,
                     &sig.value,
                     &payload,
@@ -1367,7 +1367,7 @@ impl<'a, R: ExtensionRegistry + ?Sized> Installer<'a, R> {
 
     pub fn uninstall(
         &self,
-        kind: greentic_ext_contract::ExtensionKind,
+        kind: greentic_extension_sdk_contract::ExtensionKind,
         name: &str,
         version: &str,
     ) -> Result<(), RegistryError> {
@@ -1568,7 +1568,7 @@ git commit -m "feat(registry): add Credentials TOML with 0600 perm on unix"
 - [ ] **Step 1: Write `src/prompt.rs`**
 
 ```rust
-use greentic_ext_contract::DescribeJson;
+use greentic_extension_sdk_contract::DescribeJson;
 
 /// Prints a prompt showing the extension's requested permissions and returns
 /// user's y/n answer. When `auto_accept` is true, always returns true (for
@@ -1779,9 +1779,9 @@ pub async fn run(args: Args, _home: &Path) -> anyhow::Result<()> {
     let describe_path = Path::new(&args.path).join("describe.json");
     let bytes = std::fs::read(&describe_path)?;
     let value: serde_json::Value = serde_json::from_slice(&bytes)?;
-    greentic_ext_contract::schema::validate_describe_json(&value)
+    greentic_extension_sdk_contract::schema::validate_describe_json(&value)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let _: greentic_ext_contract::DescribeJson = serde_json::from_value(value)?;
+    let _: greentic_extension_sdk_contract::DescribeJson = serde_json::from_value(value)?;
     println!("✓ {} valid", describe_path.display());
     Ok(())
 }
@@ -1793,7 +1793,7 @@ pub async fn run(args: Args, _home: &Path) -> anyhow::Result<()> {
 use std::path::Path;
 
 use clap::Args as ClapArgs;
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_registry::storage::Storage;
 
 #[derive(ClapArgs, Debug)]
@@ -1818,7 +1818,7 @@ pub async fn run(_args: Args, home: &Path) -> anyhow::Result<()> {
             }
             let bytes = std::fs::read(&describe_path)?;
             let value: serde_json::Value = serde_json::from_slice(&bytes)?;
-            let d: greentic_ext_contract::DescribeJson = serde_json::from_value(value)?;
+            let d: greentic_extension_sdk_contract::DescribeJson = serde_json::from_value(value)?;
             if !any {
                 println!("[{}]", kind.dir_name());
                 any = true;
@@ -2003,7 +2003,7 @@ impl Storage {
 use std::path::Path;
 
 use clap::Args as ClapArgs;
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_registry::storage::Storage;
 
 #[derive(ClapArgs, Debug)]
@@ -2103,9 +2103,9 @@ pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
     let reg = GreenticStoreRegistry::new(&entry.name, &entry.url, token);
 
     let kind = match args.kind.as_deref() {
-        Some("design") => Some(greentic_ext_contract::ExtensionKind::Design),
-        Some("bundle") => Some(greentic_ext_contract::ExtensionKind::Bundle),
-        Some("deploy") => Some(greentic_ext_contract::ExtensionKind::Deploy),
+        Some("design") => Some(greentic_extension_sdk_contract::ExtensionKind::Design),
+        Some("bundle") => Some(greentic_extension_sdk_contract::ExtensionKind::Bundle),
+        Some("deploy") => Some(greentic_extension_sdk_contract::ExtensionKind::Deploy),
         Some(x) => return Err(anyhow::anyhow!("unknown kind: {x}")),
         None => None,
     };
@@ -2297,7 +2297,7 @@ pub async fn run(args: Args, home: &Path) -> anyhow::Result<()> {
 use std::path::Path;
 
 use clap::Args as ClapArgs;
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_registry::storage::Storage;
 
 #[derive(ClapArgs, Debug)]
@@ -2333,7 +2333,7 @@ pub async fn run(_args: Args, home: &Path) -> anyhow::Result<()> {
                     continue;
                 }
             };
-            if let Err(e) = greentic_ext_contract::schema::validate_describe_json(&value) {
+            if let Err(e) = greentic_extension_sdk_contract::schema::validate_describe_json(&value) {
                 println!("✗ {}: {e}", describe_path.display());
                 bad += 1;
             } else {
@@ -2373,8 +2373,8 @@ git commit -m "feat(cli): add search + info + login + registries + doctor comman
 ```rust
 use std::process::Command;
 
-use greentic_ext_contract::ExtensionKind;
-use greentic_ext_testing::{pack_directory, ExtensionFixtureBuilder};
+use greentic_extension_sdk_contract::ExtensionKind;
+use greentic_extension_sdk_testing::{pack_directory, ExtensionFixtureBuilder};
 use tempfile::TempDir;
 
 fn gtdx_bin() -> std::path::PathBuf {
@@ -2469,7 +2469,7 @@ Add dev dep to cli Cargo.toml:
 
 ```toml
 [dev-dependencies]
-greentic-ext-testing = { path = "../greentic-ext-testing" }
+greentic-extension-sdk-testing = { path = "../greentic-extension-sdk-testing" }
 tempfile = { workspace = true }
 ```
 

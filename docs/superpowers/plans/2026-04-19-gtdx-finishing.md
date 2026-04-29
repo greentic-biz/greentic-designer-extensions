@@ -80,7 +80,7 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 use clap::Args as ClapArgs;
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_registry::credentials::Credentials;
 use greentic_ext_registry::storage::Storage;
 
@@ -278,7 +278,7 @@ fn check_installed(home: &Path) -> anyhow::Result<usize> {
                     continue;
                 }
             };
-            if let Err(e) = greentic_ext_contract::schema::validate_describe_json(&value) {
+            if let Err(e) = greentic_extension_sdk_contract::schema::validate_describe_json(&value) {
                 println!("  ✗ {}: {e}", describe_path.display());
                 bad += 1;
             } else {

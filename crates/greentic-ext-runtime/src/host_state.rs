@@ -2,7 +2,7 @@ use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use crate::host_bindings::greentic::extension_host::{broker, http, i18n, logging, secrets};
-use greentic_ext_contract::describe::Permissions;
+use greentic_extension_sdk_contract::describe::Permissions;
 
 pub struct HostState {
     pub extension_id: String,

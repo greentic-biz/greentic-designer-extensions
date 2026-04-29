@@ -4,7 +4,7 @@
 
 **Goal:** Ship end-to-end sign + verify infrastructure for Greentic extensions in `greentic-designer-extensions`: JCS canonicalization fix, `sign_describe`/`verify_describe` helpers, runtime verify hook with `GREENTIC_EXT_ALLOW_UNSIGNED` escape hatch, and `gtdx sign/verify/keygen` CLI subcommands.
 
-**Architecture:** Additive-only in three existing crates. `greentic-ext-contract` gets `serde_jcs` dep and two new helper functions that wrap the existing `verify_ed25519` primitive. `greentic-ext-registry::lifecycle::verify_signature` switches from the broken `serde_json::to_vec` path to the new `verify_describe` helper — single-line body swap. `greentic-ext-runtime::ExtensionRuntime::register_loaded_from_dir` gains a verify-or-bypass gate before the existing `LoadedExtension::load_from_dir` call. `greentic-ext-cli` gains three new subcommands following the established `commands/<name>::{Args, run}` pattern.
+**Architecture:** Additive-only in three existing crates. `greentic-extension-sdk-contract` gets `serde_jcs` dep and two new helper functions that wrap the existing `verify_ed25519` primitive. `greentic-ext-registry::lifecycle::verify_signature` switches from the broken `serde_json::to_vec` path to the new `verify_describe` helper — single-line body swap. `greentic-ext-runtime::ExtensionRuntime::register_loaded_from_dir` gains a verify-or-bypass gate before the existing `LoadedExtension::load_from_dir` call. `greentic-ext-cli` gains three new subcommands following the established `commands/<name>::{Args, run}` pattern.
 
 **Tech Stack:** Rust 1.94, edition 2024. `ed25519-dalek` 2.1 (existing), `serde_jcs` 0.1 (NEW), `pkcs8` 0.10 (NEW, for CLI key IO), `tempfile` + `wat` + `zip` (existing test infrastructure).
 
@@ -30,11 +30,11 @@
 | Path | Change |
 | --- | --- |
 | `Cargo.toml` (root) | Add `serde_jcs` + `pkcs8` + `zip` to `[workspace.dependencies]` |
-| `crates/greentic-ext-contract/Cargo.toml` | Add `serde_jcs = { workspace = true }` |
-| `crates/greentic-ext-contract/src/error.rs` | Add `ContractError::Canonicalize(String)` variant |
-| `crates/greentic-ext-contract/src/signature.rs` | Add `canonical_signing_payload`, `sign_describe`, `verify_describe` |
-| `crates/greentic-ext-contract/src/lib.rs` | Re-export the three new fns |
-| `crates/greentic-ext-contract/tests/signature_rt.rs` | 3 new describe.json sign/verify tests |
+| `crates/greentic-extension-sdk-contract/Cargo.toml` | Add `serde_jcs = { workspace = true }` |
+| `crates/greentic-extension-sdk-contract/src/error.rs` | Add `ContractError::Canonicalize(String)` variant |
+| `crates/greentic-extension-sdk-contract/src/signature.rs` | Add `canonical_signing_payload`, `sign_describe`, `verify_describe` |
+| `crates/greentic-extension-sdk-contract/src/lib.rs` | Re-export the three new fns |
+| `crates/greentic-extension-sdk-contract/tests/signature_rt.rs` | 3 new describe.json sign/verify tests |
 | `crates/greentic-ext-registry/src/lifecycle.rs` | Replace `verify_signature` body with `verify_describe` call |
 | `crates/greentic-ext-runtime/src/error.rs` | Add `RuntimeError::SignatureInvalid { extension_id, reason }` |
 | `crates/greentic-ext-runtime/src/runtime.rs` | Add verify gate in `register_loaded_from_dir` |
@@ -46,7 +46,7 @@
 
 ### Untouched files (for clarity — plan does not modify these)
 
-- `crates/greentic-ext-contract/src/describe.rs` — `DescribeJson`, `Signature`, etc. stay as-is
+- `crates/greentic-extension-sdk-contract/src/describe.rs` — `DescribeJson`, `Signature`, etc. stay as-is
 - All WIT files under `wit/`
 - All reference-extension crates under `reference-extensions/`
 - `.github/workflows/ci.yml` — existing `ci/local_check.sh` covers new tests
@@ -115,12 +115,12 @@ git commit -m "chore: add serde_jcs + pkcs8 + zip to workspace dependencies"
 ## Task 2: Add `ContractError::Canonicalize` variant
 
 **Files:**
-- Modify: `crates/greentic-ext-contract/src/error.rs`
+- Modify: `crates/greentic-extension-sdk-contract/src/error.rs`
 
 - [ ] **Step 1: Read current `error.rs`**
 
 ```bash
-cat crates/greentic-ext-contract/src/error.rs
+cat crates/greentic-extension-sdk-contract/src/error.rs
 ```
 
 Expected content (reference):
@@ -165,7 +165,7 @@ Append inside the enum (after `UnsupportedApiVersion`, before `Io`):
 - [ ] **Step 3: Verify compilation**
 
 ```bash
-cargo check -p greentic-ext-contract 2>&1 | tail -3
+cargo check -p greentic-extension-sdk-contract 2>&1 | tail -3
 ```
 
 Expected: `Finished …` with no errors.
@@ -173,7 +173,7 @@ Expected: `Finished …` with no errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/src/error.rs
+git add crates/greentic-extension-sdk-contract/src/error.rs
 git commit -m "feat(contract): add ContractError::Canonicalize variant"
 ```
 
@@ -182,13 +182,13 @@ git commit -m "feat(contract): add ContractError::Canonicalize variant"
 ## Task 3: TDD `canonical_signing_payload` helper
 
 **Files:**
-- Modify: `crates/greentic-ext-contract/src/signature.rs`
-- Modify: `crates/greentic-ext-contract/Cargo.toml`
-- Test: `crates/greentic-ext-contract/tests/signature_rt.rs`
+- Modify: `crates/greentic-extension-sdk-contract/src/signature.rs`
+- Modify: `crates/greentic-extension-sdk-contract/Cargo.toml`
+- Test: `crates/greentic-extension-sdk-contract/tests/signature_rt.rs`
 
 - [ ] **Step 1: Add `serde_jcs` dep to contract crate**
 
-Edit `crates/greentic-ext-contract/Cargo.toml` — append under `[dependencies]`:
+Edit `crates/greentic-extension-sdk-contract/Cargo.toml` — append under `[dependencies]`:
 
 ```toml
 serde_jcs = { workspace = true }
@@ -196,10 +196,10 @@ serde_jcs = { workspace = true }
 
 - [ ] **Step 2: Write the failing test**
 
-Append to `crates/greentic-ext-contract/tests/signature_rt.rs`:
+Append to `crates/greentic-extension-sdk-contract/tests/signature_rt.rs`:
 
 ```rust
-use greentic_ext_contract::{canonical_signing_payload, DescribeJson};
+use greentic_extension_sdk_contract::{canonical_signing_payload, DescribeJson};
 
 fn sample_describe_with_sig(sig_value: Option<&str>) -> DescribeJson {
     let json = serde_json::json!({
@@ -249,14 +249,14 @@ fn canonical_payload_is_deterministic_across_serde_round_trip() {
 - [ ] **Step 3: Run the tests to verify failure**
 
 ```bash
-cargo test -p greentic-ext-contract --test signature_rt 2>&1 | tail -15
+cargo test -p greentic-extension-sdk-contract --test signature_rt 2>&1 | tail -15
 ```
 
 Expected: compile errors citing `cannot find function canonical_signing_payload`.
 
 - [ ] **Step 4: Implement `canonical_signing_payload`**
 
-Edit `crates/greentic-ext-contract/src/signature.rs`. Append at the bottom (before any existing `fn strip_prefix`):
+Edit `crates/greentic-extension-sdk-contract/src/signature.rs`. Append at the bottom (before any existing `fn strip_prefix`):
 
 ```rust
 use crate::describe::DescribeJson;
@@ -273,7 +273,7 @@ pub fn canonical_signing_payload(describe: &DescribeJson) -> Result<Vec<u8>, Con
 
 - [ ] **Step 5: Re-export from `lib.rs`**
 
-Edit `crates/greentic-ext-contract/src/lib.rs`. Extend the `pub use` for the `signature` module:
+Edit `crates/greentic-extension-sdk-contract/src/lib.rs`. Extend the `pub use` for the `signature` module:
 
 ```rust
 pub use self::signature::{artifact_sha256, canonical_signing_payload, sign_ed25519, verify_ed25519};
@@ -282,7 +282,7 @@ pub use self::signature::{artifact_sha256, canonical_signing_payload, sign_ed255
 - [ ] **Step 6: Run the tests to verify pass**
 
 ```bash
-cargo test -p greentic-ext-contract --test signature_rt 2>&1 | tail -15
+cargo test -p greentic-extension-sdk-contract --test signature_rt 2>&1 | tail -15
 ```
 
 Expected: all tests pass (existing 3 + 2 new = 5 passing).
@@ -290,7 +290,7 @@ Expected: all tests pass (existing 3 + 2 new = 5 passing).
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/
+git add crates/greentic-extension-sdk-contract/
 git commit -m "feat(contract): add canonical_signing_payload (RFC 8785 JCS, strips signature)"
 ```
 
@@ -299,16 +299,16 @@ git commit -m "feat(contract): add canonical_signing_payload (RFC 8785 JCS, stri
 ## Task 4: TDD `sign_describe` helper
 
 **Files:**
-- Modify: `crates/greentic-ext-contract/src/signature.rs`
-- Test: `crates/greentic-ext-contract/tests/signature_rt.rs`
+- Modify: `crates/greentic-extension-sdk-contract/src/signature.rs`
+- Test: `crates/greentic-extension-sdk-contract/tests/signature_rt.rs`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `crates/greentic-ext-contract/tests/signature_rt.rs`:
+Append to `crates/greentic-extension-sdk-contract/tests/signature_rt.rs`:
 
 ```rust
 use ed25519_dalek::SigningKey;
-use greentic_ext_contract::sign_describe;
+use greentic_extension_sdk_contract::sign_describe;
 use rand::rngs::OsRng;
 
 #[test]
@@ -344,14 +344,14 @@ fn sign_describe_strips_preexisting_signature_before_signing() {
 - [ ] **Step 2: Run tests, confirm compile failure**
 
 ```bash
-cargo test -p greentic-ext-contract --test signature_rt 2>&1 | tail -10
+cargo test -p greentic-extension-sdk-contract --test signature_rt 2>&1 | tail -10
 ```
 
 Expected: `cannot find function sign_describe`.
 
 - [ ] **Step 3: Implement `sign_describe`**
 
-Append to `crates/greentic-ext-contract/src/signature.rs`:
+Append to `crates/greentic-extension-sdk-contract/src/signature.rs`:
 
 ```rust
 /// Sign describe.json in-place. Strips any existing `.signature` field,
@@ -389,7 +389,7 @@ pub use self::signature::{artifact_sha256, canonical_signing_payload, sign_descr
 - [ ] **Step 5: Run tests, confirm all pass**
 
 ```bash
-cargo test -p greentic-ext-contract --test signature_rt 2>&1 | tail -10
+cargo test -p greentic-extension-sdk-contract --test signature_rt 2>&1 | tail -10
 ```
 
 Expected: 7 tests pass (3 existing + 2 Task 3 + 2 new).
@@ -397,7 +397,7 @@ Expected: 7 tests pass (3 existing + 2 Task 3 + 2 new).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/
+git add crates/greentic-extension-sdk-contract/
 git commit -m "feat(contract): add sign_describe helper (mutates describe in-place)"
 ```
 
@@ -406,15 +406,15 @@ git commit -m "feat(contract): add sign_describe helper (mutates describe in-pla
 ## Task 5: TDD `verify_describe` helper
 
 **Files:**
-- Modify: `crates/greentic-ext-contract/src/signature.rs`
-- Test: `crates/greentic-ext-contract/tests/signature_rt.rs`
+- Modify: `crates/greentic-extension-sdk-contract/src/signature.rs`
+- Test: `crates/greentic-extension-sdk-contract/tests/signature_rt.rs`
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `crates/greentic-ext-contract/tests/signature_rt.rs`:
+Append to `crates/greentic-extension-sdk-contract/tests/signature_rt.rs`:
 
 ```rust
-use greentic_ext_contract::verify_describe;
+use greentic_extension_sdk_contract::verify_describe;
 
 #[test]
 fn sign_describe_then_verify_describe_roundtrip() {
@@ -428,7 +428,7 @@ fn sign_describe_then_verify_describe_roundtrip() {
 fn verify_describe_missing_signature_fails() {
     let d = sample_describe_with_sig(None);
     let err = verify_describe(&d).unwrap_err();
-    assert!(matches!(err, greentic_ext_contract::ContractError::SignatureInvalid(_)));
+    assert!(matches!(err, greentic_extension_sdk_contract::ContractError::SignatureInvalid(_)));
     assert!(format!("{err}").contains("missing signature"));
 }
 
@@ -439,7 +439,7 @@ fn verify_describe_rejects_tampered_metadata() {
     sign_describe(&mut d, &sk).expect("sign");
     d.metadata.version = "99.99.99".into();
     let err = verify_describe(&d).unwrap_err();
-    assert!(matches!(err, greentic_ext_contract::ContractError::SignatureInvalid(_)));
+    assert!(matches!(err, greentic_extension_sdk_contract::ContractError::SignatureInvalid(_)));
 }
 
 #[test]
@@ -468,14 +468,14 @@ fn verify_describe_survives_serde_round_trip() {
 - [ ] **Step 2: Run tests, confirm compile failure**
 
 ```bash
-cargo test -p greentic-ext-contract --test signature_rt 2>&1 | tail -10
+cargo test -p greentic-extension-sdk-contract --test signature_rt 2>&1 | tail -10
 ```
 
 Expected: `cannot find function verify_describe`.
 
 - [ ] **Step 3: Implement `verify_describe`**
 
-Append to `crates/greentic-ext-contract/src/signature.rs`:
+Append to `crates/greentic-extension-sdk-contract/src/signature.rs`:
 
 ```rust
 /// Verify the inline `.signature` field of a describe.json. Returns
@@ -512,7 +512,7 @@ pub use self::signature::{
 - [ ] **Step 5: Run tests, confirm all pass**
 
 ```bash
-cargo test -p greentic-ext-contract 2>&1 | tail -10
+cargo test -p greentic-extension-sdk-contract 2>&1 | tail -10
 ```
 
 Expected: 12 tests pass (3 existing + 2 Task 3 + 2 Task 4 + 5 new).
@@ -520,7 +520,7 @@ Expected: 12 tests pass (3 existing + 2 Task 3 + 2 Task 4 + 5 new).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/
+git add crates/greentic-extension-sdk-contract/
 git commit -m "feat(contract): add verify_describe helper (verifies inline describe signature)"
 ```
 
@@ -555,7 +555,7 @@ fn verify_signature(
                 return Err(RegistryError::SignatureInvalid("missing signature".into()));
             };
             let payload = serde_json::to_vec(&artifact.describe)?;
-            greentic_ext_contract::verify_ed25519(&sig.public_key, &sig.value, &payload)
+            greentic_extension_sdk_contract::verify_ed25519(&sig.public_key, &sig.value, &payload)
                 .map_err(|e| RegistryError::SignatureInvalid(e.to_string()))
         }
     }
@@ -572,7 +572,7 @@ fn verify_signature(
     match policy {
         TrustPolicy::Loose => Ok(()),
         TrustPolicy::Strict | TrustPolicy::Normal => {
-            greentic_ext_contract::verify_describe(&artifact.describe)
+            greentic_extension_sdk_contract::verify_describe(&artifact.describe)
                 .map_err(|e| RegistryError::SignatureInvalid(e.to_string()))
         }
     }
@@ -709,20 +709,20 @@ impl Drop for EnvGuard {
 }
 
 /// Build a signed extension fixture using the `ExtensionFixtureBuilder`
-/// from `greentic-ext-testing`, then sign its describe.json with a fresh
+/// from `greentic-extension-sdk-testing`, then sign its describe.json with a fresh
 /// ed25519 key. Returns the fixture (TempDir-backed) and the signing key
 /// used (caller may ignore).
 pub fn signed_fixture(
-    kind: greentic_ext_contract::ExtensionKind,
+    kind: greentic_extension_sdk_contract::ExtensionKind,
     id: &str,
     version: &str,
-) -> (greentic_ext_testing::ExtensionFixture, ed25519_dalek::SigningKey) {
+) -> (greentic_extension_sdk_testing::ExtensionFixture, ed25519_dalek::SigningKey) {
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
 
     let minimal_wasm =
         wat::parse_str(r"(component)").expect("wat component must compile");
-    let fixture = greentic_ext_testing::ExtensionFixtureBuilder::new(kind, id, version)
+    let fixture = greentic_extension_sdk_testing::ExtensionFixtureBuilder::new(kind, id, version)
         .offer("greentic:test/ping", "1.0.0")
         .with_wasm(minimal_wasm)
         .build()
@@ -731,10 +731,10 @@ pub fn signed_fixture(
     // Read, sign, write back.
     let describe_path = fixture.root().join("describe.json");
     let raw = std::fs::read_to_string(&describe_path).unwrap();
-    let mut describe: greentic_ext_contract::DescribeJson =
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
         serde_json::from_str(&raw).unwrap();
     let sk = SigningKey::generate(&mut OsRng);
-    greentic_ext_contract::sign_describe(&mut describe, &sk).expect("sign");
+    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
     let out = serde_json::to_string_pretty(&describe).unwrap();
     std::fs::write(&describe_path, out).unwrap();
 
@@ -742,10 +742,10 @@ pub fn signed_fixture(
 }
 
 /// Mutate an installed fixture's describe.json to invalidate its signature.
-pub fn tamper_fixture(fixture: &greentic_ext_testing::ExtensionFixture) {
+pub fn tamper_fixture(fixture: &greentic_extension_sdk_testing::ExtensionFixture) {
     let path = fixture.root().join("describe.json");
     let raw = std::fs::read_to_string(&path).unwrap();
-    let mut describe: greentic_ext_contract::DescribeJson =
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
         serde_json::from_str(&raw).unwrap();
     describe.metadata.version = "99.99.99".into();
     std::fs::write(&path, serde_json::to_string_pretty(&describe).unwrap()).unwrap();
@@ -754,13 +754,13 @@ pub fn tamper_fixture(fixture: &greentic_ext_testing::ExtensionFixture) {
 /// Build an **unsigned** fixture (no .signature field). Mirrors existing
 /// `ExtensionFixtureBuilder` default output.
 pub fn unsigned_fixture(
-    kind: greentic_ext_contract::ExtensionKind,
+    kind: greentic_extension_sdk_contract::ExtensionKind,
     id: &str,
     version: &str,
-) -> greentic_ext_testing::ExtensionFixture {
+) -> greentic_extension_sdk_testing::ExtensionFixture {
     let minimal_wasm =
         wat::parse_str(r"(component)").expect("wat component must compile");
-    greentic_ext_testing::ExtensionFixtureBuilder::new(kind, id, version)
+    greentic_extension_sdk_testing::ExtensionFixtureBuilder::new(kind, id, version)
         .offer("greentic:test/ping", "1.0.0")
         .with_wasm(minimal_wasm)
         .build()
@@ -780,7 +780,7 @@ If lib has `forbid(unsafe_code)`, no action needed (tests are a different crate)
 
 - [ ] **Step 4: Verify `rand`, `wat`, `ed25519-dalek` are dev-dep or workspace-accessible**
 
-Existing `crates/greentic-ext-runtime/Cargo.toml` `[dev-dependencies]` should already include `greentic-ext-testing` and `wat`. Add if missing:
+Existing `crates/greentic-ext-runtime/Cargo.toml` `[dev-dependencies]` should already include `greentic-extension-sdk-testing` and `wat`. Add if missing:
 
 ```toml
 [dev-dependencies]
@@ -819,7 +819,7 @@ mod support;
 
 use std::path::PathBuf;
 
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_runtime::{DiscoveryPaths, ExtensionRuntime, RuntimeConfig, RuntimeError};
 
 use support::{signed_fixture, tamper_fixture, unsigned_fixture, EnvGuard};
@@ -931,8 +931,8 @@ fn verify_dir_signature(&self, dir: &std::path::Path) -> Result<(), RuntimeError
     }
     let path = dir.join("describe.json");
     let raw = std::fs::read_to_string(&path)?;
-    let describe: greentic_ext_contract::DescribeJson = serde_json::from_str(&raw)?;
-    greentic_ext_contract::verify_describe(&describe).map_err(|e| {
+    let describe: greentic_extension_sdk_contract::DescribeJson = serde_json::from_str(&raw)?;
+    greentic_extension_sdk_contract::verify_describe(&describe).map_err(|e| {
         RuntimeError::SignatureInvalid {
             extension_id: describe.metadata.id.clone(),
             reason: e.to_string(),
@@ -998,9 +998,9 @@ mod support;
 
 use std::path::PathBuf;
 
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_runtime::{DiscoveryPaths, ExtensionRuntime, RuntimeConfig};
-use greentic_ext_testing::ExtensionFixtureBuilder;
+use greentic_extension_sdk_testing::ExtensionFixtureBuilder;
 
 use support::EnvGuard;
 
@@ -1185,7 +1185,7 @@ use anyhow::{Context, Result};
 use clap::Args as ClapArgs;
 use ed25519_dalek::pkcs8::DecodePrivateKey;
 use ed25519_dalek::SigningKey;
-use greentic_ext_contract::DescribeJson;
+use greentic_extension_sdk_contract::DescribeJson;
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
@@ -1223,7 +1223,7 @@ pub fn run(args: &Args, _home: &Path) -> Result<()> {
     let mut describe: DescribeJson =
         serde_json::from_str(&raw).context("parse describe.json")?;
 
-    greentic_ext_contract::sign_describe(&mut describe, &signing_key)
+    greentic_extension_sdk_contract::sign_describe(&mut describe, &signing_key)
         .context("sign describe")?;
 
     let out = serde_json::to_string_pretty(&describe)? + "\n";
@@ -1281,7 +1281,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Args as ClapArgs;
-use greentic_ext_contract::DescribeJson;
+use greentic_extension_sdk_contract::DescribeJson;
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
@@ -1294,7 +1294,7 @@ pub struct Args {
 
 pub fn run(args: &Args, _home: &Path) -> Result<()> {
     let describe = load_describe(&args.path)?;
-    greentic_ext_contract::verify_describe(&describe)
+    greentic_extension_sdk_contract::verify_describe(&describe)
         .map_err(|e| anyhow::anyhow!("signature invalid: {e}"))?;
     let sig = describe.signature.as_ref().expect("verify passed → signature present");
     println!(
@@ -1440,8 +1440,8 @@ Create `crates/greentic-ext-cli/tests/sign_verify_cmd.rs`:
 use std::path::PathBuf;
 use std::process::Command;
 
-use greentic_ext_contract::ExtensionKind;
-use greentic_ext_testing::ExtensionFixtureBuilder;
+use greentic_extension_sdk_contract::ExtensionKind;
+use greentic_extension_sdk_testing::ExtensionFixtureBuilder;
 use tempfile::TempDir;
 
 fn gtdx_bin() -> PathBuf {
@@ -1684,12 +1684,12 @@ fn verify_accepts_gtxpack_archive() {
 - [ ] **Step 2: Check if `ExtensionFixture::into_temp_dir` exists**
 
 ```bash
-grep -n "into_temp_dir\|fn root" crates/greentic-ext-testing/src/fixture.rs
+grep -n "into_temp_dir\|fn root" crates/greentic-extension-sdk-testing/src/fixture.rs
 ```
 
 If `into_temp_dir` doesn't exist on `ExtensionFixture`, the test helper `new_describe_fixture` above won't compile. Options:
 
-(a) **Add the method** in `crates/greentic-ext-testing/src/fixture.rs`:
+(a) **Add the method** in `crates/greentic-extension-sdk-testing/src/fixture.rs`:
 
 ```rust
 impl ExtensionFixture {
@@ -1704,7 +1704,7 @@ impl ExtensionFixture {
 (b) **Alternative** — return the fixture itself and borrow `.root()`:
 
 ```rust
-fn new_describe_fixture() -> (greentic_ext_testing::ExtensionFixture, PathBuf) {
+fn new_describe_fixture() -> (greentic_extension_sdk_testing::ExtensionFixture, PathBuf) {
     let fx = ExtensionFixtureBuilder::new(...).build().unwrap();
     let describe = fx.root().join("describe.json");
     (fx, describe)
@@ -1721,8 +1721,8 @@ Edit `crates/greentic-ext-cli/Cargo.toml` `[dev-dependencies]`:
 
 ```toml
 [dev-dependencies]
-greentic-ext-contract = { path = "../greentic-ext-contract" }
-greentic-ext-testing = { path = "../greentic-ext-testing" }
+greentic-extension-sdk-contract = { path = "../greentic-extension-sdk-contract" }
+greentic-extension-sdk-testing = { path = "../greentic-extension-sdk-testing" }
 tempfile = { workspace = true }
 zip = { workspace = true }
 ```
@@ -1811,7 +1811,7 @@ the Phase B deploy-extension migration's signing sub-project.
   \`greentic-ext-registry::lifecycle::verify_signature\` where describe.json
   was serialized with \`.signature\` field included in the signed payload,
   making valid signatures impossible.
-- **\`sign_describe\` / \`verify_describe\`** helpers in \`greentic-ext-contract\`
+- **\`sign_describe\` / \`verify_describe\`** helpers in \`greentic-extension-sdk-contract\`
   strip the signature field, canonicalize via RFC 8785 JCS, and leverage the
   existing \`verify_ed25519\` primitive.
 - **Runtime verify gate** in \`ExtensionRuntime::register_loaded_from_dir\`:
@@ -1822,7 +1822,7 @@ the Phase B deploy-extension migration's signing sub-project.
 
 ## Test plan
 
-- [x] \`cargo test -p greentic-ext-contract --test signature_rt\` — 12 tests pass (3 existing + 9 new)
+- [x] \`cargo test -p greentic-extension-sdk-contract --test signature_rt\` — 12 tests pass (3 existing + 9 new)
 - [x] \`cargo test -p greentic-ext-runtime --test signature_gate\` — 5 new tests pass
 - [x] \`cargo test -p greentic-ext-runtime --test runtime_load\` — updated to use env guard
 - [x] \`cargo test -p greentic-ext-cli --test sign_verify_cmd\` — 8 new tests pass
@@ -1835,7 +1835,7 @@ the Phase B deploy-extension migration's signing sub-project.
   new \`deploy-single-vm@0.1.0\` (signed from day 1), CI \`EXT_SIGNING_KEY_PEM\`
   secret, \`CI_REQUIRE_SIGNED\` guardrail.
 - **Wave 3** (\`greenticai/greentic-deployer\`): bump pinned rev of
-  \`greentic-ext-runtime\` + \`greentic-ext-contract\` to this PR's merge SHA,
+  \`greentic-ext-runtime\` + \`greentic-extension-sdk-contract\` to this PR's merge SHA,
   add \`BuiltinBackendId::SingleVm\` variant, adjust tests to set
   \`GREENTIC_EXT_ALLOW_UNSIGNED=1\`, bump to 0.4.54.
 
