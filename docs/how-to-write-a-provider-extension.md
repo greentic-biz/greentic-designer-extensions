@@ -577,7 +577,7 @@ ships the legacy runtime-only providers (still in use until retrofitted).
 
 ## What to do next
 
-- Add integration tests using `greentic-ext-testing` (see
+- Add integration tests using `greentic-extension-sdk-testing` (see
   `greentic-designer-extensions` test suite).
 - For multi-channel providers, expand `list_channels()` and add per-channel
   secret/config schemas.

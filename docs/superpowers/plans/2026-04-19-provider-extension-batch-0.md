@@ -18,18 +18,18 @@
 
 **Create:**
 - `wit/extension-provider.wit` — new WIT package `greentic:extension-provider@0.1.0`
-- `crates/greentic-ext-contract/src/describe/provider.rs` — `RuntimeGtpack` struct + sha256 validator (nested into existing Runtime struct per F1)
+- `crates/greentic-extension-sdk-contract/src/describe/provider.rs` — `RuntimeGtpack` struct + sha256 validator (nested into existing Runtime struct per F1)
 - `docs/how-to-write-a-provider-extension.md` — authoring guide with Telegram walkthrough
-- `crates/greentic-ext-contract/tests/provider_describe.rs` — describe.json fixtures + validation
+- `crates/greentic-extension-sdk-contract/tests/provider_describe.rs` — describe.json fixtures + validation
 - `crates/greentic-ext-registry/tests/provider_lifecycle.rs` — install/uninstall + sha256 + conflict cases
 - `crates/greentic-ext-cli/tests/provider_commands.rs` — `gtdx list --kind provider` + `info`
 - `tests/fixtures/provider-fixture/` (in contract crate) — minimal fake `.gtxpack` for tests
 
 **Modify:**
-- `crates/greentic-ext-contract/src/kind.rs` — add `Provider` variant + `dir_name`
-- `crates/greentic-ext-contract/src/describe.rs` — extend existing `Runtime` with optional `gtpack: Option<RuntimeGtpack>`; add `TryFrom<DescribeJsonRaw>` invariant check on `DescribeJson` (F1)
-- `crates/greentic-ext-contract/src/lib.rs` — re-export provider types
-- `crates/greentic-ext-contract/tests/kind.rs` — `Provider` round-trip
+- `crates/greentic-extension-sdk-contract/src/kind.rs` — add `Provider` variant + `dir_name`
+- `crates/greentic-extension-sdk-contract/src/describe.rs` — extend existing `Runtime` with optional `gtpack: Option<RuntimeGtpack>`; add `TryFrom<DescribeJsonRaw>` invariant check on `DescribeJson` (F1)
+- `crates/greentic-extension-sdk-contract/src/lib.rs` — re-export provider types
+- `crates/greentic-extension-sdk-contract/tests/kind.rs` — `Provider` round-trip
 - `crates/greentic-ext-registry/src/registry.rs` — add `list_by_kind` + `get_describe` trait methods
 - `crates/greentic-ext-registry/src/local.rs` — impl new trait methods
 - `crates/greentic-ext-registry/src/store.rs` — impl new trait methods
@@ -39,7 +39,7 @@
 - `crates/greentic-ext-cli/src/commands/list.rs` — `--kind provider` filter
 - `crates/greentic-ext-cli/src/commands/info.rs` — provider-specific output (channels/triggers/events)
 - `crates/greentic-ext-cli/src/commands/install.rs` — route to lifecycle provider path when `kind=provider`
-- `Cargo.toml` (workspace) — bump `greentic-ext-contract` to 0.2.0, `greentic-ext-registry` to 0.2.0, `greentic-ext-cli` to 0.2.0 (minor bumps — new field added to describe.json is backwards-compatible for existing kinds but adds new kind)
+- `Cargo.toml` (workspace) — bump `greentic-extension-sdk-contract` to 0.2.0, `greentic-ext-registry` to 0.2.0, `greentic-ext-cli` to 0.2.0 (minor bumps — new field added to describe.json is backwards-compatible for existing kinds but adds new kind)
 
 ### Wave B — Telegram pilot (`greentic-messaging-providers`)
 
@@ -85,12 +85,12 @@
 ### Task A1: Add `Provider` variant to `ExtensionKind`
 
 **Files:**
-- Modify: `crates/greentic-ext-contract/src/kind.rs`
-- Modify: `crates/greentic-ext-contract/tests/kind.rs`
+- Modify: `crates/greentic-extension-sdk-contract/src/kind.rs`
+- Modify: `crates/greentic-extension-sdk-contract/tests/kind.rs`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `crates/greentic-ext-contract/tests/kind.rs`:
+Append to `crates/greentic-extension-sdk-contract/tests/kind.rs`:
 
 ```rust
 #[test]
@@ -111,14 +111,14 @@ fn provider_kind_dir_name() {
 - [ ] **Step 2: Run test to verify failure**
 
 ```bash
-cargo test -p greentic-ext-contract --test kind provider_kind_serde_roundtrip provider_kind_dir_name
+cargo test -p greentic-extension-sdk-contract --test kind provider_kind_serde_roundtrip provider_kind_dir_name
 ```
 
 Expected: FAIL with "no variant Provider" / "no associated item `Provider`".
 
 - [ ] **Step 3: Add the variant**
 
-Modify `crates/greentic-ext-contract/src/kind.rs`:
+Modify `crates/greentic-extension-sdk-contract/src/kind.rs`:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -151,7 +151,7 @@ impl ExtensionKind {
 - [ ] **Step 4: Run test to verify pass**
 
 ```bash
-cargo test -p greentic-ext-contract --test kind
+cargo test -p greentic-extension-sdk-contract --test kind
 ```
 
 Expected: PASS (all kind tests including new provider tests).
@@ -159,7 +159,7 @@ Expected: PASS (all kind tests including new provider tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/src/kind.rs crates/greentic-ext-contract/tests/kind.rs
+git add crates/greentic-extension-sdk-contract/src/kind.rs crates/greentic-extension-sdk-contract/tests/kind.rs
 git commit -m "feat(contract): add Provider variant to ExtensionKind"
 ```
 
@@ -170,25 +170,25 @@ git commit -m "feat(contract): add Provider variant to ExtensionKind"
 **Design note (F1):** The existing `DescribeJson` struct in `describe/mod.rs` already has a `Runtime` field with `component`/`memoryLimitMB`/`permissions`. We don't create a parallel describe struct — we add `RuntimeGtpack` as an OPTIONAL nested field on the existing `Runtime` struct. See spec §8.2 "Schema integration notes".
 
 **Files:**
-- Create: `crates/greentic-ext-contract/src/describe/provider.rs` — just `RuntimeGtpack` struct + sha256 validator
-- Modify: `crates/greentic-ext-contract/src/describe.rs` (restructure to module dir: `describe.rs` → `describe/mod.rs`)
-- Modify: `crates/greentic-ext-contract/src/lib.rs` — re-export `RuntimeGtpack`
-- Create: `crates/greentic-ext-contract/tests/runtime_gtpack.rs` — unit tests for struct + sha256 validation
+- Create: `crates/greentic-extension-sdk-contract/src/describe/provider.rs` — just `RuntimeGtpack` struct + sha256 validator
+- Modify: `crates/greentic-extension-sdk-contract/src/describe.rs` (restructure to module dir: `describe.rs` → `describe/mod.rs`)
+- Modify: `crates/greentic-extension-sdk-contract/src/lib.rs` — re-export `RuntimeGtpack`
+- Create: `crates/greentic-extension-sdk-contract/tests/runtime_gtpack.rs` — unit tests for struct + sha256 validation
 
 - [ ] **Step 1: Read current describe.rs**
 
 ```bash
-cat crates/greentic-ext-contract/src/describe.rs | head -120
+cat crates/greentic-extension-sdk-contract/src/describe.rs | head -120
 ```
 
 Note the `Runtime` struct shape (line ~79-90 equivalent): `component`, `memory_limit_mb`, `permissions`. We'll extend this in Task A3 — not in this task.
 
 - [ ] **Step 2: Write failing tests first (TDD)**
 
-Create `crates/greentic-ext-contract/tests/runtime_gtpack.rs`:
+Create `crates/greentic-extension-sdk-contract/tests/runtime_gtpack.rs`:
 
 ```rust
-use greentic_ext_contract::describe::RuntimeGtpack;
+use greentic_extension_sdk_contract::describe::RuntimeGtpack;
 
 #[test]
 fn runtime_gtpack_parses_from_json() {
@@ -239,14 +239,14 @@ fn runtime_gtpack_rejects_non_hex_sha256() {
 - [ ] **Step 3: Run to verify failure**
 
 ```bash
-cargo test -p greentic-ext-contract --test runtime_gtpack
+cargo test -p greentic-extension-sdk-contract --test runtime_gtpack
 ```
 
 Expected: FAIL (unresolved import `RuntimeGtpack`).
 
 - [ ] **Step 4: Create the struct**
 
-Create `crates/greentic-ext-contract/src/describe/provider.rs`:
+Create `crates/greentic-extension-sdk-contract/src/describe/provider.rs`:
 
 ```rust
 //! Provider-specific extensions to the describe schema.
@@ -284,8 +284,8 @@ where
 - [ ] **Step 5: Restructure describe.rs → describe/mod.rs**
 
 ```bash
-mkdir -p crates/greentic-ext-contract/src/describe
-git mv crates/greentic-ext-contract/src/describe.rs crates/greentic-ext-contract/src/describe/mod.rs
+mkdir -p crates/greentic-extension-sdk-contract/src/describe
+git mv crates/greentic-extension-sdk-contract/src/describe.rs crates/greentic-extension-sdk-contract/src/describe/mod.rs
 ```
 
 At the top of the new `describe/mod.rs`, add:
@@ -296,7 +296,7 @@ pub use provider::RuntimeGtpack;
 
 - [ ] **Step 6: Update lib.rs re-export**
 
-Read `crates/greentic-ext-contract/src/lib.rs`. Find the existing `pub use self::describe::{...}` line. Add `RuntimeGtpack` to it:
+Read `crates/greentic-extension-sdk-contract/src/lib.rs`. Find the existing `pub use self::describe::{...}` line. Add `RuntimeGtpack` to it:
 ```rust
 pub use self::describe::{DescribeJson, RuntimeGtpack, /* existing items */};
 ```
@@ -306,9 +306,9 @@ Do NOT add `ProviderRuntime` — it doesn't exist in F1.
 - [ ] **Step 7: Run tests**
 
 ```bash
-cargo test -p greentic-ext-contract --test runtime_gtpack
-cargo test -p greentic-ext-contract
-cargo clippy -p greentic-ext-contract --all-targets -- -D warnings
+cargo test -p greentic-extension-sdk-contract --test runtime_gtpack
+cargo test -p greentic-extension-sdk-contract
+cargo clippy -p greentic-extension-sdk-contract --all-targets -- -D warnings
 ```
 
 Expected: new tests PASS, full suite PASS, clippy clean.
@@ -316,7 +316,7 @@ Expected: new tests PASS, full suite PASS, clippy clean.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/greentic-ext-contract/
+git add crates/greentic-extension-sdk-contract/
 git commit -m "feat(contract): add RuntimeGtpack struct for provider extension artifacts"
 ```
 
@@ -327,21 +327,21 @@ git commit -m "feat(contract): add RuntimeGtpack struct for provider extension a
 **Design note (F1):** We extend the EXISTING `Runtime` struct in `describe/mod.rs` with a new optional `gtpack: Option<RuntimeGtpack>` field. We also enforce on the existing `DescribeJson` struct: `kind == Provider ↔ runtime.gtpack.is_some()`. No new `Describe` struct — `DescribeJson` remains the single source of truth.
 
 **Files:**
-- Modify: `crates/greentic-ext-contract/src/describe/mod.rs` — add `gtpack` to `Runtime`, add `TryFrom<DescribeJsonRaw>` validation
-- Modify: `crates/greentic-ext-contract/tests/describe_roundtrip.rs` — add 3 invariant tests
-- Modify any existing test fixtures in `greentic-ext-contract/tests/` that construct `DescribeJson` / `Runtime` to include `gtpack: None` (should be default via `#[serde(default)]` — no change needed if fixtures deserialize from JSON)
+- Modify: `crates/greentic-extension-sdk-contract/src/describe/mod.rs` — add `gtpack` to `Runtime`, add `TryFrom<DescribeJsonRaw>` validation
+- Modify: `crates/greentic-extension-sdk-contract/tests/describe_roundtrip.rs` — add 3 invariant tests
+- Modify any existing test fixtures in `greentic-extension-sdk-contract/tests/` that construct `DescribeJson` / `Runtime` to include `gtpack: None` (should be default via `#[serde(default)]` — no change needed if fixtures deserialize from JSON)
 
 - [ ] **Step 1: Read current describe/mod.rs**
 
 ```bash
-cat crates/greentic-ext-contract/src/describe/mod.rs
+cat crates/greentic-extension-sdk-contract/src/describe/mod.rs
 ```
 
 Note the `Runtime` struct at approx line 79-90 and the `DescribeJson` struct at line 11-26. These are what we modify.
 
 - [ ] **Step 2: Write failing tests (TDD)**
 
-Append to `crates/greentic-ext-contract/tests/describe_roundtrip.rs`:
+Append to `crates/greentic-extension-sdk-contract/tests/describe_roundtrip.rs`:
 
 ```rust
 fn hex64(c: char) -> String {
@@ -388,15 +388,15 @@ fn describe_with_kind_provider_and_gtpack_roundtrips() {
         },
         "contributions": {}
     });
-    let describe: greentic_ext_contract::DescribeJson =
+    let describe: greentic_extension_sdk_contract::DescribeJson =
         serde_json::from_value(json).unwrap();
-    assert_eq!(describe.kind, greentic_ext_contract::ExtensionKind::Provider);
+    assert_eq!(describe.kind, greentic_extension_sdk_contract::ExtensionKind::Provider);
     assert!(describe.runtime.gtpack.is_some());
     let gt = describe.runtime.gtpack.as_ref().unwrap();
     assert_eq!(gt.pack_id, "greentic.provider.telegram");
     // Re-serialize and re-parse
     let v = serde_json::to_value(&describe).unwrap();
-    let _: greentic_ext_contract::DescribeJson = serde_json::from_value(v).unwrap();
+    let _: greentic_extension_sdk_contract::DescribeJson = serde_json::from_value(v).unwrap();
 }
 
 #[test]
@@ -414,7 +414,7 @@ fn describe_with_kind_provider_requires_gtpack() {
         },
         "contributions": {}
     });
-    let err = serde_json::from_value::<greentic_ext_contract::DescribeJson>(json)
+    let err = serde_json::from_value::<greentic_extension_sdk_contract::DescribeJson>(json)
         .unwrap_err()
         .to_string()
         .to_lowercase();
@@ -445,7 +445,7 @@ fn describe_non_provider_rejects_gtpack() {
         },
         "contributions": {}
     });
-    let err = serde_json::from_value::<greentic_ext_contract::DescribeJson>(json);
+    let err = serde_json::from_value::<greentic_extension_sdk_contract::DescribeJson>(json);
     assert!(err.is_err(), "non-provider kinds must reject gtpack field");
 }
 ```
@@ -453,14 +453,14 @@ fn describe_non_provider_rejects_gtpack() {
 - [ ] **Step 3: Run to verify failure**
 
 ```bash
-cargo test -p greentic-ext-contract --test describe_roundtrip
+cargo test -p greentic-extension-sdk-contract --test describe_roundtrip
 ```
 
 Expected: FAIL (compile error: no `gtpack` field; or validation not present).
 
 - [ ] **Step 4: Extend `Runtime` struct with optional `gtpack`**
 
-In `crates/greentic-ext-contract/src/describe/mod.rs`, modify the existing `Runtime` struct:
+In `crates/greentic-extension-sdk-contract/src/describe/mod.rs`, modify the existing `Runtime` struct:
 
 ```rust
 use crate::describe::provider::RuntimeGtpack;
@@ -555,7 +555,7 @@ impl<'de> Deserialize<'de> for DescribeJson {
 Search for `Runtime {` in tests:
 
 ```bash
-grep -rn "Runtime {" crates/greentic-ext-contract/tests/ crates/greentic-ext-contract/src/
+grep -rn "Runtime {" crates/greentic-extension-sdk-contract/tests/ crates/greentic-extension-sdk-contract/src/
 ```
 
 For any construction site, add `gtpack: None`. (If fixtures only parse JSON, skip — defaults handle it.)
@@ -563,8 +563,8 @@ For any construction site, add `gtpack: None`. (If fixtures only parse JSON, ski
 - [ ] **Step 7: Run tests + clippy**
 
 ```bash
-cargo test -p greentic-ext-contract
-cargo clippy -p greentic-ext-contract --all-targets -- -D warnings
+cargo test -p greentic-extension-sdk-contract
+cargo clippy -p greentic-extension-sdk-contract --all-targets -- -D warnings
 ```
 
 Expected: all green, no warnings. Check `cargo test --workspace` later passes too (downstream crates might use Runtime constructor).
@@ -739,7 +739,7 @@ If missing, modify `crates/greentic-ext-registry/src/types.rs`:
 pub struct ExtensionSummary {
     pub id: String,
     pub version: String,
-    pub kind: greentic_ext_contract::ExtensionKind,
+    pub kind: greentic_extension_sdk_contract::ExtensionKind,
     pub description: String,
     // ... existing fields
 }
@@ -752,7 +752,7 @@ If already present: skip this step.
 Modify `crates/greentic-ext-registry/src/registry.rs`:
 
 ```rust
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 
 #[async_trait]
 pub trait ExtensionRegistry: Send + Sync {
@@ -792,7 +792,7 @@ pub trait ExtensionRegistry: Send + Sync {
         &self,
         name: &str,
         version: &str,
-    ) -> Result<greentic_ext_contract::Describe, RegistryError> {
+    ) -> Result<greentic_extension_sdk_contract::Describe, RegistryError> {
         let metadata = self.metadata(name, version).await?;
         // ExtensionMetadata must already carry Describe; if not, registry-specific impl
         Ok(metadata.describe)
@@ -831,7 +831,7 @@ git commit -m "feat(registry): add list_by_kind + get_describe trait methods"
 Create `crates/greentic-ext-registry/tests/provider_lifecycle.rs`:
 
 ```rust
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_registry::lifecycle::{InstallOptions, install_from_path};
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
@@ -1041,7 +1041,7 @@ Read existing `crates/greentic-ext-registry/src/lifecycle.rs` to understand curr
 Sketch of additions to `lifecycle.rs`:
 
 ```rust
-use greentic_ext_contract::{DescribeJson, ExtensionKind, RuntimeGtpack};
+use greentic_extension_sdk_contract::{DescribeJson, ExtensionKind, RuntimeGtpack};
 use sha2::{Digest, Sha256};
 use std::io::Read;
 
@@ -1227,7 +1227,7 @@ git commit -m "feat(registry): install_provider handles runtime.gtpack extractio
 Append to `crates/greentic-ext-registry/tests/local_registry.rs`:
 
 ```rust
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_registry::{ExtensionRegistry, LocalFilesystemRegistry};
 
 #[tokio::test]
@@ -1360,7 +1360,7 @@ Expected: FAIL — `--kind provider` not recognized.
 In `crates/greentic-ext-cli/src/commands/list.rs`:
 
 ```rust
-use greentic_ext_contract::ExtensionKind;
+use greentic_extension_sdk_contract::ExtensionKind;
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 pub enum KindArg {
@@ -1523,7 +1523,7 @@ fn gtdx_install_provider_from_gtxpack_places_files() {
 }
 ```
 
-`build_fixture_gtxpack` is the same helper as Task A6. Since tests across different crates can't share `tests/support/mod.rs`, promote the helper to `greentic-ext-testing` crate (existing workspace member). Concretely: move `build_provider_fixture_gtxpack` + `encode_gtpack_with_pack_id` from `greentic-ext-registry/tests/support/mod.rs` to a new public module `greentic-ext-testing::fixtures::gtxpack`. Add `greentic-ext-testing = { path = "../greentic-ext-testing" }` to `greentic-ext-registry/Cargo.toml` dev-dependencies and `greentic-ext-cli/Cargo.toml` dev-dependencies. Tests call `greentic_ext_testing::fixtures::gtxpack::build_provider_fixture_gtxpack(...)`.
+`build_fixture_gtxpack` is the same helper as Task A6. Since tests across different crates can't share `tests/support/mod.rs`, promote the helper to `greentic-extension-sdk-testing` crate (existing workspace member). Concretely: move `build_provider_fixture_gtxpack` + `encode_gtpack_with_pack_id` from `greentic-ext-registry/tests/support/mod.rs` to a new public module `greentic-extension-sdk-testing::fixtures::gtxpack`. Add `greentic-extension-sdk-testing = { path = "../greentic-extension-sdk-testing" }` to `greentic-ext-registry/Cargo.toml` dev-dependencies and `greentic-ext-cli/Cargo.toml` dev-dependencies. Tests call `greentic_extension_sdk_testing::fixtures::gtxpack::build_provider_fixture_gtxpack(...)`.
 
 - [ ] **Step 2: Run to verify failure**
 
@@ -1560,7 +1560,7 @@ git commit -m "feat(cli): gtdx install routes kind=provider to lifecycle::instal
 
 **Files:**
 - Modify: `Cargo.toml` (workspace root)
-- Modify: `crates/greentic-ext-contract/Cargo.toml`
+- Modify: `crates/greentic-extension-sdk-contract/Cargo.toml`
 - Modify: `crates/greentic-ext-registry/Cargo.toml`
 - Modify: `crates/greentic-ext-cli/Cargo.toml`
 - Modify: `CHANGELOG.md`
@@ -1568,11 +1568,11 @@ git commit -m "feat(cli): gtdx install routes kind=provider to lifecycle::instal
 - [ ] **Step 1: Bump versions**
 
 In workspace `Cargo.toml` (or individual crate Cargo.toml files if not workspace-managed), bump:
-- `greentic-ext-contract`: `0.1.x` → `0.2.0`
+- `greentic-extension-sdk-contract`: `0.1.x` → `0.2.0`
 - `greentic-ext-registry`: `0.1.x` → `0.2.0`
 - `greentic-ext-cli`: `0.1.x` → `0.2.0`
 - `greentic-ext-runtime`: no bump (no code changes yet)
-- `greentic-ext-testing`: no bump
+- `greentic-extension-sdk-testing`: no bump
 
 Root package version (if any): bump to `0.7.0`.
 
@@ -1595,7 +1595,7 @@ Prepend to `CHANGELOG.md`:
 - `gtdx info <id>` renders provider-specific fields (runtime pack, capabilities)
 
 ### Changed
-- Bump `greentic-ext-contract`, `-registry`, `-cli` to 0.2.0 (additive — existing kinds unaffected)
+- Bump `greentic-extension-sdk-contract`, `-registry`, `-cli` to 0.2.0 (additive — existing kinds unaffected)
 
 ### Notes
 - Runtime path unchanged: `greentic-runner` picks up extracted `.gtpack` via existing pack-index polling. Extension system is purely additive.
@@ -2641,7 +2641,7 @@ In root `Cargo.toml` `[workspace.dependencies]` section, add (if needed for inte
 
 ```toml
 [workspace.dependencies]
-greentic-ext-contract = { git = "https://github.com/greentic-biz/greentic-designer-extensions", rev = "<WAVE-A-MERGE-SHA>" }
+greentic-extension-sdk-contract = { git = "https://github.com/greentic-biz/greentic-designer-extensions", rev = "<WAVE-A-MERGE-SHA>" }
 greentic-ext-cli = { git = "https://github.com/greentic-biz/greentic-designer-extensions", rev = "<WAVE-A-MERGE-SHA>" }
 ```
 

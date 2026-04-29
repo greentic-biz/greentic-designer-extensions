@@ -21,7 +21,7 @@ to resolve the capability graph and at load time to enforce permissions. The
 CLI (`gtdx`) validates it before packing. The Greentic Store indexes it for
 search.
 
-**Schema location:** `crates/greentic-ext-contract/schemas/describe-v1.json`
+**Schema location:** `crates/greentic-extension-sdk-contract/schemas/describe-v1.json`
 
 **JSON Schema draft:** 2020-12
 
@@ -392,8 +392,8 @@ installation.
 
 ## JSON Schema Reference
 
-The canonical JSON Schema is embedded in the `greentic-ext-contract` crate
-at `crates/greentic-ext-contract/schemas/describe-v1.json`. It uses JSON
+The canonical JSON Schema is embedded in the `greentic-extension-sdk-contract` crate
+at `crates/greentic-extension-sdk-contract/schemas/describe-v1.json`. It uses JSON
 Schema draft 2020-12 and is identified by the `$id`:
 
 ```

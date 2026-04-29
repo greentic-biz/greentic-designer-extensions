@@ -3,8 +3,8 @@ mod support;
 
 use std::path::PathBuf;
 
-use greentic_ext_contract::ExtensionKind;
 use greentic_ext_runtime::{DiscoveryPaths, ExtensionRuntime, RuntimeConfig, RuntimeError};
+use greentic_extension_sdk_contract::ExtensionKind;
 
 use support::{EnvGuard, signed_fixture, tamper_fixture, unsigned_fixture};
 

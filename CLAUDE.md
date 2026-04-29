@@ -46,10 +46,10 @@ See the spec section 4 for the full structure. Workspace-level
 ```toml
 [workspace]
 members = [
-  "crates/greentic-ext-contract",
+  "crates/greentic-extension-sdk-contract",
   "crates/greentic-ext-runtime",
   "crates/greentic-ext-cli",
-  "crates/greentic-ext-testing",
+  "crates/greentic-extension-sdk-testing",
   "reference-extensions/adaptive-cards",
 ]
 ```

@@ -2,9 +2,9 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
-use greentic_ext_contract::ExtensionKind;
 use greentic_ext_runtime::{DiscoveryPaths, ExtensionRuntime, RuntimeConfig};
-use greentic_ext_testing::ExtensionFixtureBuilder;
+use greentic_extension_sdk_contract::ExtensionKind;
+use greentic_extension_sdk_testing::ExtensionFixtureBuilder;
 use tempfile::TempDir;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

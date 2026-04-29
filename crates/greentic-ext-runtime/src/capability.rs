@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use greentic_ext_contract::{CapabilityId, CapabilityRef, ExtensionKind};
+use greentic_extension_sdk_contract::{CapabilityId, CapabilityRef, ExtensionKind};
 use semver::{Version, VersionReq};
 
 #[derive(Debug, Clone)]

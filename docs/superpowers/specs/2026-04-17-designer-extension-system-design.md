@@ -140,10 +140,10 @@ greentic-designer-extensions/
 │   ├── extension-deploy.wit
 │   └── extension-host.wit
 ├── crates/
-│   ├── greentic-ext-contract/
+│   ├── greentic-extension-sdk-contract/
 │   ├── greentic-ext-runtime/
 │   ├── greentic-ext-cli/
-│   └── greentic-ext-testing/
+│   └── greentic-extension-sdk-testing/
 ├── reference-extensions/
 │   └── adaptive-cards/
 └── templates/
@@ -1154,7 +1154,7 @@ extension crate depends on it via git. No disruption to MCP server.
 ## 13. Testing strategy
 
 **Unit tests:**
-- `greentic-ext-contract` — schema validation, semver, WIT type roundtrip
+- `greentic-extension-sdk-contract` — schema validation, semver, WIT type roundtrip
 - `greentic-ext-runtime` — discovery, resolution, broker, hot reload diff
 - `greentic-ext-cli` — command parsing, config, atomic file ops
 
@@ -1222,7 +1222,7 @@ pattern.
 | Phase | Duration | Deliverable |
 |---|---|---|
 | Repo scaffolding + CI | 2 d | workspace, CLAUDE.md, ci green |
-| Base WIT + contract types | 3 d | `greentic-ext-contract` crate |
+| Base WIT + contract types | 3 d | `greentic-extension-sdk-contract` crate |
 | Runtime skeleton + wasmtime | 4 d | discovery, load, pool, broker stubs |
 | Capability Registry + matching | 3 d | DX-05, DX-06 |
 | Install/update lifecycle | 3 d | CLI wire-up, atomic ops, hot reload |

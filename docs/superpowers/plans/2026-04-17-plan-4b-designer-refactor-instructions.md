@@ -84,7 +84,7 @@ greentic-designer/
 greentic-designer/
 ├── Cargo.toml
 │   ├── greentic-ext-runtime = { git = "...", tag = "v0.6.0" }
-│   ├── greentic-ext-contract = { git = "...", tag = "v0.6.0" }
+│   ├── greentic-extension-sdk-contract = { git = "...", tag = "v0.6.0" }
 │   └── (NO adaptive-card-core dep — it's in the WASM ext now)
 ├── assets/
 │   └── greentic.adaptive-cards-1.6.0.gtxpack    # bundled fallback (~1 MB)
@@ -123,7 +123,7 @@ Add to `Cargo.toml` (in alphabetical order with existing deps):
 
 ```toml
 greentic-ext-runtime  = { git = "ssh://git@github.com/greentic-biz/greentic-designer-extensions", tag = "v0.6.0" }
-greentic-ext-contract = { git = "ssh://git@github.com/greentic-biz/greentic-designer-extensions", tag = "v0.6.0" }
+greentic-extension-sdk-contract = { git = "ssh://git@github.com/greentic-biz/greentic-designer-extensions", tag = "v0.6.0" }
 ```
 
 Run `cargo build` to fetch + compile. Should succeed on first try
@@ -534,7 +534,7 @@ releases.
 
 - `Cargo.toml` — drop `adaptive-card-core`; add
   `greentic-ext-runtime = { git = "...", tag = "v0.6.0" }` and
-  `greentic-ext-contract` similarly
+  `greentic-extension-sdk-contract` similarly
 - `src/main.rs` — bootstrap `ExtensionRuntime`, scan
   `~/.greentic/extensions/{design,bundle,deploy}/`, install bundled AC
   ext on first run

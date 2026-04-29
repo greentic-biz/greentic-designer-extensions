@@ -68,21 +68,21 @@ impl Drop for EnvGuard {
 }
 
 /// Build a signed extension fixture using the `ExtensionFixtureBuilder`
-/// from `greentic-ext-testing`, then sign its describe.json with a fresh
+/// from `greentic-extension-sdk-testing`, then sign its describe.json with a fresh
 /// ed25519 key. Returns the fixture and the signing key used.
 pub fn signed_fixture(
-    kind: greentic_ext_contract::ExtensionKind,
+    kind: greentic_extension_sdk_contract::ExtensionKind,
     id: &str,
     version: &str,
 ) -> (
-    greentic_ext_testing::ExtensionFixture,
+    greentic_extension_sdk_testing::ExtensionFixture,
     ed25519_dalek::SigningKey,
 ) {
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
 
     let minimal_wasm = wat::parse_str(r"(component)").expect("wat component must compile");
-    let fixture = greentic_ext_testing::ExtensionFixtureBuilder::new(kind, id, version)
+    let fixture = greentic_extension_sdk_testing::ExtensionFixtureBuilder::new(kind, id, version)
         .offer("greentic:test/ping", "1.0.0")
         .with_wasm(minimal_wasm)
         .build()
@@ -91,9 +91,10 @@ pub fn signed_fixture(
     // Read, sign, write back.
     let describe_path = fixture.root().join("describe.json");
     let raw = std::fs::read_to_string(&describe_path).unwrap();
-    let mut describe: greentic_ext_contract::DescribeJson = serde_json::from_str(&raw).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
     let sk = SigningKey::generate(&mut OsRng);
-    greentic_ext_contract::sign_describe(&mut describe, &sk).expect("sign");
+    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
     let out = serde_json::to_string_pretty(&describe).unwrap();
     std::fs::write(&describe_path, out).unwrap();
 
@@ -101,10 +102,11 @@ pub fn signed_fixture(
 }
 
 /// Mutate an installed fixture's describe.json to invalidate its signature.
-pub fn tamper_fixture(fixture: &greentic_ext_testing::ExtensionFixture) {
+pub fn tamper_fixture(fixture: &greentic_extension_sdk_testing::ExtensionFixture) {
     let path = fixture.root().join("describe.json");
     let raw = std::fs::read_to_string(&path).unwrap();
-    let mut describe: greentic_ext_contract::DescribeJson = serde_json::from_str(&raw).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
     describe.metadata.version = "99.99.99".into();
     std::fs::write(&path, serde_json::to_string_pretty(&describe).unwrap()).unwrap();
 }
@@ -112,12 +114,12 @@ pub fn tamper_fixture(fixture: &greentic_ext_testing::ExtensionFixture) {
 /// Build an **unsigned** fixture (no .signature field). Mirrors existing
 /// `ExtensionFixtureBuilder` default output.
 pub fn unsigned_fixture(
-    kind: greentic_ext_contract::ExtensionKind,
+    kind: greentic_extension_sdk_contract::ExtensionKind,
     id: &str,
     version: &str,
-) -> greentic_ext_testing::ExtensionFixture {
+) -> greentic_extension_sdk_testing::ExtensionFixture {
     let minimal_wasm = wat::parse_str(r"(component)").expect("wat component must compile");
-    greentic_ext_testing::ExtensionFixtureBuilder::new(kind, id, version)
+    greentic_extension_sdk_testing::ExtensionFixtureBuilder::new(kind, id, version)
         .offer("greentic:test/ping", "1.0.0")
         .with_wasm(minimal_wasm)
         .build()

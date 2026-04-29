@@ -18,7 +18,7 @@ pub enum RuntimeError {
     },
 
     #[error("contract error: {0}")]
-    Contract(#[from] greentic_ext_contract::ContractError),
+    Contract(#[from] greentic_extension_sdk_contract::ContractError),
 
     #[error("wasmtime: {0}")]
     Wasmtime(#[from] anyhow::Error),

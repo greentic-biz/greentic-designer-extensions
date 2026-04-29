@@ -111,7 +111,7 @@ git commit -m "feat(ext-cli): scaffold Kind::Provider + TEMPLATES_PROVIDER loade
 
 **File:** `crates/greentic-ext-cli/templates/provider/describe.json.tmpl`
 
-Provider extensions require `runtime.gtpack` per the contract invariant (`crates/greentic-ext-contract/src/describe/mod.rs: TryFrom<DescribeJsonRaw>` enforces `kind == ProviderExtension ↔ runtime.gtpack.is_some()`).
+Provider extensions require `runtime.gtpack` per the contract invariant (`crates/greentic-extension-sdk-contract/src/describe/mod.rs: TryFrom<DescribeJsonRaw>` enforces `kind == ProviderExtension ↔ runtime.gtpack.is_some()`).
 
 Replace the stub with the real template (scaffold-time placeholders — author edits before publish):
 

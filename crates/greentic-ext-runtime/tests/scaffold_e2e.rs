@@ -88,14 +88,15 @@ fn scaffolded_design_extension_loads_and_invoke_tool_returns_stub_error() {
     let user_root = tmp.path().join("user");
     std::fs::create_dir_all(user_root.join("design")).unwrap();
     let ext_dir = user_root.join("design/com.example.demo-0.1.0");
-    greentic_ext_testing::unpack_to_dir(&pack, &ext_dir).unwrap();
+    greentic_extension_sdk_testing::unpack_to_dir(&pack, &ext_dir).unwrap();
 
     // 5. Sign describe.json so the runtime's signature gate accepts the load.
     let describe_path = ext_dir.join("describe.json");
     let raw = std::fs::read_to_string(&describe_path).unwrap();
-    let mut describe: greentic_ext_contract::DescribeJson = serde_json::from_str(&raw).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
     let sk = SigningKey::generate(&mut OsRng);
-    greentic_ext_contract::sign_describe(&mut describe, &sk).expect("sign describe");
+    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign describe");
     std::fs::write(
         &describe_path,
         serde_json::to_string_pretty(&describe).unwrap(),

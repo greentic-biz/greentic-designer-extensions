@@ -36,7 +36,7 @@ fn invoke_validate_card_on_ac_extension() {
 
     let tmp = tempfile::TempDir::new().unwrap();
     let ext_dir = tmp.path().join("ext");
-    greentic_ext_testing::unpack_to_dir(&pack, &ext_dir).unwrap();
+    greentic_extension_sdk_testing::unpack_to_dir(&pack, &ext_dir).unwrap();
 
     let config = RuntimeConfig::from_paths(DiscoveryPaths::new(tmp.path().to_path_buf()));
     let mut rt = ExtensionRuntime::new(config).unwrap();

@@ -27,7 +27,7 @@
   - Field constraints (e.g., `metadata.id` regex, `metadata.version` semver)
   - A worked example for each of the 3 kinds
 
-Target length: 500-800 lines markdown. Reference the actual schema at `crates/greentic-ext-contract/schemas/describe-v1.json`.
+Target length: 500-800 lines markdown. Reference the actual schema at `crates/greentic-extension-sdk-contract/schemas/describe-v1.json`.
 
 Commit: `docs: add describe.json v1 spec reference`
 

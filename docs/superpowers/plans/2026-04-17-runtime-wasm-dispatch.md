@@ -122,11 +122,11 @@ use crate::host_bindings::greentic::extension_host;
 
 pub struct HostState {
     pub extension_id: String,
-    pub permissions: greentic_ext_contract::describe::Permissions,
+    pub permissions: greentic_extension_sdk_contract::describe::Permissions,
 }
 
 impl HostState {
-    pub fn new(extension_id: String, permissions: greentic_ext_contract::describe::Permissions) -> Self {
+    pub fn new(extension_id: String, permissions: greentic_extension_sdk_contract::describe::Permissions) -> Self {
         Self { extension_id, permissions }
     }
 }
@@ -345,7 +345,7 @@ async fn invoke_validate_card_on_ac_extension() {
     // Unpack into a temp home
     let tmp = tempfile::TempDir::new().unwrap();
     let ext_dir = tmp.path().join("extensions/design/greentic.adaptive-cards-1.6.0");
-    greentic_ext_testing::unpack_to_dir(&pack, &ext_dir).unwrap();
+    greentic_extension_sdk_testing::unpack_to_dir(&pack, &ext_dir).unwrap();
 
     let config = RuntimeConfig::from_paths(DiscoveryPaths::new(tmp.path().to_path_buf()));
     let mut rt = ExtensionRuntime::new(config).unwrap();

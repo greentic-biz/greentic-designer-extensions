@@ -253,7 +253,7 @@ Module 5, 6, 7 reference implementations are follow-up cycles after v1.
 | Deliverable | |
 |---|---|
 | New repo `greentic-designer-extensions` | 4 crates workspace + reference AC extension |
-| `greentic-ext-contract` | Types · WIT · describe.json schema + validator |
+| `greentic-extension-sdk-contract` | Types · WIT · describe.json schema + validator |
 | `greentic-ext-runtime` | wasmtime loader · registry · broker · lifecycle |
 | `greentic-ext-cli` (`gtdx`) | ~20 subcommands for authoring + install |
 | `greentic.adaptive-cards@1.6.0` | First extension, published to Store |

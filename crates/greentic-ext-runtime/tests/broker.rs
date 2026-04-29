@@ -1,5 +1,5 @@
-use greentic_ext_contract::ExtensionKind;
 use greentic_ext_runtime::{Broker, BrokerError};
+use greentic_extension_sdk_contract::ExtensionKind;
 
 #[test]
 fn denies_call_without_permission() {

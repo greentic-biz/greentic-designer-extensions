@@ -3,7 +3,7 @@
 **Status:** Design, awaiting implementation plan
 **Date:** 2026-04-18
 **Parent:** `2026-04-18-dx-10-10-roadmap.md` (subsystem S3)
-**Owner crates:** `greentic-ext-cli`, `greentic-ext-registry`, `greentic-ext-contract`
+**Owner crates:** `greentic-ext-cli`, `greentic-ext-registry`, `greentic-extension-sdk-contract`
 
 ## 1. Goal
 
@@ -130,7 +130,7 @@ Silent fallback is explicitly avoided.
 
 ## 6. Deterministic ZIP Packing (critical)
 
-Shared pack writer lives in `greentic-ext-contract::pack_writer`, used by both Track B (`gtdx dev`) and Track C (`gtdx publish`):
+Shared pack writer lives in `greentic-extension-sdk-contract::pack_writer`, used by both Track B (`gtdx dev`) and Track C (`gtdx publish`):
 
 ```rust
 pub fn build_gtxpack(entries: Vec<PackEntry>) -> Result<Vec<u8>> {
@@ -254,7 +254,7 @@ Fix these and re-run: gtdx publish
 | Module | Purpose | Target LOC |
 |--------|---------|------------|
 | `publish_cmd.rs` | orchestration, flag handling | ~250 |
-| `pack_writer.rs` (in `greentic-ext-contract`) | deterministic ZIP writer | ~200 |
+| `pack_writer.rs` (in `greentic-extension-sdk-contract`) | deterministic ZIP writer | ~200 |
 | `local_fs_publish.rs` (extends `LocalFilesystem`) | impl `publish()` + lock + atomic rename | ~200 |
 | `validator.rs` | pre-publish describe.json checks | ~150 |
 | **Total new code** | | **~800 LOC** |

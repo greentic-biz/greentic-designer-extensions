@@ -4,8 +4,8 @@ members = [
     "crates/_wit-lint",
     "crates/greentic-ext-runtime",
 ]
-# greentic-ext-contract, greentic-ext-state, greentic-ext-registry,
-# greentic-ext-testing, and greentic-ext-cli (gtdx) extracted to the public SDK
+# greentic-extension-sdk-contract, greentic-ext-state, greentic-ext-registry,
+# greentic-extension-sdk-testing, and greentic-ext-cli (gtdx) extracted to the public SDK
 # repo at https://github.com/greenticai/greentic-designer-sdk and consumed via
 # git dep below until they land on crates.io.
 

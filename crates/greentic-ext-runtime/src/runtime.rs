@@ -151,8 +151,8 @@ impl ExtensionRuntime {
         }
         let path = dir.join("describe.json");
         let raw = std::fs::read_to_string(&path)?;
-        let describe: greentic_ext_contract::DescribeJson = serde_json::from_str(&raw)?;
-        greentic_ext_contract::verify_describe(&describe).map_err(|e| {
+        let describe: greentic_extension_sdk_contract::DescribeJson = serde_json::from_str(&raw)?;
+        greentic_extension_sdk_contract::verify_describe(&describe).map_err(|e| {
             RuntimeError::SignatureInvalid {
                 extension_id: describe.metadata.id.clone(),
                 reason: e.to_string(),

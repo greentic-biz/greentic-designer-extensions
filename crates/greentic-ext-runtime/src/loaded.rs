@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use greentic_ext_contract::{DescribeJson, ExtensionKind};
+use greentic_extension_sdk_contract::{DescribeJson, ExtensionKind};
 use wasmtime::Store;
 use wasmtime::component::{Component, HasSelf, Instance, Linker};
 
@@ -51,7 +51,7 @@ impl LoadedExtension {
         let describe_path = source_dir.join("describe.json");
         let describe_bytes = std::fs::read(&describe_path)?;
         let describe_value: serde_json::Value = serde_json::from_slice(&describe_bytes)?;
-        greentic_ext_contract::schema::validate_describe_json(&describe_value)
+        greentic_extension_sdk_contract::schema::validate_describe_json(&describe_value)
             .map_err(|e| anyhow::anyhow!("invalid describe.json: {e}"))?;
         let describe: DescribeJson = serde_json::from_value(describe_value)?;
         let id = ExtensionId::from_describe(&describe);
