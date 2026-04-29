@@ -1,8 +1,8 @@
 use std::fs;
 
 use ed25519_dalek::SigningKey;
-use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_runtime::{DiscoveryPaths, ExtensionRuntime, RuntimeConfig};
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_extension_sdk_testing::ExtensionFixtureBuilder;
 use rand::rngs::OsRng;
 use tempfile::TempDir;
@@ -19,7 +19,8 @@ fn copy_fixture(src: &std::path::Path, dst: &std::path::Path) {
 fn sign_fixture_dir(dir: &std::path::Path) {
     let path = dir.join("describe.json");
     let raw = fs::read_to_string(&path).unwrap();
-    let mut describe: greentic_extension_sdk_contract::DescribeJson = serde_json::from_str(&raw).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
     let sk = SigningKey::generate(&mut OsRng);
     greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
     fs::write(&path, serde_json::to_string_pretty(&describe).unwrap()).unwrap();

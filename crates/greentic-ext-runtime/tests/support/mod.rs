@@ -91,7 +91,8 @@ pub fn signed_fixture(
     // Read, sign, write back.
     let describe_path = fixture.root().join("describe.json");
     let raw = std::fs::read_to_string(&describe_path).unwrap();
-    let mut describe: greentic_extension_sdk_contract::DescribeJson = serde_json::from_str(&raw).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
     let sk = SigningKey::generate(&mut OsRng);
     greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
     let out = serde_json::to_string_pretty(&describe).unwrap();
@@ -104,7 +105,8 @@ pub fn signed_fixture(
 pub fn tamper_fixture(fixture: &greentic_extension_sdk_testing::ExtensionFixture) {
     let path = fixture.root().join("describe.json");
     let raw = std::fs::read_to_string(&path).unwrap();
-    let mut describe: greentic_extension_sdk_contract::DescribeJson = serde_json::from_str(&raw).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
     describe.metadata.version = "99.99.99".into();
     std::fs::write(&path, serde_json::to_string_pretty(&describe).unwrap()).unwrap();
 }

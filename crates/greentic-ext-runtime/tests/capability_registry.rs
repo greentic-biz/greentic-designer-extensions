@@ -1,5 +1,5 @@
-use greentic_extension_sdk_contract::{CapabilityRef, ExtensionKind};
 use greentic_ext_runtime::{CapabilityRegistry, OfferedBinding};
+use greentic_extension_sdk_contract::{CapabilityRef, ExtensionKind};
 
 fn cap_ref(id: &str, v: &str) -> CapabilityRef {
     CapabilityRef {

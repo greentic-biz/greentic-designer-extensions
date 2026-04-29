@@ -1,7 +1,7 @@
 use std::fs;
 
-use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_runtime::discovery::scan_kind_dir;
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_extension_sdk_testing::ExtensionFixtureBuilder;
 use tempfile::TempDir;
 

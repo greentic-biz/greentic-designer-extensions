@@ -2,8 +2,8 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
-use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_ext_runtime::{DiscoveryPaths, ExtensionRuntime, RuntimeConfig};
+use greentic_extension_sdk_contract::ExtensionKind;
 use greentic_extension_sdk_testing::ExtensionFixtureBuilder;
 use tempfile::TempDir;
 
