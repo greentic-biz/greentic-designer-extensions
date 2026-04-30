@@ -23,3 +23,20 @@ pub mod deploy {
         world: "greentic:extension-deploy/deploy-extension",
     });
 }
+
+// ---------------------------------------------------------------------------
+// Bundle-extension bindings
+//
+// Same pattern as deploy: isolated submodule because all three worlds share
+// `extension-base` + `extension-host` types and re-binding them at the root
+// would conflict. The bundle world exports `recipes` and `bundling` (the
+// host calls `bundling.render(...)` in `runtime::render_bundle`); it imports
+// the standard host triplet (logging / i18n / broker), wired through the
+// shared `add_to_linker` helpers.
+// ---------------------------------------------------------------------------
+pub mod bundle {
+    wasmtime::component::bindgen!({
+        path: "wit",
+        world: "greentic:extension-bundle/bundle-extension",
+    });
+}

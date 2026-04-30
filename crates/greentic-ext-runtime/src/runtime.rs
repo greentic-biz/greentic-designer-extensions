@@ -897,6 +897,95 @@ fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {
     }
 }
 
+impl ExtensionRuntime {
+    /// Render a bundle artefact by dispatching to a loaded bundle
+    /// extension's `bundling.render` export.
+    ///
+    /// Mirrors the in-process call site that replaces the legacy
+    /// `greentic-bundle ext render` subprocess pipeline. The host
+    /// passes the designer session (flow JSON, content JSON, asset
+    /// blobs, capability list) and a recipe-specific config string;
+    /// the extension's WASM returns the rendered bytes (typically a
+    /// `.gtpack` zip) plus the canonical filename and sha256 the
+    /// extension wants written.
+    ///
+    /// Returns `RuntimeError::NotFound` when no extension is loaded
+    /// at `ext_id`, and surfaces every other failure as
+    /// `RuntimeError::Wasmtime` with the WIT-level error attached.
+    pub fn render_bundle(
+        &self,
+        ext_id: &str,
+        recipe_id: &str,
+        config_json: &str,
+        session: crate::types::BundleSession,
+    ) -> Result<crate::types::BundleArtifact, RuntimeError> {
+        use crate::host_bindings::bundle::exports::greentic::extension_bundle::bundling::{
+            BundleArtifact as WitBundleArtifact, DesignerSession as WitDesignerSession,
+        };
+        use crate::host_bindings::bundle::greentic::extension_base::types::ExtensionError;
+
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine)
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_name = "greentic:extension-bundle/bundling@0.1.0";
+        let iface_idx = instance
+            .get_export_index(&mut store, None, iface_name)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{iface_name}'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "render")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'render'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<
+                (String, String, WitDesignerSession),
+                (Result<WitBundleArtifact, ExtensionError>,),
+            >(&mut store, &func_idx)
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let wit_session = WitDesignerSession {
+            flows_json: session.flows_json,
+            contents_json: session.contents_json,
+            assets: session.assets,
+            capabilities_used: session.capabilities_used,
+        };
+
+        let (result,) = func
+            .call(
+                &mut store,
+                (recipe_id.to_string(), config_json.to_string(), wit_session),
+            )
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let artifact = result.map_err(|e| {
+            RuntimeError::Wasmtime(anyhow::anyhow!(
+                "extension '{ext_id}' returned error rendering recipe '{recipe_id}': {e:?}"
+            ))
+        })?;
+
+        Ok(crate::types::BundleArtifact {
+            filename: artifact.filename,
+            bytes: artifact.bytes,
+            sha256: artifact.sha256,
+        })
+    }
+}
+
 #[cfg(test)]
 mod deploy_tests {
     use super::*;
@@ -934,6 +1023,23 @@ mod deploy_tests {
         let rt = ExtensionRuntime::new(config).unwrap();
         let err = rt
             .validate_credentials("does-not-exist", "target", r"{}")
+            .unwrap_err();
+        assert!(matches!(err, RuntimeError::NotFound(_)));
+    }
+
+    #[test]
+    fn render_bundle_returns_error_for_unknown_extension() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config =
+            RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
+        let rt = ExtensionRuntime::new(config).unwrap();
+        let err = rt
+            .render_bundle(
+                "does-not-exist",
+                "standard",
+                "{}",
+                crate::types::BundleSession::default(),
+            )
             .unwrap_err();
         assert!(matches!(err, RuntimeError::NotFound(_)));
     }
