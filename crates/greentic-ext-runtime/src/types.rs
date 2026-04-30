@@ -75,6 +75,34 @@ pub struct ValidateResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// Host-side mirror of WIT
+/// `greentic:extension-bundle/bundling@0.1.0::designer-session`.
+///
+/// The full payload the host hands to a bundle extension to render.
+/// `flows_json` and `contents_json` are pre-serialised JSON blobs from
+/// the designer; `assets` carries auxiliary file bytes (images, fonts,
+/// vendored resources) keyed by their relative path inside the bundle.
+#[derive(Debug, Clone, Default)]
+pub struct BundleSession {
+    pub flows_json: String,
+    pub contents_json: String,
+    pub assets: Vec<(String, Vec<u8>)>,
+    pub capabilities_used: Vec<String>,
+}
+
+/// Host-side mirror of WIT
+/// `greentic:extension-bundle/bundling@0.1.0::bundle-artifact`.
+///
+/// What `bundling.render` returns on success — the rendered artefact
+/// bytes (typically a `.gtpack` zip) plus its filename and sha256 for
+/// integrity checks. The host writes the bytes to disk verbatim.
+#[derive(Debug, Clone)]
+pub struct BundleArtifact {
+    pub filename: String,
+    pub bytes: Vec<u8>,
+    pub sha256: String,
+}
+
 #[cfg(test)]
 mod target_summary_tests {
     use super::*;
