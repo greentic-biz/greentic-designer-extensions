@@ -9,28 +9,62 @@ description = "Wasmtime-based runtime for Greentic Designer Extensions"
 publish = false
 
 [dependencies]
-anyhow = { workspace = true }
-arc-swap = { workspace = true }
-greentic-extension-sdk-contract = "0.4"
-notify = { workspace = true }
-notify-debouncer-full = { workspace = true }
-semver = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-tracing = { workspace = true }
-wasmtime = { workspace = true }
-wasmtime-wasi = { workspace = true }
+greentic-extension-sdk-contract = ">=1.1.0-dev, <1.2.0-0"
+
+[dependencies.anyhow]
+workspace = true
+
+[dependencies.arc-swap]
+workspace = true
+
+[dependencies.notify]
+workspace = true
+
+[dependencies.notify-debouncer-full]
+workspace = true
+
+[dependencies.semver]
+workspace = true
+
+[dependencies.serde]
+workspace = true
+
+[dependencies.serde_json]
+workspace = true
+
+[dependencies.thiserror]
+workspace = true
+
+[dependencies.tokio]
+workspace = true
+
+[dependencies.tracing]
+workspace = true
+
+[dependencies.wasmtime]
+workspace = true
+
+[dependencies.wasmtime-wasi]
+workspace = true
 
 [dev-dependencies]
-ed25519-dalek = { workspace = true }
-greentic-extension-sdk-testing = "0.4"
-rand = { workspace = true }
-tempfile = { workspace = true }
-tokio = { workspace = true }
-tracing-subscriber = { workspace = true }
+greentic-extension-sdk-testing = ">=1.1.0-dev, <1.2.0-0"
 wat = "1"
+
+[dev-dependencies.ed25519-dalek]
+workspace = true
+
+[dev-dependencies.rand]
+workspace = true
+
+[dev-dependencies.tempfile]
+workspace = true
+
+[dev-dependencies.tokio]
+workspace = true
+
+[dev-dependencies.tracing-subscriber]
+workspace = true
 
 [lints]
 workspace = true
