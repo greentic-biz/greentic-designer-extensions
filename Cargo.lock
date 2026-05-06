@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "_wit-lint"
-version = "0.13.0"
+version = "1.2.0"
 dependencies = [
  "wit-parser 0.221.3",
 ]
@@ -1012,7 +1012,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-ext-runtime"
-version = "0.13.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "arc-swap",
