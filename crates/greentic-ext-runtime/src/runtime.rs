@@ -285,8 +285,9 @@ impl ExtensionRuntime {
     /// Invoke a named tool on a loaded extension.
     ///
     /// Builds a fresh wasmtime Store + Instance, calls
-    /// `greentic:extension-design/tools@0.1.0::invoke-tool`, and returns the
-    /// JSON result string.
+    /// `greentic:extension-design/tools::invoke-tool` (resolved against
+    /// `@0.2.0` first, then `@0.1.0` for older extensions), and returns
+    /// the JSON result string.
     pub fn invoke_tool(
         &self,
         ext_id: &str,
@@ -308,14 +309,10 @@ impl ExtensionRuntime {
 
         // Resolve the nested export: first the interface instance, then the function.
         // This is the wasmtime 43 pattern: get_export_index(store, parent, name).
-        let iface_name = "greentic:extension-design/tools@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        // Try @0.2.0 first; fall back to @0.1.0 for extensions still built against
+        // the original WIT (http, llm-generic, webhook, platform-bootstrap, ...).
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/tools")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "invoke-tool")
             .ok_or_else(|| {
@@ -346,7 +343,8 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// Validate extension-specific content against the extension's schema.
     ///
-    /// Calls `greentic:extension-design/validation@0.1.0::validate-content`.
+    /// Calls `greentic:extension-design/validation::validate-content`
+    /// (resolved against `@0.2.0` first, then `@0.1.0`).
     /// `content_type` is an extension-defined label (e.g. `"AdaptiveCard"`
     /// for the adaptive-cards extension); `content_json` is the content
     /// payload as a JSON string.
@@ -378,14 +376,11 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/validation@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) = resolve_design_iface(
+            &mut store,
+            &instance,
+            "greentic:extension-design/validation",
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "validate-content")
             .ok_or_else(|| {
@@ -431,7 +426,8 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// List all tools exposed by a loaded design extension.
     ///
-    /// Calls `greentic:extension-design/tools@0.1.0::list-tools`.
+    /// Calls `greentic:extension-design/tools::list-tools` (resolved
+    /// against `@0.2.0` first, then `@0.1.0`).
     pub fn list_tools(
         &self,
         ext_id: &str,
@@ -449,14 +445,8 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/tools@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/tools")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "list-tools")
             .ok_or_else(|| {
@@ -488,7 +478,8 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// Retrieve system prompt fragments from a loaded design extension.
     ///
-    /// Calls `greentic:extension-design/prompting@0.1.0::system-prompt-fragments`.
+    /// Calls `greentic:extension-design/prompting::system-prompt-fragments`
+    /// (resolved against `@0.2.0` first, then `@0.1.0`).
     pub fn prompt_fragments(
         &self,
         ext_id: &str,
@@ -506,14 +497,8 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/prompting@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/prompting")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "system-prompt-fragments")
             .ok_or_else(|| {
@@ -544,7 +529,8 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// List knowledge entries, optionally filtered by category.
     ///
-    /// Calls `greentic:extension-design/knowledge@0.1.0::list-entries`.
+    /// Calls `greentic:extension-design/knowledge::list-entries`
+    /// (resolved against `@0.2.0` first, then `@0.1.0`).
     pub fn knowledge_list(
         &self,
         ext_id: &str,
@@ -563,14 +549,8 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/knowledge@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/knowledge")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "list-entries")
             .ok_or_else(|| {
@@ -592,7 +572,8 @@ impl ExtensionRuntime {
 
     /// Retrieve a single knowledge entry by ID.
     ///
-    /// Calls `greentic:extension-design/knowledge@0.1.0::get-entry`.
+    /// Calls `greentic:extension-design/knowledge::get-entry`
+    /// (resolved against `@0.2.0` first, then `@0.1.0`).
     pub fn knowledge_get(
         &self,
         ext_id: &str,
@@ -612,14 +593,8 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/knowledge@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/knowledge")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "get-entry")
             .ok_or_else(|| {
@@ -653,7 +628,8 @@ impl ExtensionRuntime {
 
     /// Suggest knowledge entries matching a query.
     ///
-    /// Calls `greentic:extension-design/knowledge@0.1.0::suggest-entries`.
+    /// Calls `greentic:extension-design/knowledge::suggest-entries`
+    /// (resolved against `@0.2.0` first, then `@0.1.0`).
     pub fn knowledge_suggest(
         &self,
         ext_id: &str,
@@ -673,14 +649,8 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/knowledge@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/knowledge")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "suggest-entries")
             .ok_or_else(|| {
@@ -885,6 +855,39 @@ impl ExtensionRuntime {
             })
             .collect())
     }
+}
+
+/// Resolve a `greentic:extension-design/<iface>` export by trying `@0.2.0`
+/// first and falling back to `@0.1.0`.
+///
+/// The runtime bumped its WIT to `@0.2.0` in v1.2.x, but several extensions
+/// in the wild (http, llm-generic, webhook, platform-bootstrap, ...) were
+/// built against `@0.1.0` and have not yet been rebuilt. Without a
+/// fallback, every dispatch into those extensions fails with
+/// `extension does not export interface 'greentic:extension-design/
+/// tools@0.2.0'`. Returning the resolved iface name (with version suffix)
+/// lets the nested `func_idx` lookup error name the version that was
+/// actually picked.
+///
+/// `roles@0.2.0` deliberately uses its own dedicated lookup (see
+/// `runtime_roles.rs`); it never existed at `@0.1.0`, so no fallback is
+/// appropriate there.
+fn resolve_design_iface(
+    store: &mut wasmtime::Store<crate::host_state::HostState>,
+    instance: &wasmtime::component::Instance,
+    base: &str,
+) -> Result<(wasmtime::component::ComponentExportIndex, String), RuntimeError> {
+    let primary = format!("{base}@0.2.0");
+    if let Some(idx) = instance.get_export_index(&mut *store, None, &primary) {
+        return Ok((idx, primary));
+    }
+    let secondary = format!("{base}@0.1.0");
+    if let Some(idx) = instance.get_export_index(&mut *store, None, &secondary) {
+        return Ok((idx, secondary));
+    }
+    Err(RuntimeError::Wasmtime(anyhow::anyhow!(
+        "extension does not export interface '{primary}' or '{secondary}'"
+    )))
 }
 
 fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {

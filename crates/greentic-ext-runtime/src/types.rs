@@ -1,4 +1,4 @@
-/// Host-side mirror of WIT `greentic:extension-design/tools@0.1.0::tool-definition`.
+/// Host-side mirror of WIT `greentic:extension-design/tools@0.2.0::tool-definition`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolDefinition {
     pub name: String,
@@ -7,7 +7,7 @@ pub struct ToolDefinition {
     pub output_schema_json: Option<String>,
 }
 
-/// Host-side mirror of WIT `greentic:extension-design/prompting@0.1.0::prompt-fragment`.
+/// Host-side mirror of WIT `greentic:extension-design/prompting@0.2.0::prompt-fragment`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PromptFragment {
     pub section: String,
@@ -15,7 +15,7 @@ pub struct PromptFragment {
     pub priority: u32,
 }
 
-/// Host-side mirror of WIT `greentic:extension-design/knowledge@0.1.0::entry-summary`.
+/// Host-side mirror of WIT `greentic:extension-design/knowledge@0.2.0::entry-summary`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KnowledgeEntrySummary {
     pub id: String,
@@ -24,7 +24,7 @@ pub struct KnowledgeEntrySummary {
     pub tags: Vec<String>,
 }
 
-/// Host-side mirror of WIT `greentic:extension-design/knowledge@0.1.0::entry`.
+/// Host-side mirror of WIT `greentic:extension-design/knowledge@0.2.0::entry`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KnowledgeEntry {
     pub id: String,
@@ -68,7 +68,7 @@ pub struct TargetSummary {
     pub supports_rollback: bool,
 }
 
-/// Host-side mirror of WIT `greentic:extension-design/validation@0.1.0::validate-result`.
+/// Host-side mirror of WIT `greentic:extension-design/validation@0.2.0::validate-result`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ValidateResult {
     pub valid: bool,
@@ -101,6 +101,92 @@ pub struct BundleArtifact {
     pub filename: String,
     pub bytes: Vec<u8>,
     pub sha256: String,
+}
+
+/// Host-side mirror of WIT
+/// `greentic:extension-design/roles@0.2.0::target-kind`.
+///
+/// Output channel a compiled role targets. Closed enum: a new target
+/// requires a WIT minor bump on the design package.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TargetKind {
+    AdaptiveCard,
+    SlackBlockKit,
+    TeamsCard,
+    PlainText,
+}
+
+/// Host-side mirror of WIT
+/// `greentic:extension-design/roles@0.2.0::role-spec`.
+///
+/// One role advertised by an extension. Aggregated across every loaded
+/// design extension into a single registry keyed by `name`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RoleSpec {
+    pub name: String,
+    pub description: String,
+    pub json_schema: String,
+    pub target: TargetKind,
+    pub schema_version: u32,
+    pub context_aware: bool,
+}
+
+/// Host-side mirror of WIT
+/// `greentic:extension-design/roles@0.2.0::compile-context`.
+///
+/// Flow-level context handed to context-aware compilers. Empty for pure
+/// roles. Designer fills this from the in-progress DSL document before
+/// dispatch.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct CompileContext {
+    pub flow_entries_json: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_id: Option<String>,
+    pub locale: String,
+}
+
+/// Host-side mirror of WIT
+/// `greentic:extension-base/types@0.1.0::extension-error`.
+///
+/// Host-level failure that a role compiler may surface. Mirrored here
+/// so [`RoleError::Host`] can carry the variant without dragging in
+/// the bindgen-generated type at the public API boundary.
+#[derive(Debug, Clone, thiserror::Error, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case", tag = "kind", content = "message")]
+pub enum HostExtensionError {
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+    #[error("missing capability: {0}")]
+    MissingCapability(String),
+    #[error("permission denied: {0}")]
+    PermissionDenied(String),
+    #[error("internal: {0}")]
+    Internal(String),
+}
+
+/// Host-side mirror of WIT
+/// `greentic:extension-design/roles@0.2.0::role-error`.
+///
+/// Why a `compile-role` call failed. Distinct from
+/// [`crate::error::RuntimeError`]: `RuntimeError` represents host /
+/// runtime failures (extension-not-found, signature, IO), while
+/// `RoleError` represents domain-level outcomes the LLM and designer
+/// can act on (unknown role, invalid input, target not supported).
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum RoleError {
+    #[error("unknown role: {0}")]
+    UnknownRole(String),
+    #[error("invalid input: {0:?}")]
+    InvalidInput(Vec<Diagnostic>),
+    #[error("compile failed: {0}")]
+    CompileFailed(String),
+    #[error("target not supported: {0:?}")]
+    TargetNotSupported(TargetKind),
+    #[error("schema version not supported: {0}")]
+    VersionNotSupported(u32),
+    #[error("host: {0}")]
+    Host(#[from] HostExtensionError),
 }
 
 #[cfg(test)]
