@@ -1,4 +1,4 @@
-/// Host-side mirror of WIT `greentic:extension-design/tools@0.1.0::tool-definition`.
+/// Host-side mirror of WIT `greentic:extension-design/tools@0.2.0::tool-definition`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolDefinition {
     pub name: String,
@@ -7,7 +7,7 @@ pub struct ToolDefinition {
     pub output_schema_json: Option<String>,
 }
 
-/// Host-side mirror of WIT `greentic:extension-design/prompting@0.1.0::prompt-fragment`.
+/// Host-side mirror of WIT `greentic:extension-design/prompting@0.2.0::prompt-fragment`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PromptFragment {
     pub section: String,
@@ -15,7 +15,7 @@ pub struct PromptFragment {
     pub priority: u32,
 }
 
-/// Host-side mirror of WIT `greentic:extension-design/knowledge@0.1.0::entry-summary`.
+/// Host-side mirror of WIT `greentic:extension-design/knowledge@0.2.0::entry-summary`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KnowledgeEntrySummary {
     pub id: String,
@@ -24,7 +24,7 @@ pub struct KnowledgeEntrySummary {
     pub tags: Vec<String>,
 }
 
-/// Host-side mirror of WIT `greentic:extension-design/knowledge@0.1.0::entry`.
+/// Host-side mirror of WIT `greentic:extension-design/knowledge@0.2.0::entry`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KnowledgeEntry {
     pub id: String,
@@ -68,7 +68,7 @@ pub struct TargetSummary {
     pub supports_rollback: bool,
 }
 
-/// Host-side mirror of WIT `greentic:extension-design/validation@0.1.0::validate-result`.
+/// Host-side mirror of WIT `greentic:extension-design/validation@0.2.0::validate-result`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ValidateResult {
     pub valid: bool,

@@ -285,7 +285,7 @@ impl ExtensionRuntime {
     /// Invoke a named tool on a loaded extension.
     ///
     /// Builds a fresh wasmtime Store + Instance, calls
-    /// `greentic:extension-design/tools@0.1.0::invoke-tool`, and returns the
+    /// `greentic:extension-design/tools@0.2.0::invoke-tool`, and returns the
     /// JSON result string.
     pub fn invoke_tool(
         &self,
@@ -308,7 +308,7 @@ impl ExtensionRuntime {
 
         // Resolve the nested export: first the interface instance, then the function.
         // This is the wasmtime 43 pattern: get_export_index(store, parent, name).
-        let iface_name = "greentic:extension-design/tools@0.1.0";
+        let iface_name = "greentic:extension-design/tools@0.2.0";
         let iface_idx = instance
             .get_export_index(&mut store, None, iface_name)
             .ok_or_else(|| {
@@ -346,7 +346,7 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// Validate extension-specific content against the extension's schema.
     ///
-    /// Calls `greentic:extension-design/validation@0.1.0::validate-content`.
+    /// Calls `greentic:extension-design/validation@0.2.0::validate-content`.
     /// `content_type` is an extension-defined label (e.g. `"AdaptiveCard"`
     /// for the adaptive-cards extension); `content_json` is the content
     /// payload as a JSON string.
@@ -378,7 +378,7 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/validation@0.1.0";
+        let iface_name = "greentic:extension-design/validation@0.2.0";
         let iface_idx = instance
             .get_export_index(&mut store, None, iface_name)
             .ok_or_else(|| {
@@ -431,7 +431,7 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// List all tools exposed by a loaded design extension.
     ///
-    /// Calls `greentic:extension-design/tools@0.1.0::list-tools`.
+    /// Calls `greentic:extension-design/tools@0.2.0::list-tools`.
     pub fn list_tools(
         &self,
         ext_id: &str,
@@ -449,7 +449,7 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/tools@0.1.0";
+        let iface_name = "greentic:extension-design/tools@0.2.0";
         let iface_idx = instance
             .get_export_index(&mut store, None, iface_name)
             .ok_or_else(|| {
@@ -488,7 +488,7 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// Retrieve system prompt fragments from a loaded design extension.
     ///
-    /// Calls `greentic:extension-design/prompting@0.1.0::system-prompt-fragments`.
+    /// Calls `greentic:extension-design/prompting@0.2.0::system-prompt-fragments`.
     pub fn prompt_fragments(
         &self,
         ext_id: &str,
@@ -506,7 +506,7 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/prompting@0.1.0";
+        let iface_name = "greentic:extension-design/prompting@0.2.0";
         let iface_idx = instance
             .get_export_index(&mut store, None, iface_name)
             .ok_or_else(|| {
@@ -544,7 +544,7 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// List knowledge entries, optionally filtered by category.
     ///
-    /// Calls `greentic:extension-design/knowledge@0.1.0::list-entries`.
+    /// Calls `greentic:extension-design/knowledge@0.2.0::list-entries`.
     pub fn knowledge_list(
         &self,
         ext_id: &str,
@@ -563,7 +563,7 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/knowledge@0.1.0";
+        let iface_name = "greentic:extension-design/knowledge@0.2.0";
         let iface_idx = instance
             .get_export_index(&mut store, None, iface_name)
             .ok_or_else(|| {
@@ -592,7 +592,7 @@ impl ExtensionRuntime {
 
     /// Retrieve a single knowledge entry by ID.
     ///
-    /// Calls `greentic:extension-design/knowledge@0.1.0::get-entry`.
+    /// Calls `greentic:extension-design/knowledge@0.2.0::get-entry`.
     pub fn knowledge_get(
         &self,
         ext_id: &str,
@@ -612,7 +612,7 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/knowledge@0.1.0";
+        let iface_name = "greentic:extension-design/knowledge@0.2.0";
         let iface_idx = instance
             .get_export_index(&mut store, None, iface_name)
             .ok_or_else(|| {
@@ -653,7 +653,7 @@ impl ExtensionRuntime {
 
     /// Suggest knowledge entries matching a query.
     ///
-    /// Calls `greentic:extension-design/knowledge@0.1.0::suggest-entries`.
+    /// Calls `greentic:extension-design/knowledge@0.2.0::suggest-entries`.
     pub fn knowledge_suggest(
         &self,
         ext_id: &str,
@@ -673,7 +673,7 @@ impl ExtensionRuntime {
             .build_store_and_instance(&self.engine)
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/knowledge@0.1.0";
+        let iface_name = "greentic:extension-design/knowledge@0.2.0";
         let iface_idx = instance
             .get_export_index(&mut store, None, iface_name)
             .ok_or_else(|| {
