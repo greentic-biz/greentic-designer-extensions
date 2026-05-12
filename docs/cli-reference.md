@@ -7,7 +7,7 @@ diagnose problems.
 **Install:**
 
 ```
-cargo install --path crates/greentic-ext-cli --locked
+cargo install greentic-extension-sdk-cli --locked
 ```
 
 ---
