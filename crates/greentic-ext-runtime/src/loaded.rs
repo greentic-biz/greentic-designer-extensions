@@ -77,6 +77,7 @@ impl LoadedExtension {
     pub fn build_store_and_instance(
         &self,
         engine: &wasmtime::Engine,
+        host_overrides: HostOverrides,
     ) -> anyhow::Result<(Store<HostState>, Instance)> {
         use crate::host_bindings::greentic::extension_host::{
             broker, http, i18n, logging, secrets,
@@ -95,10 +96,18 @@ impl LoadedExtension {
         broker::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         http::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
 
-        let state = HostState::new(
+        let state = HostState::builder(
             self.id.as_str().to_string(),
             self.describe.runtime.permissions.clone(),
-        );
+        )
+        .translator(host_overrides.translator)
+        .secrets_backend(host_overrides.secrets_backend)
+        .http_client(host_overrides.http_client)
+        .url_matcher(host_overrides.url_matcher)
+        .runtime_weak(host_overrides.runtime_weak)
+        .call_depth_start(host_overrides.call_depth_start)
+        .build();
+
         let mut store = Store::new(engine, state);
         let instance = linker.instantiate(&mut store, &self.component)?;
         Ok((store, instance))
@@ -106,3 +115,33 @@ impl LoadedExtension {
 }
 
 pub type LoadedExtensionRef = Arc<LoadedExtension>;
+
+/// Bundle of overrides every dispatch caller must supply when building a
+/// `HostState`. Production code (designer) constructs adapters around
+/// `greentic-i18n` + `greentic-secrets`; tests use [`HostOverrides::defaults_for_tests`].
+#[derive(Clone)]
+pub struct HostOverrides {
+    pub translator: std::sync::Arc<dyn crate::host_ports::Translator>,
+    pub secrets_backend: std::sync::Arc<dyn crate::host_ports::SecretsBackend>,
+    pub http_client: reqwest::blocking::Client,
+    pub url_matcher: crate::url_matcher::UrlMatcher,
+    pub runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
+    pub call_depth_start: u32,
+}
+
+impl HostOverrides {
+    /// Fakes-everywhere helper. Runtime weak is left unset (`Weak::new`), so
+    /// broker dispatch will fail with "runtime gone" until B.6 wires the
+    /// real `Arc<ExtensionRuntime>`.
+    #[must_use]
+    pub fn defaults_for_tests() -> Self {
+        Self {
+            translator: std::sync::Arc::new(crate::host_ports::KeyTranslator),
+            secrets_backend: std::sync::Arc::new(crate::host_ports::InMemorySecrets::new()),
+            http_client: reqwest::blocking::Client::new(),
+            url_matcher: crate::url_matcher::UrlMatcher::default(),
+            runtime_weak: std::sync::Weak::new(),
+            call_depth_start: 0,
+        }
+    }
+}
