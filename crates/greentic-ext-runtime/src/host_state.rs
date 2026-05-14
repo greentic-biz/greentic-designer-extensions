@@ -167,20 +167,17 @@ impl logging::Host for HostState {
     }
 }
 
-// i18n / secrets / broker / http impls are filled in by tasks B.2, B.3,
-// B.4, B.5. Until then, return stub messages so the crate compiles. These
-// stubs intentionally avoid the literal "not implemented in 4B.0" string
-// so the grep guard from Task B.7 doesn't trip prematurely.
+// i18n / secrets / broker / http impls are wired in tasks B.2, B.3,
+// B.4, B.5. The B.7 grep gate enforces that no impl falls back to the
+// historical stub sentinel string.
 
 impl i18n::Host for HostState {
     fn t(&mut self, key: String) -> String {
         self.translator.t(&key)
     }
     fn tf(&mut self, key: String, args: Vec<(String, String)>) -> String {
-        let borrowed: Vec<(&str, &str)> = args
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
+        let borrowed: Vec<(&str, &str)> =
+            args.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         self.translator.tf(&key, &borrowed)
     }
 }

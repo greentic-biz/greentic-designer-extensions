@@ -64,8 +64,7 @@ fn rejects_non_https_by_default() {
 
 #[test]
 fn opt_in_allow_http_lets_http_through() {
-    let m =
-        UrlMatcher::from_patterns(vec!["http://allowed.com/*".into()]).with_allow_http(true);
+    let m = UrlMatcher::from_patterns(vec!["http://allowed.com/*".into()]).with_allow_http(true);
     assert!(m.is_allowed("http://allowed.com/anything"));
 }
 

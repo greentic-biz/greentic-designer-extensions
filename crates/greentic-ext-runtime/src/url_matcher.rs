@@ -18,7 +18,7 @@
 
 use url::Url;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct UrlMatcher {
     patterns: Vec<ParsedPattern>,
     raw: Vec<String>,
@@ -37,16 +37,6 @@ enum HostRule {
     Exact(String),
     /// `*.example.com` — matches any host that ends with `.example.com`.
     WildcardSuffix(String),
-}
-
-impl Default for UrlMatcher {
-    fn default() -> Self {
-        Self {
-            patterns: Vec::new(),
-            raw: Vec::new(),
-            allow_http: false,
-        }
-    }
 }
 
 impl UrlMatcher {

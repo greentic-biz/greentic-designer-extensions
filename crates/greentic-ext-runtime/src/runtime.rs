@@ -304,7 +304,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                &self.engine,
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         // Resolve the nested export: first the interface instance, then the function.
@@ -373,7 +376,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                &self.engine,
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) = resolve_design_iface(
@@ -442,7 +448,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                &self.engine,
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) =
@@ -494,7 +503,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                &self.engine,
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) =
@@ -546,7 +558,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                &self.engine,
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) =
@@ -590,7 +605,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                &self.engine,
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) =
@@ -646,7 +664,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                &self.engine,
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) =
@@ -703,7 +724,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                &self.engine,
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-deploy/targets@0.1.0";
@@ -764,7 +788,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                &self.engine,
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-deploy/targets@0.1.0";
@@ -817,7 +844,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                &self.engine,
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-deploy/targets@0.1.0";
@@ -935,7 +965,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                &self.engine,
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-bundle/bundling@0.1.0";

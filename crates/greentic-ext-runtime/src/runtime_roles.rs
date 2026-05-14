@@ -31,7 +31,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(self.engine(), crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                self.engine(),
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let Some(iface_idx) = instance.get_export_index(&mut store, None, IFACE_NAME) else {
@@ -77,7 +80,10 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(self.engine(), crate::loaded::HostOverrides::defaults_for_tests())
+            .build_store_and_instance(
+                self.engine(),
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_idx = instance
@@ -134,14 +140,16 @@ impl ExtensionRuntime {
             .cloned()
             .ok_or_else(|| RoleError::UnknownRole(ext_id.to_string()))?;
 
-        let (mut store, instance) =
-            loaded
-                .build_store_and_instance(self.engine(), crate::loaded::HostOverrides::defaults_for_tests())
-                .map_err(|e| {
-                    RoleError::Host(HostExtensionError::Internal(format!(
-                        "instantiate '{ext_id}': {e}"
-                    )))
-                })?;
+        let (mut store, instance) = loaded
+            .build_store_and_instance(
+                self.engine(),
+                crate::loaded::HostOverrides::defaults_for_tests(),
+            )
+            .map_err(|e| {
+                RoleError::Host(HostExtensionError::Internal(format!(
+                    "instantiate '{ext_id}': {e}"
+                )))
+            })?;
 
         let iface_idx = instance
             .get_export_index(&mut store, None, IFACE_NAME)
