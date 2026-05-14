@@ -243,17 +243,57 @@ impl broker::Host for HostState {
 
 impl http::Host for HostState {
     fn fetch(&mut self, req: http::Request) -> Result<http::Response, String> {
-        let _ = &self.http_client;
-        let _ = &self.url_matcher;
-        if !self
-            .permissions
-            .network
-            .iter()
-            .any(|pattern| req.url.starts_with(pattern.trim_end_matches("/*")))
-        {
-            return Err(format!("network permission denied for url: {}", req.url));
+        // 1. Permission check via strict UrlMatcher.
+        if !self.url_matcher.is_allowed(&req.url) {
+            tracing::warn!(
+                ext = %self.extension_id,
+                url = %req.url,
+                "http::fetch permission denied"
+            );
+            return Err(format!("network not allowed for url: {}", req.url));
         }
-        Err(format!("http fetch stub for {}", req.url))
+
+        // 2. Build the reqwest request.
+        let method = match req.method.to_uppercase().as_str() {
+            "GET" => reqwest::Method::GET,
+            "POST" => reqwest::Method::POST,
+            "PUT" => reqwest::Method::PUT,
+            "DELETE" => reqwest::Method::DELETE,
+            "PATCH" => reqwest::Method::PATCH,
+            "HEAD" => reqwest::Method::HEAD,
+            other => return Err(format!("unsupported http method: {other}")),
+        };
+        let mut builder = self.http_client.request(method, &req.url);
+        for (k, v) in &req.headers {
+            builder = builder.header(k.as_str(), v.as_str());
+        }
+        if let Some(body) = req.body {
+            builder = builder.body(body);
+        }
+        // 3. Execute (blocking — wasmtime sync wiring expects sync host fns).
+        let resp = builder.send().map_err(|e| {
+            tracing::error!(ext = %self.extension_id, error = %e, "http::fetch transport error");
+            format!("http transport error: {e}")
+        })?;
+        let status = resp.status().as_u16();
+        let headers = resp
+            .headers()
+            .iter()
+            .filter_map(|(k, v)| {
+                v.to_str()
+                    .ok()
+                    .map(|s| (k.as_str().to_string(), s.to_string()))
+            })
+            .collect();
+        let body = resp
+            .bytes()
+            .map_err(|e| format!("http body error: {e}"))?
+            .to_vec();
+        Ok(http::Response {
+            status,
+            headers,
+            body,
+        })
     }
 }
 
@@ -332,6 +372,28 @@ mod tests {
         assert!(
             err.contains("permission denied"),
             "expected permission denied, got: {err}"
+        );
+    }
+
+    #[test]
+    fn http_fetch_denied_when_url_not_in_matcher() {
+        use crate::host_bindings::greentic::extension_host::http::{Host as HttpHost, Request};
+
+        let mut h = HostState::builder("test-ext".into(), Permissions::default())
+            .url_matcher(crate::url_matcher::UrlMatcher::from_patterns(vec![
+                "https://allowed.com/*".into(),
+            ]))
+            .build();
+        let req = Request {
+            method: "GET".into(),
+            url: "https://evil.com/".into(),
+            headers: vec![],
+            body: None,
+        };
+        let err = h.fetch(req).unwrap_err();
+        assert!(
+            err.contains("not allowed") || err.contains("permission denied"),
+            "got: {err}"
         );
     }
 
