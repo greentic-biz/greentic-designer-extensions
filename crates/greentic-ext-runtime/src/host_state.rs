@@ -224,20 +224,51 @@ impl broker::Host for HostState {
         function: String,
         _args_json: String,
     ) -> Result<String, String> {
-        let _ = &self.runtime_weak;
-        let _ = self.call_depth.load(Ordering::Relaxed);
+        // 1. Permission check — declared kinds only.
         if !self
             .permissions
             .call_extension_kinds
             .iter()
             .any(|k| k == &kind)
         {
+            tracing::warn!(
+                ext = %self.extension_id,
+                requested_kind = %kind,
+                "broker::call_extension permission denied"
+            );
             return Err(format!(
                 "{} may not call {kind} extensions",
                 self.extension_id
             ));
         }
-        Err(format!("broker stub for {target_id}.{function}"))
+        // 2. Depth check — prevent unbounded recursion across host boundaries.
+        let depth = self.call_depth.load(Ordering::Relaxed);
+        if depth >= MAX_BROKER_DEPTH {
+            tracing::warn!(
+                ext = %self.extension_id,
+                depth,
+                "broker::call_extension max depth exceeded"
+            );
+            return Err(format!(
+                "max broker call depth exceeded ({depth} >= {MAX_BROKER_DEPTH})"
+            ));
+        }
+        // 3. Resolve runtime — `runtime_weak` is `Weak::new()` in unit tests
+        //    that use `HostState::builder(...).build()` without supplying a
+        //    runtime. Surface a clear error so test code distinguishes
+        //    "no runtime context" from "permission denied".
+        let Some(_rt) = self.runtime_weak.upgrade() else {
+            return Err("broker: no runtime context available".into());
+        };
+        // 4. Cross-extension dispatch — full implementation requires
+        //    `ExtensionRuntime::invoke_tool_with_depth(self: &Arc<Self>,
+        //    ...)` which cascades the runtime API to `&Arc<Self>` and
+        //    updates every caller. Deferred to a follow-up alongside the
+        //    WASM broker fixtures. Today's permission + depth check is
+        //    the security-load-bearing portion of B.5.
+        Err(format!(
+            "broker: dispatch to {target_id}.{function} pending (B.5 WASM round-trip)"
+        ))
     }
 }
 
@@ -373,6 +404,45 @@ mod tests {
             err.contains("permission denied"),
             "expected permission denied, got: {err}"
         );
+    }
+
+    #[test]
+    fn broker_denies_when_kind_not_in_permissions() {
+        use crate::host_bindings::greentic::extension_host::broker::Host as BrokerHost;
+
+        let mut perms = Permissions::default();
+        perms.call_extension_kinds.push("provider".to_string());
+        let mut h = HostState::builder("caller".into(), perms).build();
+
+        let err = h
+            .call_extension(
+                "design".into(),
+                "greentic.target".into(),
+                "do_something".into(),
+                "{}".into(),
+            )
+            .unwrap_err();
+        assert!(err.contains("may not call"), "got: {err}");
+    }
+
+    #[test]
+    fn broker_rejects_when_depth_exceeded() {
+        use crate::host_bindings::greentic::extension_host::broker::Host as BrokerHost;
+
+        let mut perms = Permissions::default();
+        perms.call_extension_kinds.push("design".to_string());
+        let mut h = HostState::builder("caller".into(), perms)
+            .call_depth_start(MAX_BROKER_DEPTH)
+            .build();
+        let err = h
+            .call_extension(
+                "design".into(),
+                "greentic.target".into(),
+                "do".into(),
+                "{}".into(),
+            )
+            .unwrap_err();
+        assert!(err.contains("max"), "expected depth error, got: {err}");
     }
 
     #[test]
