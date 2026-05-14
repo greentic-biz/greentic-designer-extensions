@@ -174,12 +174,14 @@ impl logging::Host for HostState {
 
 impl i18n::Host for HostState {
     fn t(&mut self, key: String) -> String {
-        let _ = &self.translator;
-        key
+        self.translator.t(&key)
     }
-    fn tf(&mut self, key: String, _args: Vec<(String, String)>) -> String {
-        let _ = &self.translator;
-        key
+    fn tf(&mut self, key: String, args: Vec<(String, String)>) -> String {
+        let borrowed: Vec<(&str, &str)> = args
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        self.translator.tf(&key, &borrowed)
     }
 }
 
@@ -236,5 +238,73 @@ impl http::Host for HostState {
             return Err(format!("network permission denied for url: {}", req.url));
         }
         Err(format!("http fetch stub for {}", req.url))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host_bindings::greentic::extension_host::i18n::Host as I18nHost;
+    use crate::host_ports::Translator;
+    use std::sync::Arc;
+
+    struct EnglishToIndonesian;
+    impl Translator for EnglishToIndonesian {
+        fn t(&self, key: &str) -> String {
+            match key {
+                "greentic.test.hello" => "Halo dunia".to_string(),
+                _ => key.to_string(),
+            }
+        }
+        fn tf(&self, key: &str, args: &[(&str, &str)]) -> String {
+            let template = self.t(key);
+            args.iter()
+                .fold(template, |acc, (k, v)| acc.replace(&format!("{{{k}}}"), v))
+        }
+    }
+
+    fn host_with_translator(t: Arc<dyn Translator>) -> HostState {
+        HostState::builder("test-ext".to_string(), Permissions::default())
+            .translator(t)
+            .build()
+    }
+
+    #[test]
+    fn i18n_t_resolves_translated_value() {
+        let mut h = host_with_translator(Arc::new(EnglishToIndonesian));
+        let got = h.t("greentic.test.hello".to_string());
+        assert_eq!(got, "Halo dunia");
+    }
+
+    #[test]
+    fn i18n_t_falls_back_to_key_for_unknown() {
+        let mut h = host_with_translator(Arc::new(EnglishToIndonesian));
+        let got = h.t("missing.key".to_string());
+        assert_eq!(got, "missing.key");
+    }
+
+    #[test]
+    fn i18n_tf_substitutes_named_args() {
+        struct GreetTranslator;
+        impl Translator for GreetTranslator {
+            fn t(&self, key: &str) -> String {
+                if key == "greentic.test.greet" {
+                    "Halo {name}!".to_string()
+                } else {
+                    key.to_string()
+                }
+            }
+            fn tf(&self, key: &str, args: &[(&str, &str)]) -> String {
+                let template = self.t(key);
+                args.iter()
+                    .fold(template, |acc, (k, v)| acc.replace(&format!("{{{k}}}"), v))
+            }
+        }
+        let mut h = host_with_translator(Arc::new(GreetTranslator));
+        let got = h.tf(
+            "greentic.test.greet".to_string(),
+            vec![("name".to_string(), "Bima".to_string())],
+        );
+        assert_eq!(got, "Halo Bima!");
     }
 }
