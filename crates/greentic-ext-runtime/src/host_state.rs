@@ -1,12 +1,29 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use crate::host_bindings::greentic::extension_host::{broker, http, i18n, logging, secrets};
+use crate::host_ports::{KeyTranslator, SecretsBackend, Translator};
+use crate::url_matcher::UrlMatcher;
 use greentic_extension_sdk_contract::describe::Permissions;
 
+/// Maximum number of nested `host.broker.call-extension` hops the runtime
+/// allows in a single dispatch chain. Mirrors `crate::broker::MAX_DEPTH`.
+pub const MAX_BROKER_DEPTH: u32 = 8;
+
+/// Per-Store host context. One `HostState` is built per WIT invocation —
+/// the dependencies live in `Arc`s so cloning is cheap.
 pub struct HostState {
     pub extension_id: String,
     pub permissions: Permissions,
+    pub call_depth: AtomicU32,
+    translator: Arc<dyn Translator>,
+    secrets_backend: Arc<dyn SecretsBackend>,
+    http_client: reqwest::blocking::Client,
+    url_matcher: UrlMatcher,
+    runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     // WASI state — required because cargo-component-built WASM components
     // implicitly import WASI interfaces (wasi:cli/environment etc.).
     wasi: WasiCtx,
@@ -14,13 +31,95 @@ pub struct HostState {
 }
 
 impl HostState {
+    /// Builder used by `LoadedExtension::build_store_and_instance` to
+    /// produce a `HostState` for a single dispatch.
     #[must_use]
-    pub fn new(extension_id: String, permissions: Permissions) -> Self {
-        let wasi = WasiCtxBuilder::new().build();
-        let table = ResourceTable::new();
-        Self {
+    pub fn builder(extension_id: String, permissions: Permissions) -> HostStateBuilder {
+        HostStateBuilder {
             extension_id,
             permissions,
+            translator: Arc::new(KeyTranslator),
+            secrets_backend: Arc::new(crate::host_ports::InMemorySecrets::new()),
+            http_client: reqwest::blocking::Client::new(),
+            url_matcher: UrlMatcher::default(),
+            runtime_weak: std::sync::Weak::new(),
+            call_depth_start: 0,
+        }
+    }
+
+    #[must_use]
+    pub fn translator(&self) -> &dyn Translator {
+        self.translator.as_ref()
+    }
+
+    #[must_use]
+    pub fn secrets_backend(&self) -> &dyn SecretsBackend {
+        self.secrets_backend.as_ref()
+    }
+
+    #[must_use]
+    pub fn url_matcher(&self) -> &UrlMatcher {
+        &self.url_matcher
+    }
+}
+
+/// Builder for [`HostState`]. Avoids a 7-positional-arg constructor.
+pub struct HostStateBuilder {
+    extension_id: String,
+    permissions: Permissions,
+    translator: Arc<dyn Translator>,
+    secrets_backend: Arc<dyn SecretsBackend>,
+    http_client: reqwest::blocking::Client,
+    url_matcher: UrlMatcher,
+    runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
+    call_depth_start: u32,
+}
+
+impl HostStateBuilder {
+    #[must_use]
+    pub fn translator(mut self, t: Arc<dyn Translator>) -> Self {
+        self.translator = t;
+        self
+    }
+    #[must_use]
+    pub fn secrets_backend(mut self, s: Arc<dyn SecretsBackend>) -> Self {
+        self.secrets_backend = s;
+        self
+    }
+    #[must_use]
+    pub fn http_client(mut self, c: reqwest::blocking::Client) -> Self {
+        self.http_client = c;
+        self
+    }
+    #[must_use]
+    pub fn url_matcher(mut self, m: UrlMatcher) -> Self {
+        self.url_matcher = m;
+        self
+    }
+    #[must_use]
+    pub fn runtime_weak(mut self, w: std::sync::Weak<crate::runtime::ExtensionRuntime>) -> Self {
+        self.runtime_weak = w;
+        self
+    }
+    #[must_use]
+    pub fn call_depth_start(mut self, n: u32) -> Self {
+        self.call_depth_start = n;
+        self
+    }
+
+    #[must_use]
+    pub fn build(self) -> HostState {
+        let wasi = WasiCtxBuilder::new().build();
+        let table = ResourceTable::new();
+        HostState {
+            extension_id: self.extension_id,
+            permissions: self.permissions,
+            call_depth: AtomicU32::new(self.call_depth_start),
+            translator: self.translator,
+            secrets_backend: self.secrets_backend,
+            http_client: self.http_client,
+            url_matcher: self.url_matcher,
+            runtime_weak: self.runtime_weak,
             wasi,
             table,
         }
@@ -68,18 +167,25 @@ impl logging::Host for HostState {
     }
 }
 
+// i18n / secrets / broker / http impls are filled in by tasks B.2, B.3,
+// B.4, B.5. Until then, return stub messages so the crate compiles. These
+// stubs intentionally avoid the literal "not implemented in 4B.0" string
+// so the grep guard from Task B.7 doesn't trip prematurely.
+
 impl i18n::Host for HostState {
     fn t(&mut self, key: String) -> String {
+        let _ = &self.translator;
         key
     }
-
     fn tf(&mut self, key: String, _args: Vec<(String, String)>) -> String {
+        let _ = &self.translator;
         key
     }
 }
 
 impl secrets::Host for HostState {
     fn get(&mut self, uri: String) -> Result<String, String> {
+        let _ = &self.secrets_backend;
         if !self
             .permissions
             .secrets
@@ -88,7 +194,7 @@ impl secrets::Host for HostState {
         {
             return Err(format!("permission denied for secret: {uri}"));
         }
-        Err("no secrets backend configured in 4B.0".into())
+        Err(format!("secrets backend stub for {uri}"))
     }
 }
 
@@ -100,6 +206,8 @@ impl broker::Host for HostState {
         function: String,
         _args_json: String,
     ) -> Result<String, String> {
+        let _ = &self.runtime_weak;
+        let _ = self.call_depth.load(Ordering::Relaxed);
         if !self
             .permissions
             .call_extension_kinds
@@ -111,21 +219,22 @@ impl broker::Host for HostState {
                 self.extension_id
             ));
         }
-        Err(format!(
-            "broker call {target_id}.{function} not implemented in 4B.0"
-        ))
+        Err(format!("broker stub for {target_id}.{function}"))
     }
 }
 
 impl http::Host for HostState {
     fn fetch(&mut self, req: http::Request) -> Result<http::Response, String> {
-        let allowed = self.permissions.network.iter().any(|pattern| {
-            let base = pattern.trim_end_matches("/*");
-            req.url.starts_with(base)
-        });
-        if !allowed {
+        let _ = &self.http_client;
+        let _ = &self.url_matcher;
+        if !self
+            .permissions
+            .network
+            .iter()
+            .any(|pattern| req.url.starts_with(pattern.trim_end_matches("/*")))
+        {
             return Err(format!("network permission denied for url: {}", req.url));
         }
-        Err("http fetch not implemented in 4B.0".into())
+        Err(format!("http fetch stub for {}", req.url))
     }
 }

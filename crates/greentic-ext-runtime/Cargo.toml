@@ -47,9 +47,23 @@ workspace = true
 [dependencies.wasmtime-wasi]
 workspace = true
 
+[dependencies.reqwest]
+workspace = true
+features = ["blocking", "rustls-tls", "json"]
+default-features = false
+
+[dependencies.url]
+version = "2"
+
+[dependencies.async-trait]
+workspace = true
+
 [dev-dependencies]
 greentic-extension-sdk-testing = "0.4"
 wat = "1"
+
+[dev-dependencies.wiremock]
+version = "0.6"
 
 [dev-dependencies.ed25519-dalek]
 workspace = true
