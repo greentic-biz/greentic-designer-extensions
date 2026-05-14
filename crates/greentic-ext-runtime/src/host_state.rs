@@ -187,16 +187,32 @@ impl i18n::Host for HostState {
 
 impl secrets::Host for HostState {
     fn get(&mut self, uri: String) -> Result<String, String> {
-        let _ = &self.secrets_backend;
-        if !self
+        // Permission check: every secret URI the extension reads must be
+        // declared verbatim or as a prefix in `permissions.secrets`. Strict
+        // prefix match (no glob today — that's a follow-up if needed).
+        let permitted = self
             .permissions
             .secrets
             .iter()
-            .any(|allowed| uri.starts_with(allowed))
-        {
+            .any(|allowed| uri == *allowed || uri.starts_with(&format!("{allowed}/")));
+        if !permitted {
+            tracing::warn!(
+                ext = %self.extension_id,
+                requested = %uri,
+                "secrets::get permission denied"
+            );
             return Err(format!("permission denied for secret: {uri}"));
         }
-        Err(format!("secrets backend stub for {uri}"))
+        match self.secrets_backend.get(&uri) {
+            Ok(value) => Ok(value),
+            Err(crate::host_ports::SecretsError::NotFound(k)) => {
+                Err(format!("secret not found: {k}"))
+            }
+            Err(crate::host_ports::SecretsError::Backend(msg)) => {
+                tracing::error!(ext = %self.extension_id, %msg, "secrets backend error");
+                Err(format!("secrets backend error: {msg}"))
+            }
+        }
     }
 }
 
@@ -281,6 +297,58 @@ mod tests {
         let mut h = host_with_translator(Arc::new(EnglishToIndonesian));
         let got = h.t("missing.key".to_string());
         assert_eq!(got, "missing.key");
+    }
+
+    #[test]
+    fn secrets_get_returns_value_when_permitted() {
+        use crate::host_bindings::greentic::extension_host::secrets::Host as SecretsHost;
+        use crate::host_ports::InMemorySecrets;
+
+        let mut backend = InMemorySecrets::default();
+        backend.insert("api.openai.com/api_key", "sk-real");
+        let mut perms = Permissions::default();
+        perms.secrets.push("api.openai.com/api_key".to_string());
+
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .secrets_backend(Arc::new(backend))
+            .build();
+        let v = h.get("api.openai.com/api_key".to_string()).unwrap();
+        assert_eq!(v, "sk-real");
+    }
+
+    #[test]
+    fn secrets_get_denies_when_uri_not_in_permissions() {
+        use crate::host_bindings::greentic::extension_host::secrets::Host as SecretsHost;
+        use crate::host_ports::InMemorySecrets;
+
+        let mut backend = InMemorySecrets::default();
+        backend.insert("api.openai.com/api_key", "sk-real");
+        let perms = Permissions::default();
+
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .secrets_backend(Arc::new(backend))
+            .build();
+        let err = h.get("api.openai.com/api_key".to_string()).unwrap_err();
+        assert!(
+            err.contains("permission denied"),
+            "expected permission denied, got: {err}"
+        );
+    }
+
+    #[test]
+    fn secrets_get_surfaces_backend_not_found() {
+        use crate::host_bindings::greentic::extension_host::secrets::Host as SecretsHost;
+        use crate::host_ports::InMemorySecrets;
+
+        let backend = InMemorySecrets::default();
+        let mut perms = Permissions::default();
+        perms.secrets.push("api.openai.com/api_key".to_string());
+
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .secrets_backend(Arc::new(backend))
+            .build();
+        let err = h.get("api.openai.com/api_key".to_string()).unwrap_err();
+        assert!(err.contains("not found"), "got: {err}");
     }
 
     #[test]
