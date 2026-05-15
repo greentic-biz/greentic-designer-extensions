@@ -27,6 +27,27 @@ async fn hot_reload_picks_up_new_extension() {
         .build()
         .unwrap();
 
+    // Patch gtpack so the runtime can resolve the wasm path (sdk-testing
+    // 1.2.0-research leaves gtpack=None on every component).
+    {
+        use greentic_extension_sdk_contract::describe::provider::RuntimeGtpack;
+        let path = fixture.root().join("describe.json");
+        let raw = fs::read_to_string(&path).unwrap();
+        let mut describe: greentic_extension_sdk_contract::DescribeJson =
+            serde_json::from_str(&raw).unwrap();
+        for component in describe.runtime.components.values_mut() {
+            if component.gtpack.is_none() {
+                component.gtpack = Some(RuntimeGtpack {
+                    file: "extension.wasm".to_string(),
+                    sha256: "0".repeat(64),
+                    pack_id: describe.metadata.id.clone(),
+                    component_version: describe.metadata.version.clone(),
+                });
+            }
+        }
+        fs::write(&path, serde_json::to_string_pretty(&describe).unwrap()).unwrap();
+    }
+
     let target = design_dir.join("greentic.hot-0.1.0");
     fs::create_dir_all(&target).unwrap();
     for e in fs::read_dir(fixture.root()).unwrap() {

@@ -15,12 +15,26 @@ fn copy_fixture(src: &std::path::Path, dst: &std::path::Path) {
     }
 }
 
-/// Sign the describe.json inside a fixture directory in-place.
+/// Sign the describe.json inside a fixture directory in-place. Also patches
+/// `runtime.components[*].gtpack` so source-dir loads resolve the wasm —
+/// sdk-testing 1.2.0-research's fixture builder ships gtpack=None.
 fn sign_fixture_dir(dir: &std::path::Path) {
+    use greentic_extension_sdk_contract::describe::provider::RuntimeGtpack;
+
     let path = dir.join("describe.json");
     let raw = fs::read_to_string(&path).unwrap();
     let mut describe: greentic_extension_sdk_contract::DescribeJson =
         serde_json::from_str(&raw).unwrap();
+    for component in describe.runtime.components.values_mut() {
+        if component.gtpack.is_none() {
+            component.gtpack = Some(RuntimeGtpack {
+                file: "extension.wasm".to_string(),
+                sha256: "0".repeat(64),
+                pack_id: describe.metadata.id.clone(),
+                component_version: describe.metadata.version.clone(),
+            });
+        }
+    }
     let sk = SigningKey::generate(&mut OsRng);
     greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
     fs::write(&path, serde_json::to_string_pretty(&describe).unwrap()).unwrap();
@@ -73,6 +87,7 @@ async fn end_to_end_discovery_and_capability_resolution() {
         &[greentic_extension_sdk_contract::CapabilityRef {
             id: "greentic:x/service".parse().unwrap(),
             version: "^1.0".into(),
+            deprecated: None,
         }],
     );
     assert!(

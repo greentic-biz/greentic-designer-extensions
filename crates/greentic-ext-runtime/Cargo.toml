@@ -9,7 +9,7 @@ description = "Wasmtime-based runtime for Greentic Designer Extensions"
 publish = false
 
 [dependencies]
-greentic-extension-sdk-contract = "0.4"
+greentic-extension-sdk-contract = "=1.2.0-research"
 
 [dependencies.anyhow]
 workspace = true
@@ -59,7 +59,7 @@ version = "2"
 workspace = true
 
 [dev-dependencies]
-greentic-extension-sdk-testing = "0.4"
+greentic-extension-sdk-testing = "=1.2.0-research"
 wat = "1"
 
 [dev-dependencies.wiremock]

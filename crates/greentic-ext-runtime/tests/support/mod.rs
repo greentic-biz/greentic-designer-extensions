@@ -67,6 +67,29 @@ impl Drop for EnvGuard {
     }
 }
 
+/// `ExtensionFixtureBuilder` (sdk-testing 1.2.0-research) emits each
+/// `runtime.components` entry with `gtpack: None` and only `oci_ref` set.
+/// Source-dir loading needs `gtpack.file` to resolve the wasm path, so this
+/// helper rewrites every component to point at `extension.wasm` (the file
+/// the fixture writes alongside describe.json). Call before signing —
+/// otherwise the signature would cover the original (gtpack-less) bytes.
+pub fn populate_gtpack_for_local_load(
+    describe: &mut greentic_extension_sdk_contract::DescribeJson,
+) {
+    use greentic_extension_sdk_contract::describe::provider::RuntimeGtpack;
+
+    for component in describe.runtime.components.values_mut() {
+        if component.gtpack.is_none() {
+            component.gtpack = Some(RuntimeGtpack {
+                file: "extension.wasm".to_string(),
+                sha256: "0".repeat(64),
+                pack_id: describe.metadata.id.clone(),
+                component_version: describe.metadata.version.clone(),
+            });
+        }
+    }
+}
+
 /// Build a signed extension fixture using the `ExtensionFixtureBuilder`
 /// from `greentic-extension-sdk-testing`, then sign its describe.json with a fresh
 /// ed25519 key. Returns the fixture and the signing key used.
@@ -88,11 +111,12 @@ pub fn signed_fixture(
         .build()
         .expect("fixture build");
 
-    // Read, sign, write back.
+    // Read, patch gtpack, sign, write back. Patch must run before sign.
     let describe_path = fixture.root().join("describe.json");
     let raw = std::fs::read_to_string(&describe_path).unwrap();
     let mut describe: greentic_extension_sdk_contract::DescribeJson =
         serde_json::from_str(&raw).unwrap();
+    populate_gtpack_for_local_load(&mut describe);
     let sk = SigningKey::generate(&mut OsRng);
     greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
     let out = serde_json::to_string_pretty(&describe).unwrap();
@@ -112,16 +136,31 @@ pub fn tamper_fixture(fixture: &greentic_extension_sdk_testing::ExtensionFixture
 }
 
 /// Build an **unsigned** fixture (no .signature field). Mirrors existing
-/// `ExtensionFixtureBuilder` default output.
+/// `ExtensionFixtureBuilder` default output, but also patches gtpack so
+/// source-dir loads can resolve the wasm path (sdk-testing 1.2.0-research
+/// leaves gtpack unset on every component).
 pub fn unsigned_fixture(
     kind: greentic_extension_sdk_contract::ExtensionKind,
     id: &str,
     version: &str,
 ) -> greentic_extension_sdk_testing::ExtensionFixture {
     let minimal_wasm = wat::parse_str(r"(component)").expect("wat component must compile");
-    greentic_extension_sdk_testing::ExtensionFixtureBuilder::new(kind, id, version)
+    let fixture = greentic_extension_sdk_testing::ExtensionFixtureBuilder::new(kind, id, version)
         .offer("greentic:test/ping", "1.0.0")
         .with_wasm(minimal_wasm)
         .build()
-        .expect("fixture build")
+        .expect("fixture build");
+
+    let describe_path = fixture.root().join("describe.json");
+    let raw = std::fs::read_to_string(&describe_path).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
+    populate_gtpack_for_local_load(&mut describe);
+    std::fs::write(
+        &describe_path,
+        serde_json::to_string_pretty(&describe).unwrap(),
+    )
+    .unwrap();
+
+    fixture
 }
