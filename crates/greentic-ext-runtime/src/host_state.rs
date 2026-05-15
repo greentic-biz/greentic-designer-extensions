@@ -21,7 +21,7 @@ pub struct HostState {
     pub call_depth: AtomicU32,
     translator: Arc<dyn Translator>,
     secrets_backend: Arc<dyn SecretsBackend>,
-    http_client: reqwest::blocking::Client,
+    http_client: Option<reqwest::blocking::Client>,
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     // WASI state — required because cargo-component-built WASM components
@@ -40,7 +40,7 @@ impl HostState {
             permissions,
             translator: Arc::new(KeyTranslator),
             secrets_backend: Arc::new(crate::host_ports::InMemorySecrets::new()),
-            http_client: reqwest::blocking::Client::new(),
+            http_client: None,
             url_matcher: UrlMatcher::default(),
             runtime_weak: std::sync::Weak::new(),
             call_depth_start: 0,
@@ -69,7 +69,7 @@ pub struct HostStateBuilder {
     permissions: Permissions,
     translator: Arc<dyn Translator>,
     secrets_backend: Arc<dyn SecretsBackend>,
-    http_client: reqwest::blocking::Client,
+    http_client: Option<reqwest::blocking::Client>,
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     call_depth_start: u32,
@@ -87,7 +87,7 @@ impl HostStateBuilder {
         self
     }
     #[must_use]
-    pub fn http_client(mut self, c: reqwest::blocking::Client) -> Self {
+    pub fn http_client(mut self, c: Option<reqwest::blocking::Client>) -> Self {
         self.http_client = c;
         self
     }
@@ -281,7 +281,14 @@ impl http::Host for HostState {
             return Err(format!("network not allowed for url: {}", req.url));
         }
 
-        // 2. Build the reqwest request.
+        // 2. Build the reqwest request. `http_client` is `None` when the
+        //    host wasn't given one (typical for unit tests). Surface a
+        //    clean error rather than panic, and don't lazy-construct a
+        //    client here — see `HostOverrides` doc comment.
+        let client = self
+            .http_client
+            .as_ref()
+            .ok_or_else(|| "http client not configured for this runtime".to_string())?;
         let method = match req.method.to_uppercase().as_str() {
             "GET" => reqwest::Method::GET,
             "POST" => reqwest::Method::POST,
@@ -291,7 +298,7 @@ impl http::Host for HostState {
             "HEAD" => reqwest::Method::HEAD,
             other => return Err(format!("unsupported http method: {other}")),
         };
-        let mut builder = self.http_client.request(method, &req.url);
+        let mut builder = client.request(method, &req.url);
         for (k, v) in &req.headers {
             builder = builder.header(k.as_str(), v.as_str());
         }

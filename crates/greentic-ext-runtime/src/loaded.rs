@@ -144,26 +144,37 @@ pub type LoadedExtensionRef = Arc<LoadedExtension>;
 /// Bundle of overrides every dispatch caller must supply when building a
 /// `HostState`. Production code (designer) constructs adapters around
 /// `greentic-i18n` + `greentic-secrets`; tests use [`HostOverrides::defaults_for_tests`].
+///
+/// `http_client` is `Option` because `reqwest::blocking::Client` spawns an
+/// internal tokio runtime, and dropping that runtime from inside an
+/// outer async context panics with "Cannot drop a runtime in a context
+/// where blocking is not allowed". Tests instantiate `ExtensionRuntime`
+/// inside `#[tokio::test]` bodies but never call `http::fetch`, so
+/// they leave the client `None` — `host_state` will surface a clean
+/// "http client not configured" error if a test ever does invoke fetch.
+/// Production callers pass `Some(client)` once at startup.
 #[derive(Clone)]
 pub struct HostOverrides {
     pub translator: std::sync::Arc<dyn crate::host_ports::Translator>,
     pub secrets_backend: std::sync::Arc<dyn crate::host_ports::SecretsBackend>,
-    pub http_client: reqwest::blocking::Client,
+    pub http_client: Option<reqwest::blocking::Client>,
     pub url_matcher: crate::url_matcher::UrlMatcher,
     pub runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     pub call_depth_start: u32,
 }
 
 impl HostOverrides {
-    /// Fakes-everywhere helper. Runtime weak is left unset (`Weak::new`), so
-    /// broker dispatch will fail with "runtime gone" until B.6 wires the
-    /// real `Arc<ExtensionRuntime>`.
+    /// Fakes-everywhere helper. `http_client` is `None` so dropping the
+    /// runtime inside an outer async context never panics; the test never
+    /// hits the path that uses it. Runtime weak is left unset (`Weak::new`),
+    /// so broker dispatch returns "no runtime context available" until
+    /// the cross-extension dispatch cascade lands.
     #[must_use]
     pub fn defaults_for_tests() -> Self {
         Self {
             translator: std::sync::Arc::new(crate::host_ports::KeyTranslator),
             secrets_backend: std::sync::Arc::new(crate::host_ports::InMemorySecrets::new()),
-            http_client: reqwest::blocking::Client::new(),
+            http_client: None,
             url_matcher: crate::url_matcher::UrlMatcher::default(),
             runtime_weak: std::sync::Weak::new(),
             call_depth_start: 0,
