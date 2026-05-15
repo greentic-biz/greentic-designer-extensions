@@ -55,7 +55,7 @@ impl LoadedExtension {
             .map_err(|e| anyhow::anyhow!("invalid describe.json: {e}"))?;
         let describe: DescribeJson = serde_json::from_value(describe_value)?;
         let id = ExtensionId::from_describe(&describe);
-        let wasm_path = source_dir.join(&describe.runtime.component);
+        let wasm_path = source_dir.join(single_gtpack_file(&describe)?);
         let component = Component::from_file(engine, &wasm_path)?;
         let pool = InstancePool::new(2);
         let kind = describe.kind;
@@ -112,6 +112,31 @@ impl LoadedExtension {
         let instance = linker.instantiate(&mut store, &self.component)?;
         Ok((store, instance))
     }
+}
+
+/// Resolve the single gtpack.file path for an extension's runtime component.
+///
+/// v2's `runtime.components` is a map keyed by component id. ext-runtime
+/// today loads a single wasm component per extension, so we require exactly
+/// one entry. Multi-component dispatch (driven by `runtime_ref` on
+/// nodeTypes/tools) is a follow-up — when it lands, callers will pick the
+/// component by id and this helper goes away.
+fn single_gtpack_file(describe: &DescribeJson) -> anyhow::Result<&str> {
+    let mut iter = describe.runtime.components.iter();
+    let Some((id, component)) = iter.next() else {
+        anyhow::bail!("describe.runtime.components must declare at least one entry");
+    };
+    if iter.next().is_some() {
+        anyhow::bail!(
+            "describe.runtime.components has more than one entry; multi-component dispatch is not yet implemented"
+        );
+    }
+    let gtpack = component.gtpack.as_ref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "describe.runtime.components[{id:?}].gtpack must be set for source-dir loads (OCI-only deploy is not yet supported)",
+        )
+    })?;
+    Ok(gtpack.file.as_str())
 }
 
 pub type LoadedExtensionRef = Arc<LoadedExtension>;

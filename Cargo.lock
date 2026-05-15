@@ -1103,9 +1103,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-extension-sdk-contract"
-version = "0.4.2"
+version = "1.2.0-research"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cb9254dd7b7ddef4e8061db9670765b121d5b3095ae2b3f069b577b619cecbe"
+checksum = "ee1937a57bef290fcc9fdb2ed5b03cbd1c424fc993d8a30517b41df52c21b7d7"
 dependencies = [
  "anyhow",
  "base64",
@@ -1122,9 +1122,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-extension-sdk-testing"
-version = "0.4.2"
+version = "1.2.0-research"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dc48c860921fb3a9f28cc900ba1ccf657628a98634761f254ff02dfe0c6707a"
+checksum = "49a4ba88df33dbdb94f534e7b57e77d35fa5ef3c5187fda967c7e948078aee5d"
 dependencies = [
  "anyhow",
  "ciborium",
