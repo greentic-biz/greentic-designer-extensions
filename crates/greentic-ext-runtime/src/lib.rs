@@ -34,3 +34,12 @@ pub use self::types::{
     TargetSummary, ToolDefinition, ValidateResult,
 };
 pub use self::url_matcher::UrlMatcher;
+
+/// Re-export `reqwest` so consumers wiring `HostOverrides::http_client`
+/// always construct the `Client` against the same crate version this
+/// crate compiles against. Without this, a downstream crate that pulls
+/// reqwest at a different SemVer (e.g. 0.13 vs the 0.12 we depend on)
+/// produces two distinct `reqwest::blocking::Client` types and the
+/// `http_client: Some(client)` assignment fails with a confusing
+/// "expected reqwest::blocking::Client, found reqwest::blocking::Client".
+pub use reqwest;
