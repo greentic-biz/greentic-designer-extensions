@@ -195,6 +195,64 @@ impl ExtensionRuntime {
             key_prefix = %pub_prefix,
             "extension signature verified"
         );
+        Self::verify_dir_manifest(dir, &describe.metadata.id)?;
+        Ok(())
+    }
+
+    /// Verify the unpacked extension dir against its `manifest.json`
+    /// (whole-archive integrity ledger introduced in D.4.2). When
+    /// `manifest.json` is absent we fail-open — pre-D.4.2 packs predate
+    /// the manifest format and must keep loading during the transition.
+    /// When present, every file the manifest lists must hash to the
+    /// recorded sha256. Closes audit P0 #2 (wasm binary + sibling
+    /// archive entries unsigned) on the consumer side.
+    fn verify_dir_manifest(dir: &std::path::Path, extension_id: &str) -> Result<(), RuntimeError> {
+        use sha2::{Digest, Sha256};
+        let manifest_path = dir.join(greentic_extension_sdk_contract::MANIFEST_ENTRY_NAME);
+        if !manifest_path.exists() {
+            tracing::debug!(
+                extension_dir = %dir.display(),
+                "manifest.json absent — skipping whole-archive verification (legacy pack)"
+            );
+            return Ok(());
+        }
+        let raw = std::fs::read(&manifest_path)?;
+        let manifest: greentic_extension_sdk_contract::Manifest = serde_json::from_slice(&raw)
+            .map_err(|e| RuntimeError::SignatureInvalid {
+                extension_id: extension_id.to_string(),
+                reason: format!("manifest.json parse: {e}"),
+            })?;
+        if manifest.schema != greentic_extension_sdk_contract::MANIFEST_SCHEMA_V1 {
+            return Err(RuntimeError::SignatureInvalid {
+                extension_id: extension_id.to_string(),
+                reason: format!("manifest schema unsupported: {}", manifest.schema),
+            });
+        }
+        for entry in &manifest.entries {
+            let path = dir.join(&entry.path);
+            if !path.exists() {
+                return Err(RuntimeError::SignatureInvalid {
+                    extension_id: extension_id.to_string(),
+                    reason: format!("manifest lists missing file: {}", entry.path),
+                });
+            }
+            let bytes = std::fs::read(&path)?;
+            let computed = format!("{:x}", Sha256::digest(&bytes));
+            if computed != entry.sha256 {
+                return Err(RuntimeError::SignatureInvalid {
+                    extension_id: extension_id.to_string(),
+                    reason: format!(
+                        "manifest sha256 mismatch for {}: expected {} got {}",
+                        entry.path, entry.sha256, computed
+                    ),
+                });
+            }
+        }
+        tracing::info!(
+            extension_id = %extension_id,
+            entries = manifest.entries.len(),
+            "whole-archive manifest verified"
+        );
         Ok(())
     }
 
