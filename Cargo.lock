@@ -1088,7 +1088,9 @@ dependencies = [
  "reqwest",
  "semver",
  "serde",
+ "serde_jcs",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -1103,9 +1105,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-extension-sdk-contract"
-version = "1.2.0-research"
+version = "1.2.1-research"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee1937a57bef290fcc9fdb2ed5b03cbd1c424fc993d8a30517b41df52c21b7d7"
+checksum = "dd994ac7f30d020d687d0bfe66b79216c6ca6c9a80e73ed7714b3e9d2b2cb24b"
 dependencies = [
  "anyhow",
  "base64",
@@ -1122,9 +1124,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-extension-sdk-testing"
-version = "1.2.0-research"
+version = "1.2.1-research"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49a4ba88df33dbdb94f534e7b57e77d35fa5ef3c5187fda967c7e948078aee5d"
+checksum = "0e4ca99289ff70d9b7e3415a44140343af6b40f3e9e3ac9d198b8dde258f0200"
 dependencies = [
  "anyhow",
  "ciborium",
