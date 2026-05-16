@@ -8,6 +8,13 @@ rust-version.workspace = true
 description = "Wasmtime-based runtime for Greentic Designer Extensions"
 publish = false
 
+[features]
+default = []
+# Honors the `GREENTIC_EXT_ALLOW_UNSIGNED=1` env var to bypass signature
+# verification. Off by default so production builds always verify; enable
+# only in dev/test toolchains and CI fixtures.
+dev-allow-unsigned = []
+
 [dependencies]
 greentic-extension-sdk-contract = "=1.2.0-research"
 

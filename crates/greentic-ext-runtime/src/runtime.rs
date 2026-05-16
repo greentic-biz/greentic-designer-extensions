@@ -169,6 +169,7 @@ impl ExtensionRuntime {
     }
 
     fn verify_dir_signature(dir: &std::path::Path) -> Result<(), RuntimeError> {
+        #[cfg(feature = "dev-allow-unsigned")]
         if std::env::var("GREENTIC_EXT_ALLOW_UNSIGNED").is_ok() {
             tracing::warn!(
                 extension_dir = %dir.display(),
