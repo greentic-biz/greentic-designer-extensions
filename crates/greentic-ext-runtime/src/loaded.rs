@@ -55,7 +55,7 @@ impl LoadedExtension {
             .map_err(|e| anyhow::anyhow!("invalid describe.json: {e}"))?;
         let describe: DescribeJson = serde_json::from_value(describe_value)?;
         let id = ExtensionId::from_describe(&describe);
-        let wasm_path = source_dir.join(single_gtpack_file(&describe)?);
+        let wasm_path = wasm_component_path(&describe, source_dir)?;
         let component = Component::from_file(engine, &wasm_path)?;
         let pool = InstancePool::new(2);
         let kind = describe.kind;
@@ -114,14 +114,42 @@ impl LoadedExtension {
     }
 }
 
-/// Resolve the single gtpack.file path for an extension's runtime component.
+/// Resolve the WASM component path for an extension's runtime component.
 ///
-/// v2's `runtime.components` is a map keyed by component id. ext-runtime
-/// today loads a single wasm component per extension, so we require exactly
-/// one entry. Multi-component dispatch (driven by `runtime_ref` on
-/// nodeTypes/tools) is a follow-up — when it lands, callers will pick the
-/// component by id and this helper goes away.
-fn single_gtpack_file(describe: &DescribeJson) -> anyhow::Result<&str> {
+/// `ProviderExtension` kind has a dual-component layout:
+/// - Root `extension.wasm` — design-side WebAssembly with metadata (channel name,
+///   icon, i18n, schemas). This is what designer loads.
+/// - `runtime/provider.gtpack` — a placeholder (often a small text file). The
+///   real provider runtime (telegram bot HTTP client, etc.) lives downstream in
+///   runner-host, fetched lazily there.
+///
+/// When `extension.wasm` is present at the source directory root we return it
+/// directly. This lets the designer surface provider metadata without trying to
+/// parse the placeholder gtpack as a WASM component.
+///
+/// For all other kinds (`Design`, `Bundle`, `Deploy`) the existing logic applies:
+/// read `describe.runtime.components[X].gtpack.file` and resolve it relative to
+/// `source_dir`. Those kinds already point at real WASM at that path.
+///
+/// v2's `runtime.components` is a map keyed by component id. ext-runtime today
+/// loads a single WASM component per extension, so we require exactly one entry.
+/// Multi-component dispatch (driven by `runtime_ref` on nodeTypes/tools) is a
+/// follow-up — when it lands, callers will pick the component by id and this
+/// helper goes away.
+fn wasm_component_path(describe: &DescribeJson, source_dir: &Path) -> anyhow::Result<PathBuf> {
+    // ProviderExtensions ship `extension.wasm` (design-side) at root alongside a
+    // placeholder `runtime/provider.gtpack` (runner-host concern). Prefer the
+    // design-side WASM when present — designer's boot loader only needs
+    // metadata/UI, not the runtime gtpack that runner-host fetches separately.
+    if matches!(describe.kind, ExtensionKind::Provider) {
+        let design_wasm = source_dir.join("extension.wasm");
+        if design_wasm.exists() {
+            return Ok(design_wasm);
+        }
+    }
+
+    // Other kinds: keep current behavior (also fallback for Provider without
+    // an extension.wasm at root).
     let mut iter = describe.runtime.components.iter();
     let Some((id, component)) = iter.next() else {
         anyhow::bail!("describe.runtime.components must declare at least one entry");
@@ -136,7 +164,7 @@ fn single_gtpack_file(describe: &DescribeJson) -> anyhow::Result<&str> {
             "describe.runtime.components[{id:?}].gtpack must be set for source-dir loads (OCI-only deploy is not yet supported)",
         )
     })?;
-    Ok(gtpack.file.as_str())
+    Ok(source_dir.join(gtpack.file.as_str()))
 }
 
 pub type LoadedExtensionRef = Arc<LoadedExtension>;

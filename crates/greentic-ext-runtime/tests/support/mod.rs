@@ -125,6 +125,75 @@ pub fn signed_fixture(
     (fixture, sk)
 }
 
+/// Build a signed `ProviderExtension` fixture whose `describe.json` points
+/// `runtime.components[stub].gtpack.file` at `"runtime/provider.gtpack"` (a
+/// text placeholder — intentionally NOT parseable as a WASM component), while
+/// the real design-side `extension.wasm` sits at the directory root.
+///
+/// This mirrors the dual-component layout used by real provider extensions
+/// (e.g. `greentic.provider.telegram-1.3.1-research`):
+/// - `extension.wasm` — design-side WebAssembly (metadata, icons, i18n).
+/// - `runtime/provider.gtpack` — intentional placeholder; runner-host fetches
+///   the real runtime lazily; designer must never try to parse it as WASM.
+pub fn signed_provider_fixture_with_placeholder_gtpack(
+    id: &str,
+    version: &str,
+) -> (
+    greentic_extension_sdk_testing::ExtensionFixture,
+    ed25519_dalek::SigningKey,
+) {
+    use ed25519_dalek::SigningKey;
+    use greentic_extension_sdk_contract::describe::provider::RuntimeGtpack;
+    use rand::rngs::OsRng;
+
+    let minimal_wasm = wat::parse_str(r"(component)").expect("wat component must compile");
+    // ExtensionFixtureBuilder writes `extension.wasm` at root automatically.
+    let fixture = greentic_extension_sdk_testing::ExtensionFixtureBuilder::new(
+        greentic_extension_sdk_contract::ExtensionKind::Provider,
+        id,
+        version,
+    )
+    .offer("greentic:test/ping", "1.0.0")
+    .with_wasm(minimal_wasm)
+    .build()
+    .expect("fixture build");
+
+    // Create the placeholder `runtime/provider.gtpack` (text, not valid WASM).
+    let runtime_dir = fixture.root().join("runtime");
+    std::fs::create_dir_all(&runtime_dir).unwrap();
+    std::fs::write(
+        runtime_dir.join("provider.gtpack"),
+        b"placeholder - not valid WASM; runner-host fetches the real pack",
+    )
+    .unwrap();
+
+    // Patch describe.json to point at `runtime/provider.gtpack`, NOT at
+    // `extension.wasm`. This is the layout that was breaking the loader.
+    let describe_path = fixture.root().join("describe.json");
+    let raw = std::fs::read_to_string(&describe_path).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
+    for component in describe.runtime.components.values_mut() {
+        component.gtpack = Some(RuntimeGtpack {
+            file: "runtime/provider.gtpack".to_string(),
+            sha256: "0".repeat(64),
+            pack_id: describe.metadata.id.clone(),
+            component_version: describe.metadata.version.clone(),
+        });
+    }
+
+    // Sign. Signature must cover the final (patched) describe.json bytes.
+    let sk = SigningKey::generate(&mut OsRng);
+    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
+    std::fs::write(
+        &describe_path,
+        serde_json::to_string_pretty(&describe).unwrap(),
+    )
+    .unwrap();
+
+    (fixture, sk)
+}
+
 /// Mutate an installed fixture's describe.json to invalidate its signature.
 pub fn tamper_fixture(fixture: &greentic_extension_sdk_testing::ExtensionFixture) {
     let path = fixture.root().join("describe.json");
