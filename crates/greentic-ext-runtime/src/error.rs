@@ -10,7 +10,8 @@ pub enum RuntimeError {
 
     #[error(
         "signature verification failed for extension '{extension_id}': {reason}\n\
-         hint: reinstall a signed extension, or set GREENTIC_EXT_ALLOW_UNSIGNED=1 for dev"
+         hint: reinstall a signed extension (production), or rebuild ext-runtime \
+         with `--features dev-allow-unsigned` and set GREENTIC_EXT_ALLOW_UNSIGNED=1 (dev only)"
     )]
     SignatureInvalid {
         extension_id: String,

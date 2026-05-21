@@ -8,8 +8,15 @@ rust-version.workspace = true
 description = "Wasmtime-based runtime for Greentic Designer Extensions"
 publish = false
 
+[features]
+default = []
+# Honors the `GREENTIC_EXT_ALLOW_UNSIGNED=1` env var to bypass signature
+# verification. Off by default so production builds always verify; enable
+# only in dev/test toolchains and CI fixtures.
+dev-allow-unsigned = []
+
 [dependencies]
-greentic-extension-sdk-contract = "0.4"
+greentic-extension-sdk-contract = "=1.2.1-research"
 
 [dependencies.anyhow]
 workspace = true
@@ -32,6 +39,9 @@ workspace = true
 [dependencies.serde_json]
 workspace = true
 
+[dependencies.sha2]
+workspace = true
+
 [dependencies.thiserror]
 workspace = true
 
@@ -47,9 +57,23 @@ workspace = true
 [dependencies.wasmtime-wasi]
 workspace = true
 
+[dependencies.reqwest]
+workspace = true
+features = ["blocking", "rustls-tls", "json"]
+default-features = false
+
+[dependencies.url]
+version = "2"
+
+[dependencies.async-trait]
+workspace = true
+
 [dev-dependencies]
-greentic-extension-sdk-testing = "0.4"
+greentic-extension-sdk-testing = "=1.2.1-research"
 wat = "1"
+
+[dev-dependencies.wiremock]
+version = "0.6"
 
 [dev-dependencies.ed25519-dalek]
 workspace = true
@@ -64,6 +88,12 @@ workspace = true
 workspace = true
 
 [dev-dependencies.tracing-subscriber]
+workspace = true
+
+[dev-dependencies.serde_jcs]
+workspace = true
+
+[dev-dependencies.sha2]
 workspace = true
 
 [lints]

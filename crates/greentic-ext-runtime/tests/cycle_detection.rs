@@ -15,6 +15,7 @@ fn require(id: &str, v: &str) -> CapabilityRef {
     CapabilityRef {
         id: id.parse().unwrap(),
         version: v.to_string(),
+        deprecated: None,
     }
 }
 

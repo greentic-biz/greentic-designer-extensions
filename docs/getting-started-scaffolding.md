@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-- Rust 1.94+ with `wasm32-wasip2` target: `rustup target add wasm32-wasip2`
+- Rust 1.95+ with `wasm32-wasip2` target: `rustup target add wasm32-wasip2`
 - `cargo-component`: `cargo install --locked cargo-component`
 
 ## Create

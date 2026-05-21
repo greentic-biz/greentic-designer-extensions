@@ -1,0 +1,94 @@
+name: auto-tag-channel
+
+on:
+  push:
+    branches: [develop, research]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag-channel-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: tag develop/research from Cargo.toml
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read base version from Cargo.toml
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Workspace root keeps the version under [workspace.package]; the
+          # grep anchors on line-start so we still pick the right line even
+          # though it is not under [package].
+          BASE="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/^version = "(.+)"$/\1/')"
+          if [[ -z "$BASE" ]]; then
+            echo "::error::Could not parse version from Cargo.toml"
+            exit 1
+          fi
+          if [[ ! "$BASE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Cargo.toml version '$BASE' must be plain X.Y.Z (no -dev/-research suffix — CI appends per branch)."
+            exit 1
+          fi
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Base version: $BASE"
+
+      - name: Resolve channel tag for branch
+        id: channel
+        shell: bash
+        env:
+          BASE: ${{ steps.version.outputs.base }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          case "$BRANCH" in
+            develop)  suffix="-dev" ;;
+            research) suffix="-research" ;;
+            *)
+              echo "::notice::Branch '$BRANCH' is not configured for auto-tag. Skipping."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+          TAG="v${BASE}${suffix}"
+          echo "Resolved tag for branch '$BRANCH': $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether tag already exists
+        id: check
+        if: steps.channel.outputs.skip != 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.channel.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --quiet origin
+          if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            echo "::notice::Tag ${TAG} already exists. Bump Cargo.toml to publish a new release."
+            echo "create=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag ${TAG} does not exist yet."
+            echo "create=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.check.outputs.create == 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.channel.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Auto-tagged from ${GITHUB_REF_NAME} @ ${GITHUB_SHA}"
+          git push origin "$TAG"
+          echo "::notice::Pushed tag $TAG"

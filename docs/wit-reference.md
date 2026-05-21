@@ -12,11 +12,12 @@ WIT files live in the `wit/` directory at the repository root.
 
 | Package | File | Role |
 |---------|------|------|
-| `greentic:extension-base@0.1.0` | `wit/extension-base.wit` | Shared types, manifest, lifecycle — required by all three kinds |
+| `greentic:extension-base@0.1.0` | `wit/extension-base.wit` | Shared types, manifest, lifecycle — required by all four kinds |
 | `greentic:extension-host@0.1.0` | `wit/extension-host.wit` | Host services imported by extension WASM — logging, i18n, secrets, broker, HTTP |
-| `greentic:extension-design@0.1.0` | `wit/extension-design.wit` | Design-extension specific interfaces — tools, validation, prompting, knowledge |
+| `greentic:extension-design@0.2.0` | `wit/extension-design.wit` | Design-extension specific interfaces — tools, validation, prompting, knowledge |
 | `greentic:extension-bundle@0.1.0` | `wit/extension-bundle.wit` | Bundle-extension specific interfaces — recipes, bundling |
 | `greentic:extension-deploy@0.1.0` | `wit/extension-deploy.wit` | Deploy-extension specific interfaces — targets, deployment |
+| `greentic:extension-provider@0.1.0` | `wit/extension-provider.wit` | Provider-extension specific interfaces — flow node execution against external services |
 
 **Import / export direction** (from the extension's perspective):
 
@@ -68,13 +69,14 @@ record extension-identity {
 }
 ```
 
-**`kind`** — The three extension kinds.
+**`kind`** — The four extension kinds.
 
 ```wit
 enum kind {
   design,
   bundle,
   deploy,
+  provider,
 }
 ```
 
