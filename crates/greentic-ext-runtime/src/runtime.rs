@@ -8,7 +8,7 @@ use wasmtime::Engine;
 use crate::capability::{CapabilityRegistry, OfferedBinding};
 use crate::discovery::DiscoveryPaths;
 use crate::error::RuntimeError;
-use crate::loaded::{ExtensionId, LoadedExtension, LoadedExtensionRef};
+use crate::loaded::{ExtensionId, HostOverrides, LoadedExtension, LoadedExtensionRef};
 
 /// Filename of the persistent enable/disable state document, located at
 /// `<home>/extensions-state.json`. Kept in sync with the constant of the
@@ -35,6 +35,13 @@ pub struct ExtensionRuntime {
     loaded: ArcSwap<HashMap<ExtensionId, LoadedExtensionRef>>,
     capability_registry: ArcSwap<CapabilityRegistry>,
     events: broadcast::Sender<RuntimeEvent>,
+    /// Bundle threaded into every `LoadedExtension::build_store_and_instance`
+    /// call so the host-fn impls (i18n, secrets, http, broker) reach real
+    /// backends instead of test fakes. Defaults to
+    /// `HostOverrides::defaults_for_tests()` so tests still work without
+    /// extra wiring; production callers swap it in via
+    /// [`ExtensionRuntime::with_host_overrides`].
+    host_overrides: HostOverrides,
 }
 
 #[derive(Debug, Clone)]
@@ -80,12 +87,32 @@ impl ExtensionRuntime {
             loaded: ArcSwap::from_pointee(HashMap::new()),
             capability_registry: ArcSwap::from_pointee(CapabilityRegistry::default()),
             events: tx,
+            host_overrides: HostOverrides::defaults_for_tests(),
         })
+    }
+
+    /// Replace the [`HostOverrides`] bundle used for every dispatch. Call
+    /// once at startup with adapters that wrap real backends (i18n
+    /// catalogue, secrets store, allow-listed HTTP client). Without this,
+    /// host fns resolve through `defaults_for_tests` — fine for unit tests,
+    /// not for production: i18n returns the key, secrets are empty,
+    /// http allow-list is empty.
+    #[must_use]
+    pub fn with_host_overrides(mut self, host_overrides: HostOverrides) -> Self {
+        self.host_overrides = host_overrides;
+        self
     }
 
     #[must_use]
     pub fn engine(&self) -> &Engine {
         &self.engine
+    }
+
+    /// Sister modules (`runtime_roles`) reach for the active overrides via
+    /// this accessor instead of touching the private field directly.
+    #[must_use]
+    pub(crate) fn host_overrides(&self) -> &HostOverrides {
+        &self.host_overrides
     }
 
     #[must_use]
@@ -142,6 +169,7 @@ impl ExtensionRuntime {
     }
 
     fn verify_dir_signature(dir: &std::path::Path) -> Result<(), RuntimeError> {
+        #[cfg(feature = "dev-allow-unsigned")]
         if std::env::var("GREENTIC_EXT_ALLOW_UNSIGNED").is_ok() {
             tracing::warn!(
                 extension_dir = %dir.display(),
@@ -166,6 +194,64 @@ impl ExtensionRuntime {
             extension_id = %describe.metadata.id,
             key_prefix = %pub_prefix,
             "extension signature verified"
+        );
+        Self::verify_dir_manifest(dir, &describe.metadata.id)?;
+        Ok(())
+    }
+
+    /// Verify the unpacked extension dir against its `manifest.json`
+    /// (whole-archive integrity ledger introduced in D.4.2). When
+    /// `manifest.json` is absent we fail-open — pre-D.4.2 packs predate
+    /// the manifest format and must keep loading during the transition.
+    /// When present, every file the manifest lists must hash to the
+    /// recorded sha256. Closes audit P0 #2 (wasm binary + sibling
+    /// archive entries unsigned) on the consumer side.
+    fn verify_dir_manifest(dir: &std::path::Path, extension_id: &str) -> Result<(), RuntimeError> {
+        use sha2::{Digest, Sha256};
+        let manifest_path = dir.join(greentic_extension_sdk_contract::MANIFEST_ENTRY_NAME);
+        if !manifest_path.exists() {
+            tracing::debug!(
+                extension_dir = %dir.display(),
+                "manifest.json absent — skipping whole-archive verification (legacy pack)"
+            );
+            return Ok(());
+        }
+        let raw = std::fs::read(&manifest_path)?;
+        let manifest: greentic_extension_sdk_contract::Manifest = serde_json::from_slice(&raw)
+            .map_err(|e| RuntimeError::SignatureInvalid {
+                extension_id: extension_id.to_string(),
+                reason: format!("manifest.json parse: {e}"),
+            })?;
+        if manifest.schema != greentic_extension_sdk_contract::MANIFEST_SCHEMA_V1 {
+            return Err(RuntimeError::SignatureInvalid {
+                extension_id: extension_id.to_string(),
+                reason: format!("manifest schema unsupported: {}", manifest.schema),
+            });
+        }
+        for entry in &manifest.entries {
+            let path = dir.join(&entry.path);
+            if !path.exists() {
+                return Err(RuntimeError::SignatureInvalid {
+                    extension_id: extension_id.to_string(),
+                    reason: format!("manifest lists missing file: {}", entry.path),
+                });
+            }
+            let bytes = std::fs::read(&path)?;
+            let computed = format!("{:x}", Sha256::digest(&bytes));
+            if computed != entry.sha256 {
+                return Err(RuntimeError::SignatureInvalid {
+                    extension_id: extension_id.to_string(),
+                    reason: format!(
+                        "manifest sha256 mismatch for {}: expected {} got {}",
+                        entry.path, entry.sha256, computed
+                    ),
+                });
+            }
+        }
+        tracing::info!(
+            extension_id = %extension_id,
+            entries = manifest.entries.len(),
+            "whole-archive manifest verified"
         );
         Ok(())
     }
@@ -285,8 +371,9 @@ impl ExtensionRuntime {
     /// Invoke a named tool on a loaded extension.
     ///
     /// Builds a fresh wasmtime Store + Instance, calls
-    /// `greentic:extension-design/tools@0.1.0::invoke-tool`, and returns the
-    /// JSON result string.
+    /// `greentic:extension-design/tools::invoke-tool` (resolved against
+    /// `@0.2.0` first, then `@0.1.0` for older extensions), and returns
+    /// the JSON result string.
     pub fn invoke_tool(
         &self,
         ext_id: &str,
@@ -303,19 +390,15 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine)
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
 
         // Resolve the nested export: first the interface instance, then the function.
         // This is the wasmtime 43 pattern: get_export_index(store, parent, name).
-        let iface_name = "greentic:extension-design/tools@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        // Try @0.2.0 first; fall back to @0.1.0 for extensions still built against
+        // the original WIT (http, llm-generic, webhook, platform-bootstrap, ...).
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/tools")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "invoke-tool")
             .ok_or_else(|| {
@@ -346,7 +429,8 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// Validate extension-specific content against the extension's schema.
     ///
-    /// Calls `greentic:extension-design/validation@0.1.0::validate-content`.
+    /// Calls `greentic:extension-design/validation::validate-content`
+    /// (resolved against `@0.2.0` first, then `@0.1.0`).
     /// `content_type` is an extension-defined label (e.g. `"AdaptiveCard"`
     /// for the adaptive-cards extension); `content_json` is the content
     /// payload as a JSON string.
@@ -375,17 +459,14 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine)
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/validation@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) = resolve_design_iface(
+            &mut store,
+            &instance,
+            "greentic:extension-design/validation",
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "validate-content")
             .ok_or_else(|| {
@@ -431,7 +512,8 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// List all tools exposed by a loaded design extension.
     ///
-    /// Calls `greentic:extension-design/tools@0.1.0::list-tools`.
+    /// Calls `greentic:extension-design/tools::list-tools` (resolved
+    /// against `@0.2.0` first, then `@0.1.0`).
     pub fn list_tools(
         &self,
         ext_id: &str,
@@ -446,17 +528,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine)
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/tools@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/tools")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "list-tools")
             .ok_or_else(|| {
@@ -488,7 +564,8 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// Retrieve system prompt fragments from a loaded design extension.
     ///
-    /// Calls `greentic:extension-design/prompting@0.1.0::system-prompt-fragments`.
+    /// Calls `greentic:extension-design/prompting::system-prompt-fragments`
+    /// (resolved against `@0.2.0` first, then `@0.1.0`).
     pub fn prompt_fragments(
         &self,
         ext_id: &str,
@@ -503,17 +580,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine)
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/prompting@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/prompting")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "system-prompt-fragments")
             .ok_or_else(|| {
@@ -544,7 +615,8 @@ impl ExtensionRuntime {
 impl ExtensionRuntime {
     /// List knowledge entries, optionally filtered by category.
     ///
-    /// Calls `greentic:extension-design/knowledge@0.1.0::list-entries`.
+    /// Calls `greentic:extension-design/knowledge::list-entries`
+    /// (resolved against `@0.2.0` first, then `@0.1.0`).
     pub fn knowledge_list(
         &self,
         ext_id: &str,
@@ -560,17 +632,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine)
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/knowledge@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/knowledge")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "list-entries")
             .ok_or_else(|| {
@@ -592,7 +658,8 @@ impl ExtensionRuntime {
 
     /// Retrieve a single knowledge entry by ID.
     ///
-    /// Calls `greentic:extension-design/knowledge@0.1.0::get-entry`.
+    /// Calls `greentic:extension-design/knowledge::get-entry`
+    /// (resolved against `@0.2.0` first, then `@0.1.0`).
     pub fn knowledge_get(
         &self,
         ext_id: &str,
@@ -609,17 +676,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine)
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/knowledge@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/knowledge")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "get-entry")
             .ok_or_else(|| {
@@ -653,7 +714,8 @@ impl ExtensionRuntime {
 
     /// Suggest knowledge entries matching a query.
     ///
-    /// Calls `greentic:extension-design/knowledge@0.1.0::suggest-entries`.
+    /// Calls `greentic:extension-design/knowledge::suggest-entries`
+    /// (resolved against `@0.2.0` first, then `@0.1.0`).
     pub fn knowledge_suggest(
         &self,
         ext_id: &str,
@@ -670,17 +732,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine)
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-design/knowledge@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name) =
+            resolve_design_iface(&mut store, &instance, "greentic:extension-design/knowledge")?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "suggest-entries")
             .ok_or_else(|| {
@@ -733,7 +789,7 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine)
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-deploy/targets@0.1.0";
@@ -794,7 +850,7 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine)
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-deploy/targets@0.1.0";
@@ -847,7 +903,7 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine)
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-deploy/targets@0.1.0";
@@ -885,6 +941,39 @@ impl ExtensionRuntime {
             })
             .collect())
     }
+}
+
+/// Resolve a `greentic:extension-design/<iface>` export by trying `@0.2.0`
+/// first and falling back to `@0.1.0`.
+///
+/// The runtime bumped its WIT to `@0.2.0` in v1.2.x, but several extensions
+/// in the wild (http, llm-generic, webhook, platform-bootstrap, ...) were
+/// built against `@0.1.0` and have not yet been rebuilt. Without a
+/// fallback, every dispatch into those extensions fails with
+/// `extension does not export interface 'greentic:extension-design/
+/// tools@0.2.0'`. Returning the resolved iface name (with version suffix)
+/// lets the nested `func_idx` lookup error name the version that was
+/// actually picked.
+///
+/// `roles@0.2.0` deliberately uses its own dedicated lookup (see
+/// `runtime_roles.rs`); it never existed at `@0.1.0`, so no fallback is
+/// appropriate there.
+fn resolve_design_iface(
+    store: &mut wasmtime::Store<crate::host_state::HostState>,
+    instance: &wasmtime::component::Instance,
+    base: &str,
+) -> Result<(wasmtime::component::ComponentExportIndex, String), RuntimeError> {
+    let primary = format!("{base}@0.2.0");
+    if let Some(idx) = instance.get_export_index(&mut *store, None, &primary) {
+        return Ok((idx, primary));
+    }
+    let secondary = format!("{base}@0.1.0");
+    if let Some(idx) = instance.get_export_index(&mut *store, None, &secondary) {
+        return Ok((idx, secondary));
+    }
+    Err(RuntimeError::Wasmtime(anyhow::anyhow!(
+        "extension does not export interface '{primary}' or '{secondary}'"
+    )))
 }
 
 fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {
@@ -932,7 +1021,7 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine)
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-bundle/bundling@0.1.0";

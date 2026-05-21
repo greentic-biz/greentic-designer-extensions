@@ -52,7 +52,7 @@ use case.
 
 ## Prerequisites
 
-- **Rust 1.94 or later** (`rustup update stable`)
+- **Rust 1.95 or later** (`rustup update stable`)
 - **`cargo-component`** — WIT-aware build tool for WASM components:
   ```
   cargo install --locked cargo-component
@@ -63,7 +63,7 @@ use case.
   ```
 - **`gtdx`** — the Greentic Designer Extensions CLI:
   ```
-  cargo install --path crates/greentic-ext-cli --locked
+  cargo install greentic-extension-sdk-cli --locked
   ```
 - **A pre-built runtime `.gtpack`** — produced separately via
   `greentic-pack` (or whatever build pipeline ships your component). The

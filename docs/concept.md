@@ -44,9 +44,9 @@ to "thousands of people filling a store."
 
 ---
 
-## The three extension kinds
+## The four extension kinds
 
-One unified system, three specialized roles. Each extension is a signed
+One unified system, four specialized roles. Each extension is a signed
 WebAssembly component packaged as `.gtxpack` with a `describe.json` manifest.
 
 | Kind | Teaches designer to... | Example extensions |
@@ -54,15 +54,20 @@ WebAssembly component packaged as `.gtxpack` with a `describe.json` manifest.
 | **design-extension** | Author content (cards, flows, workers) | `greentic.adaptive-cards`, `greentic.flows-ygtc-v2`, `greentic.digital-workers`, `greentic.telco-x` |
 | **bundle-extension** | Package content into an Application Pack | `greentic.hosted-webchat`, `greentic.openshift-bundle`, `greentic.multi-channel-bundle` |
 | **deploy-extension** | Ship the pack to a target environment | `greentic.desktop`, `greentic.aws-eks`, `greentic.gcp-gke`, `greentic.cisco-onprem` |
+| **provider-extension** | Execute flow nodes against external services | messaging, webhooks, events, custom integrations |
 
 A design-extension plugs into the **chat loop** — its tools become LLM tools,
 its prompts teach the agent, its knowledge base seeds the few-shot memory.
 
-A bundle-extension plugs into the **"Next" wizard step** — it offers recipes
+A bundle-extension plugs into the **pack wizard step** — it offers recipes
 for converting the authored flow + cards into a deployable Application Pack.
 
 A deploy-extension plugs into the **deploy wizard step** — it offers targets,
 collects credentials, and runs the deployment.
+
+A provider-extension plugs into the **flow runtime** — it implements the
+nodes that talk to external services at execution time (Slack, Teams, REST
+APIs, webhooks, event streams).
 
 ---
 
@@ -283,7 +288,7 @@ Telco X template, MCP extension.
 1. **Sign off on the three-kind model** (design / bundle / deploy as separate
    kinds over shared foundation).
 2. **Sign off on the repo strategy** — new repo `greentic-designer-extensions`
-   as umbrella for all three kinds.
+   as umbrella for all four kinds.
 3. **Unblock BX-01 and DX-01** or agree to timebox them into a follow-up
    session so implementation can start.
 4. **Validate the v1 scope** — AC extraction + contract + runtime + CLI +

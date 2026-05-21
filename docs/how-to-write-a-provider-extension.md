@@ -22,7 +22,7 @@ created during Wave A). The Telegram pilot will be the first shipped provider
 
 ## Prerequisites
 
-- **Rust 1.94 or later** (`rustup update stable`)
+- **Rust 1.95 or later** (`rustup update stable`)
 - **`cargo-component`** — the WIT-aware build tool for WASM components:
   ```
   cargo install cargo-component --locked
@@ -33,7 +33,7 @@ created during Wave A). The Telegram pilot will be the first shipped provider
   ```
 - **`gtdx`** — the Greentic Extensions CLI:
   ```
-  cargo install --path crates/greentic-ext-cli --locked
+  cargo install greentic-extension-sdk-cli --locked
   ```
 - **`greentic-pack`** — for building the runtime `.gtpack`:
   ```

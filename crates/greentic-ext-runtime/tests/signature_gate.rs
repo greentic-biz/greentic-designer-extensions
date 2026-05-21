@@ -52,6 +52,7 @@ fn accepts_signed_by_default() {
     rt.register_loaded_from_dir(fx.root()).expect("load signed");
 }
 
+#[cfg(feature = "dev-allow-unsigned")]
 #[test]
 fn allow_unsigned_env_bypasses() {
     let _guard = EnvGuard::set("GREENTIC_EXT_ALLOW_UNSIGNED", "1");
@@ -61,6 +62,7 @@ fn allow_unsigned_env_bypasses() {
         .expect("load unsigned with env");
 }
 
+#[cfg(feature = "dev-allow-unsigned")]
 #[test]
 fn allow_unsigned_env_bypasses_even_if_tampered() {
     let _guard = EnvGuard::set("GREENTIC_EXT_ALLOW_UNSIGNED", "1");
@@ -70,4 +72,19 @@ fn allow_unsigned_env_bypasses_even_if_tampered() {
     // Skip-entirely semantics per design §4: env set = don't even verify.
     rt.register_loaded_from_dir(fx.root())
         .expect("load tampered with env");
+}
+
+/// When the `dev-allow-unsigned` feature is OFF (production build), the env
+/// var must NOT bypass signature verification — even if set.
+#[cfg(not(feature = "dev-allow-unsigned"))]
+#[test]
+fn allow_unsigned_env_is_ignored_without_feature() {
+    let _guard = EnvGuard::set("GREENTIC_EXT_ALLOW_UNSIGNED", "1");
+    let fx = unsigned_fixture(ExtensionKind::Design, "greentic.no-bypass", "0.1.0");
+    let mut rt = new_runtime();
+    let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
+    assert!(
+        matches!(err, RuntimeError::SignatureInvalid { .. }),
+        "without dev-allow-unsigned, env var must NOT bypass signature check; got {err:?}",
+    );
 }
