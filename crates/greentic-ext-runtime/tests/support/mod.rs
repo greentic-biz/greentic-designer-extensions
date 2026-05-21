@@ -194,6 +194,131 @@ pub fn signed_provider_fixture_with_placeholder_gtpack(
     (fixture, sk)
 }
 
+/// Build a signed extension fixture that has **no** `extension.wasm` at its
+/// source-dir root. The fixture is created normally (the builder always writes
+/// `extension.wasm`), then the root WASM is removed so the loader must fall
+/// back to `describe.runtime.components[X].gtpack.file`.
+///
+/// `gtpack.file` is patched to point at an internal WASM that DOES exist — the
+/// fixture builder writes the component bytes to `extension.wasm`, which we
+/// rename to `inner.wasm` before signing, then update `gtpack.file` accordingly.
+/// This gives the loader a valid path to resolve via the fallback branch.
+pub fn signed_fixture_without_root_wasm(
+    kind: greentic_extension_sdk_contract::ExtensionKind,
+    id: &str,
+    version: &str,
+) -> (
+    greentic_extension_sdk_testing::ExtensionFixture,
+    ed25519_dalek::SigningKey,
+) {
+    use ed25519_dalek::SigningKey;
+    use greentic_extension_sdk_contract::describe::provider::RuntimeGtpack;
+    use rand::rngs::OsRng;
+
+    let minimal_wasm = wat::parse_str(r"(component)").expect("wat component must compile");
+    let fixture = greentic_extension_sdk_testing::ExtensionFixtureBuilder::new(kind, id, version)
+        .offer("greentic:test/ping", "1.0.0")
+        .with_wasm(minimal_wasm)
+        .build()
+        .expect("fixture build");
+
+    // Move extension.wasm → inner.wasm so there is no root `extension.wasm`.
+    // The loader's unconditional check will not find one and will fall back to
+    // the describe.runtime.components path.
+    let root_wasm = fixture.root().join("extension.wasm");
+    let inner_wasm = fixture.root().join("inner.wasm");
+    std::fs::rename(&root_wasm, &inner_wasm).expect("rename extension.wasm → inner.wasm");
+
+    // Patch describe.json: point gtpack.file at "inner.wasm" (the actual WASM).
+    let describe_path = fixture.root().join("describe.json");
+    let raw = std::fs::read_to_string(&describe_path).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
+    for component in describe.runtime.components.values_mut() {
+        component.gtpack = Some(RuntimeGtpack {
+            file: "inner.wasm".to_string(),
+            sha256: "0".repeat(64),
+            pack_id: describe.metadata.id.clone(),
+            component_version: describe.metadata.version.clone(),
+        });
+    }
+
+    // Sign. Signature must cover the final (patched) describe.json bytes.
+    let sk = SigningKey::generate(&mut OsRng);
+    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
+    std::fs::write(
+        &describe_path,
+        serde_json::to_string_pretty(&describe).unwrap(),
+    )
+    .unwrap();
+
+    (fixture, sk)
+}
+
+/// Build a signed fixture with a dual-component layout for a non-Provider kind.
+/// The design-side `extension.wasm` sits at root AND `describe.json` points
+/// `gtpack.file` at a placeholder that is intentionally NOT valid WASM.
+///
+/// This mirrors the layout used by e.g. `greentic.llm-openai-1.3.1-research`
+/// (`DesignExtension`) and `greentic.bundle-standard-1.3.0-research`
+/// (`BundleExtension`): a real `extension.wasm` at root, while `describe.json`
+/// names a runtime gtpack that runner-host uses for flow-execution but that
+/// wasmtime cannot parse as a raw component.
+pub fn signed_fixture_with_placeholder_gtpack(
+    kind: greentic_extension_sdk_contract::ExtensionKind,
+    id: &str,
+    version: &str,
+) -> (
+    greentic_extension_sdk_testing::ExtensionFixture,
+    ed25519_dalek::SigningKey,
+) {
+    use ed25519_dalek::SigningKey;
+    use greentic_extension_sdk_contract::describe::provider::RuntimeGtpack;
+    use rand::rngs::OsRng;
+
+    let minimal_wasm = wat::parse_str(r"(component)").expect("wat component must compile");
+    // Builder writes extension.wasm at root automatically.
+    let fixture = greentic_extension_sdk_testing::ExtensionFixtureBuilder::new(kind, id, version)
+        .offer("greentic:test/ping", "1.0.0")
+        .with_wasm(minimal_wasm)
+        .build()
+        .expect("fixture build");
+
+    // Create a placeholder runtime gtpack (text, not valid WASM).
+    let runtime_dir = fixture.root().join("runtime");
+    std::fs::create_dir_all(&runtime_dir).unwrap();
+    std::fs::write(
+        runtime_dir.join("component.gtpack"),
+        b"placeholder - not valid WASM; runner-host fetches the real pack",
+    )
+    .unwrap();
+
+    // Patch describe.json to point at the placeholder, NOT at extension.wasm.
+    let describe_path = fixture.root().join("describe.json");
+    let raw = std::fs::read_to_string(&describe_path).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
+    for component in describe.runtime.components.values_mut() {
+        component.gtpack = Some(RuntimeGtpack {
+            file: "runtime/component.gtpack".to_string(),
+            sha256: "0".repeat(64),
+            pack_id: describe.metadata.id.clone(),
+            component_version: describe.metadata.version.clone(),
+        });
+    }
+
+    // Sign. Signature must cover the final (patched) describe.json bytes.
+    let sk = SigningKey::generate(&mut OsRng);
+    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
+    std::fs::write(
+        &describe_path,
+        serde_json::to_string_pretty(&describe).unwrap(),
+    )
+    .unwrap();
+
+    (fixture, sk)
+}
+
 /// Mutate an installed fixture's describe.json to invalidate its signature.
 pub fn tamper_fixture(fixture: &greentic_extension_sdk_testing::ExtensionFixture) {
     let path = fixture.root().join("describe.json");
