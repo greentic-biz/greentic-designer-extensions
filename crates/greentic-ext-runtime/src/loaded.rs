@@ -163,6 +163,31 @@ pub struct HostOverrides {
     pub call_depth_start: u32,
 }
 
+impl std::fmt::Debug for HostOverrides {
+    /// Opaque debug representation: trait-object fields cannot provide
+    /// structural debug output, and `reqwest::blocking::Client` does not
+    /// implement `Debug`. We show field presence rather than field values.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HostOverrides")
+            .field("translator", &"<dyn Translator>")
+            .field("secrets_backend", &"<dyn SecretsBackend>")
+            .field(
+                "http_client",
+                &self.http_client.as_ref().map(|_| "<Client>"),
+            )
+            .field("url_matcher", &self.url_matcher)
+            .field(
+                "runtime_weak",
+                &self
+                    .runtime_weak
+                    .upgrade()
+                    .map(|_| "<Arc<ExtensionRuntime>>"),
+            )
+            .field("call_depth_start", &self.call_depth_start)
+            .finish()
+    }
+}
+
 impl HostOverrides {
     /// Fakes-everywhere helper. `http_client` is `None` so dropping the
     /// runtime inside an outer async context never panics; the test never
@@ -171,6 +196,26 @@ impl HostOverrides {
     /// the cross-extension dispatch cascade lands.
     #[must_use]
     pub fn defaults_for_tests() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for HostOverrides {
+    /// Production-safe defaults: key-pass-through translator (i18n key
+    /// returned verbatim), empty in-memory secrets, no HTTP client (callers
+    /// that need HTTP must supply `Some(client)` via
+    /// `RuntimeConfig::with_host_overrides` or
+    /// `ExtensionRuntime::with_host_overrides`), empty URL allow-list, and
+    /// no broker-runtime weak reference (cross-extension dispatch returns
+    /// "no runtime context available" until the cascade cascade lands).
+    ///
+    /// `http_client` is intentionally `None` rather than eagerly constructed
+    /// because `reqwest::blocking::Client` spawns its own internal tokio
+    /// runtime; dropping that runtime from inside an outer `#[tokio::test]`
+    /// body panics with "Cannot drop a runtime in a context where blocking is
+    /// not allowed". Tests leave it `None`; production callers pass
+    /// `Some(client)` once at startup.
+    fn default() -> Self {
         Self {
             translator: std::sync::Arc::new(crate::host_ports::KeyTranslator),
             secrets_backend: std::sync::Arc::new(crate::host_ports::InMemorySecrets::new()),
