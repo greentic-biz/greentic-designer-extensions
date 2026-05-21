@@ -116,20 +116,31 @@ impl LoadedExtension {
 
 /// Resolve the WASM component path for an extension's runtime component.
 ///
-/// `ProviderExtension` kind has a dual-component layout:
-/// - Root `extension.wasm` — design-side WebAssembly with metadata (channel name,
-///   icon, i18n, schemas). This is what designer loads.
-/// - `runtime/provider.gtpack` — a placeholder (often a small text file). The
-///   real provider runtime (telegram bot HTTP client, etc.) lives downstream in
-///   runner-host, fetched lazily there.
+/// Extensions that use the dual-component layout ship:
+/// - Root `extension.wasm` — design-side WebAssembly with metadata (channel
+///   name, icon, i18n, schemas). This is what the designer loads.
+/// - A runtime gtpack (e.g. `runtime/provider.gtpack`) — either a placeholder
+///   text file or a real .gtpack ZIP. The real runner-host WASM lives downstream
+///   and is fetched lazily there; the designer must never try to parse it.
 ///
-/// When `extension.wasm` is present at the source directory root we return it
-/// directly. This lets the designer surface provider metadata without trying to
-/// parse the placeholder gtpack as a WASM component.
+/// Multiple extension kinds follow this dual-component layout:
+/// - `ProviderExtension` (e.g. `greentic.provider.telegram-1.3.1-research`)
+/// - `DesignExtension` (e.g. `greentic.llm-openai-1.3.1-research`) — has a
+///   real 80–900 KB `extension.wasm`; `describe.json` points at
+///   `runtime/component-llm-openai.gtpack` (a 929 KB .gtpack ZIP that wasmtime
+///   cannot parse as a raw component).
+/// - `BundleExtension` (e.g. `greentic.bundle-standard-1.3.0-research`) — has
+///   a 938 KB `extension.wasm`; `describe.json` points at a `.gtxpack` that
+///   may not even exist in the installed directory.
 ///
-/// For all other kinds (`Design`, `Bundle`, `Deploy`) the existing logic applies:
-/// read `describe.runtime.components[X].gtpack.file` and resolve it relative to
-/// `source_dir`. Those kinds already point at real WASM at that path.
+/// Strategy: if `<source_dir>/extension.wasm` exists, prefer it unconditionally
+/// regardless of kind. Only the runner-host — which has its own separate loader
+/// path — needs the runtime gtpack declared in `describe.runtime.components`.
+/// Designer's boot loader only consumes design-side metadata and UI assets.
+///
+/// Older single-component extensions that ship no `extension.wasm` at root fall
+/// back to `describe.runtime.components[X].gtpack.file` resolved relative to
+/// `source_dir`, exactly as before.
 ///
 /// v2's `runtime.components` is a map keyed by component id. ext-runtime today
 /// loads a single WASM component per extension, so we require exactly one entry.
@@ -137,19 +148,22 @@ impl LoadedExtension {
 /// follow-up — when it lands, callers will pick the component by id and this
 /// helper goes away.
 fn wasm_component_path(describe: &DescribeJson, source_dir: &Path) -> anyhow::Result<PathBuf> {
-    // ProviderExtensions ship `extension.wasm` (design-side) at root alongside a
-    // placeholder `runtime/provider.gtpack` (runner-host concern). Prefer the
-    // design-side WASM when present — designer's boot loader only needs
-    // metadata/UI, not the runtime gtpack that runner-host fetches separately.
-    if matches!(describe.kind, ExtensionKind::Provider) {
-        let design_wasm = source_dir.join("extension.wasm");
-        if design_wasm.exists() {
-            return Ok(design_wasm);
-        }
+    // Dual-component layout: extensions that ship a design-side `extension.wasm`
+    // at the source-dir root use it for designer-side loading regardless of kind.
+    // The runtime gtpack declared in `describe.runtime.components` stays meaningful
+    // for runner-host (flow-execution time), which has its own separate loader path.
+    //
+    // Provider, llm-openai (DesignExtension), and bundle-standard (BundleExtension)
+    // all follow this layout. Older single-component extensions that don't ship
+    // `extension.wasm` fall back to the describe.json declared path below.
+    let design_wasm = source_dir.join("extension.wasm");
+    if design_wasm.exists() {
+        return Ok(design_wasm);
     }
 
-    // Other kinds: keep current behavior (also fallback for Provider without
-    // an extension.wasm at root).
+    // Fallback for older single-component extensions: read
+    // `describe.runtime.components[X].gtpack.file` and resolve it relative to
+    // `source_dir`. These kinds already point at real WASM at that path.
     let mut iter = describe.runtime.components.iter();
     let Some((id, component)) = iter.next() else {
         anyhow::bail!("describe.runtime.components must declare at least one entry");
