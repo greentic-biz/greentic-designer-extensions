@@ -7,7 +7,7 @@ members = [
 
 [workspace.package]
 edition = "2024"
-version = "1.2.5"
+version = "1.2.6"
 license = "MIT"
 repository = "https://github.com/greenticai/greentic-designer-extensions"
 rust-version = "1.94"
