@@ -40,3 +40,20 @@ pub mod bundle {
         world: "greentic:extension-bundle/bundle-extension",
     });
 }
+
+// ---------------------------------------------------------------------------
+// DW-Composer-extension bindings
+//
+// Isolated submodule for the `greentic:dw-composer/dw-composer-extension`
+// world. Composer extensions export a domain-specific `composer` interface
+// (`greentic:dw-composer/composer@0.1.0`) instead of the generic
+// `greentic:extension-design/tools` interface. Keeping them in their own
+// submodule avoids duplicate-type conflicts with the design-extension
+// bindings above.
+// ---------------------------------------------------------------------------
+pub mod dw_composer {
+    wasmtime::component::bindgen!({
+        path: "wit",
+        world: "greentic:dw-composer/dw-composer-extension",
+    });
+}
