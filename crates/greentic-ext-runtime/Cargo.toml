@@ -69,6 +69,7 @@ version = "2"
 workspace = true
 
 [dev-dependencies]
+cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
 greentic-extension-sdk-testing = "=1.2.1-research"
 wat = "1"
 
