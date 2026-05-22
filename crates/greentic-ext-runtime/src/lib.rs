@@ -12,6 +12,7 @@ mod host_state;
 mod loaded;
 mod pool;
 mod runtime;
+mod runtime_dw_composer;
 mod runtime_roles;
 pub mod types;
 pub mod url_matcher;
