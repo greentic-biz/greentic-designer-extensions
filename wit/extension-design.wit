@@ -7,6 +7,13 @@ interface tools {
     description: string,
     input-schema-json: string,
     output-schema-json: option<string>,
+
+    // Sub-project #1 additions (see greentic-designer spec
+    // 2026-05-24-extension-capability-flag-design.md). Both optional for
+    // backward compatibility. Legacy extensions return `none` for both;
+    // consumers default capabilities to `["flow"]`.
+    capabilities: option<list<string>>,
+    agentic-worker-metadata: option<string>,
   }
   list-tools: func() -> list<tool-definition>;
   invoke-tool: func(name: string, args-json: string) -> result<string, extension-error>;
