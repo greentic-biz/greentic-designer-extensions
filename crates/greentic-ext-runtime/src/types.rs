@@ -4,7 +4,16 @@ pub struct ToolDefinition {
     pub name: String,
     pub description: String,
     pub input_schema_json: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_schema_json: Option<String>,
+    /// Runtime contexts the tool supports (`"flow"`, `"agentic_worker"`).
+    /// Legacy extensions return `None`; consumers must default to `["flow"]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<Vec<String>>,
+    /// JSON-encoded `AgenticWorkerMetadata` blob. Decode via
+    /// `greentic_extension_sdk_contract::AgenticWorkerMetadata::decode`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agentic_worker_metadata: Option<String>,
 }
 
 /// Host-side mirror of WIT `greentic:extension-design/prompting@0.2.0::prompt-fragment`.

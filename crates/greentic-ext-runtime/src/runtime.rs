@@ -589,6 +589,8 @@ impl ExtensionRuntime {
                 description: d.description,
                 input_schema_json: d.input_schema_json,
                 output_schema_json: d.output_schema_json,
+                capabilities: d.capabilities,
+                agentic_worker_metadata: d.agentic_worker_metadata,
             })
             .collect())
     }
