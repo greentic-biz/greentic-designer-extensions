@@ -115,6 +115,25 @@ impl ExtensionRuntime {
         })
     }
 
+    /// Construct a runtime with **no extensions loaded**, for downstream
+    /// unit tests that need an `ExtensionRuntime` instance but do not
+    /// exercise real WASM dispatch.
+    ///
+    /// Uses production-safe [`HostOverrides::default()`] and a throwaway
+    /// discovery path that is never read (no extension is ever loaded).
+    /// `list_tools` returns empty; `invoke_tool` returns a not-found error.
+    ///
+    /// This exists so crates like `greentic-aw-runtime` can build an
+    /// `Arc<ExtensionRuntime>` in `--features test-mock` unit tests
+    /// without a live extension directory. Do NOT use in production.
+    #[must_use]
+    pub fn for_test() -> Self {
+        let paths =
+            DiscoveryPaths::new(std::path::PathBuf::from("/nonexistent/aw-ext-runtime-test"));
+        Self::new(RuntimeConfig::from_paths(paths))
+            .expect("for_test ExtensionRuntime construction is infallible")
+    }
+
     /// Replace the [`HostOverrides`] bundle used for every dispatch. Call
     /// once at startup with adapters that wrap real backends (i18n
     /// catalogue, secrets store, allow-listed HTTP client). Without this,
@@ -1166,5 +1185,15 @@ mod deploy_tests {
             )
             .unwrap_err();
         assert!(matches!(err, RuntimeError::NotFound(_)));
+    }
+
+    #[test]
+    fn for_test_constructs_runtime_with_no_extensions() {
+        let runtime = ExtensionRuntime::for_test();
+        // No extensions are loaded.
+        assert!(
+            runtime.loaded().is_empty(),
+            "for_test runtime must have zero loaded extensions"
+        );
     }
 }
