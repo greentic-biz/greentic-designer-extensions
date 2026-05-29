@@ -167,12 +167,7 @@ fn build_signed_composer_fixture(
         serde_json::from_str(&raw).unwrap();
     support::populate_gtpack_for_local_load(&mut describe);
     let sk = SigningKey::generate(&mut OsRng);
-    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
-    std::fs::write(
-        &describe_path,
-        serde_json::to_string_pretty(&describe).unwrap(),
-    )
-    .unwrap();
+    support::finalize_signed_with_manifest(fixture.root(), &mut describe, &sk);
 
     (fixture, sk)
 }

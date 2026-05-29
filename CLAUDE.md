@@ -123,5 +123,11 @@ example to mirror.
 - **`greentic-adaptive-card-mcp`** — ships the `adaptive-cards`
   design extension (built against this runtime's WIT).
 - **`greentic-store-server`** — distributes signed `.gtxpack`
-  artefacts; the runtime's `verify_describe` checks signatures
-  against the store's published key set.
+  artefacts. The runtime's verify chain (`verify_dir_signature`)
+  checks the describe signature for self-consistency, that the
+  describe is bound to the whole-archive `manifest.json`
+  (`manifestSha256`), and that every manifest entry hash-matches —
+  failing closed on a missing manifest (audit P5). Anchoring the
+  signature to the store's published key set
+  (`verify_describe_with_key`) is the C1 follow-up, pending a runtime
+  trust store + the org-provisioned root key.

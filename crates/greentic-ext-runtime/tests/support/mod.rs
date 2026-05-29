@@ -90,6 +90,68 @@ pub fn populate_gtpack_for_local_load(
     }
 }
 
+/// Recursively list every file under `dir`.
+fn walk_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    for ent in std::fs::read_dir(dir).unwrap().flatten() {
+        let path = ent.path();
+        if path.is_dir() {
+            out.extend(walk_files(&path));
+        } else {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// Build the whole-archive manifest bytes over the files in `dir`.
+/// `build_manifest` excludes `describe.json` and `manifest.json` itself, so the
+/// ledger covers exactly the integrity-relevant payload (wasm + assets).
+pub fn build_dir_manifest_bytes(dir: &std::path::Path) -> Vec<u8> {
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
+    for path in walk_files(dir) {
+        let rel = path
+            .strip_prefix(dir)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        if rel == greentic_extension_sdk_contract::MANIFEST_ENTRY_NAME || rel.is_empty() {
+            continue;
+        }
+        entries.push((rel, std::fs::read(&path).unwrap()));
+    }
+    let manifest = greentic_extension_sdk_contract::build_manifest(
+        entries.iter().map(|(p, b)| (p.as_str(), b.as_slice())),
+    );
+    serde_jcs::to_vec(&manifest).unwrap()
+}
+
+/// Finalize a fixture into a real signed pack, mirroring the SDK producer:
+/// build the whole-archive manifest over `dir`, write `manifest.json`, bind it
+/// into the describe (`manifestSha256`), sign, and write the signed
+/// `describe.json`. Binding happens BEFORE signing so the signature transitively
+/// covers the ledger (audit C2). `describe.json` is excluded from the manifest,
+/// so overwriting it with the signed bytes does not invalidate the ledger.
+pub fn finalize_signed_with_manifest(
+    dir: &std::path::Path,
+    describe: &mut greentic_extension_sdk_contract::DescribeJson,
+    sk: &ed25519_dalek::SigningKey,
+) {
+    let manifest_bytes = build_dir_manifest_bytes(dir);
+    std::fs::write(
+        dir.join(greentic_extension_sdk_contract::MANIFEST_ENTRY_NAME),
+        &manifest_bytes,
+    )
+    .unwrap();
+    greentic_extension_sdk_contract::bind_manifest(describe, &manifest_bytes);
+    greentic_extension_sdk_contract::sign_describe(describe, sk).expect("sign");
+    std::fs::write(
+        dir.join("describe.json"),
+        serde_json::to_string_pretty(describe).unwrap(),
+    )
+    .unwrap();
+}
+
 /// Build a signed extension fixture using the `ExtensionFixtureBuilder`
 /// from `greentic-extension-sdk-testing`, then sign its describe.json with a fresh
 /// ed25519 key. Returns the fixture and the signing key used.
@@ -118,9 +180,7 @@ pub fn signed_fixture(
         serde_json::from_str(&raw).unwrap();
     populate_gtpack_for_local_load(&mut describe);
     let sk = SigningKey::generate(&mut OsRng);
-    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
-    let out = serde_json::to_string_pretty(&describe).unwrap();
-    std::fs::write(&describe_path, out).unwrap();
+    finalize_signed_with_manifest(fixture.root(), &mut describe, &sk);
 
     (fixture, sk)
 }
@@ -182,14 +242,10 @@ pub fn signed_provider_fixture_with_placeholder_gtpack(
         });
     }
 
-    // Sign. Signature must cover the final (patched) describe.json bytes.
+    // Build manifest + bind + sign over the final (patched) describe so the
+    // pack passes the runtime's hardened verify chain.
     let sk = SigningKey::generate(&mut OsRng);
-    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
-    std::fs::write(
-        &describe_path,
-        serde_json::to_string_pretty(&describe).unwrap(),
-    )
-    .unwrap();
+    finalize_signed_with_manifest(fixture.root(), &mut describe, &sk);
 
     (fixture, sk)
 }
@@ -243,14 +299,10 @@ pub fn signed_fixture_without_root_wasm(
         });
     }
 
-    // Sign. Signature must cover the final (patched) describe.json bytes.
+    // Build manifest + bind + sign over the final (patched) describe so the
+    // pack passes the runtime's hardened verify chain.
     let sk = SigningKey::generate(&mut OsRng);
-    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
-    std::fs::write(
-        &describe_path,
-        serde_json::to_string_pretty(&describe).unwrap(),
-    )
-    .unwrap();
+    finalize_signed_with_manifest(fixture.root(), &mut describe, &sk);
 
     (fixture, sk)
 }
@@ -307,14 +359,10 @@ pub fn signed_fixture_with_placeholder_gtpack(
         });
     }
 
-    // Sign. Signature must cover the final (patched) describe.json bytes.
+    // Build manifest + bind + sign over the final (patched) describe so the
+    // pack passes the runtime's hardened verify chain.
     let sk = SigningKey::generate(&mut OsRng);
-    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
-    std::fs::write(
-        &describe_path,
-        serde_json::to_string_pretty(&describe).unwrap(),
-    )
-    .unwrap();
+    finalize_signed_with_manifest(fixture.root(), &mut describe, &sk);
 
     (fixture, sk)
 }

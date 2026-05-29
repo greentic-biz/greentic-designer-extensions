@@ -7,6 +7,9 @@ use greentic_extension_sdk_testing::ExtensionFixtureBuilder;
 use rand::rngs::OsRng;
 use tempfile::TempDir;
 
+#[path = "support/mod.rs"]
+mod support;
+
 fn copy_fixture(src: &std::path::Path, dst: &std::path::Path) {
     fs::create_dir_all(dst).unwrap();
     for e in fs::read_dir(src).unwrap() {
@@ -15,29 +18,17 @@ fn copy_fixture(src: &std::path::Path, dst: &std::path::Path) {
     }
 }
 
-/// Sign the describe.json inside a fixture directory in-place. Also patches
-/// `runtime.components[*].gtpack` so source-dir loads resolve the wasm —
-/// sdk-testing 1.2.0-research's fixture builder ships gtpack=None.
+/// Patch `runtime.components[*].gtpack` for source-dir loads, then build the
+/// whole-archive manifest, bind it, and sign — so the dir passes the runtime's
+/// hardened verify chain (audit P5). Operates on the post-copy discovery dir.
 fn sign_fixture_dir(dir: &std::path::Path) {
-    use greentic_extension_sdk_contract::describe::provider::RuntimeGtpack;
-
     let path = dir.join("describe.json");
     let raw = fs::read_to_string(&path).unwrap();
     let mut describe: greentic_extension_sdk_contract::DescribeJson =
         serde_json::from_str(&raw).unwrap();
-    for component in describe.runtime.components.values_mut() {
-        if component.gtpack.is_none() {
-            component.gtpack = Some(RuntimeGtpack {
-                file: "extension.wasm".to_string(),
-                sha256: "0".repeat(64),
-                pack_id: describe.metadata.id.clone(),
-                component_version: describe.metadata.version.clone(),
-            });
-        }
-    }
+    support::populate_gtpack_for_local_load(&mut describe);
     let sk = SigningKey::generate(&mut OsRng);
-    greentic_extension_sdk_contract::sign_describe(&mut describe, &sk).expect("sign");
-    fs::write(&path, serde_json::to_string_pretty(&describe).unwrap()).unwrap();
+    support::finalize_signed_with_manifest(dir, &mut describe, &sk);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
