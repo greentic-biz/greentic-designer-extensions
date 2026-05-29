@@ -232,12 +232,18 @@ impl ExtensionRuntime {
         let path = dir.join("describe.json");
         let raw = std::fs::read_to_string(&path)?;
         let describe: greentic_extension_sdk_contract::DescribeJson = serde_json::from_str(&raw)?;
-        greentic_extension_sdk_contract::verify_describe(&describe).map_err(|e| {
-            RuntimeError::SignatureInvalid {
+        // Integrity: the describe is unmodified since signing. This is NOT
+        // authenticity — it proves nothing about *who* signed (an attacker can
+        // re-sign with their own key). Anchored authenticity
+        // (`verify_describe_with_key` against a trust-store / RootVerifier key)
+        // is the audit C1 follow-up; it needs a runtime trust store and the
+        // org-provisioned prod root key (both currently blocked).
+        greentic_extension_sdk_contract::verify_describe_self_consistent(&describe).map_err(
+            |e| RuntimeError::SignatureInvalid {
                 extension_id: describe.metadata.id.clone(),
                 reason: e.to_string(),
-            }
-        })?;
+            },
+        )?;
         let pub_prefix = describe.signature.as_ref().map_or_else(
             || "?".to_string(),
             |s| s.public_key.chars().take(16).collect::<String>(),
@@ -247,28 +253,51 @@ impl ExtensionRuntime {
             key_prefix = %pub_prefix,
             "extension signature verified"
         );
-        Self::verify_dir_manifest(dir, &describe.metadata.id)?;
+        Self::verify_dir_manifest(dir, &describe)?;
         Ok(())
     }
 
     /// Verify the unpacked extension dir against its `manifest.json`
-    /// (whole-archive integrity ledger introduced in D.4.2). When
-    /// `manifest.json` is absent we fail-open — pre-D.4.2 packs predate
-    /// the manifest format and must keep loading during the transition.
-    /// When present, every file the manifest lists must hash to the
-    /// recorded sha256. Closes audit P0 #2 (wasm binary + sibling
-    /// archive entries unsigned) on the consumer side.
-    fn verify_dir_manifest(dir: &std::path::Path, extension_id: &str) -> Result<(), RuntimeError> {
+    /// (whole-archive integrity ledger).
+    ///
+    /// Audit P5 hardening — fail **closed**:
+    /// - A missing `manifest.json` is now a hard error. Pre-ledger packs only
+    ///   load under the `dev-allow-unsigned` escape (checked upstream in
+    ///   [`verify_dir_signature`]); production refuses an unverifiable pack.
+    /// - The describe's manifest binding (`manifestSha256`) must match the
+    ///   on-disk `manifest.json`, so the (signed) describe transitively commits
+    ///   to the ledger — an attacker cannot swap the manifest without breaking
+    ///   the describe signature ([`verify_manifest_binding`]).
+    /// - Every file the manifest lists must then hash to the recorded sha256.
+    ///
+    /// Closes audit P0 #2 (wasm + sibling archive entries unsigned) and the C2
+    /// binding gap on the consumer side.
+    fn verify_dir_manifest(
+        dir: &std::path::Path,
+        describe: &greentic_extension_sdk_contract::DescribeJson,
+    ) -> Result<(), RuntimeError> {
         use sha2::{Digest, Sha256};
+        let extension_id = describe.metadata.id.as_str();
         let manifest_path = dir.join(greentic_extension_sdk_contract::MANIFEST_ENTRY_NAME);
         if !manifest_path.exists() {
-            tracing::debug!(
-                extension_dir = %dir.display(),
-                "manifest.json absent — skipping whole-archive verification (legacy pack)"
-            );
-            return Ok(());
+            return Err(RuntimeError::SignatureInvalid {
+                extension_id: extension_id.to_string(),
+                reason: "manifest.json absent — refusing to load an extension without a \
+                         whole-archive integrity ledger (set GREENTIC_EXT_ALLOW_UNSIGNED \
+                         with the dev-allow-unsigned build for local dev)"
+                    .to_string(),
+            });
         }
         let raw = std::fs::read(&manifest_path)?;
+        // Binding: the signed describe commits to exactly this manifest, so the
+        // signature transitively covers the ledger (audit C2). Rejects both a
+        // swapped manifest and an unbound (legacy) describe carrying a manifest.
+        greentic_extension_sdk_contract::verify_manifest_binding(describe, &raw).map_err(|e| {
+            RuntimeError::SignatureInvalid {
+                extension_id: extension_id.to_string(),
+                reason: format!("manifest binding: {e}"),
+            }
+        })?;
         let manifest: greentic_extension_sdk_contract::Manifest = serde_json::from_slice(&raw)
             .map_err(|e| RuntimeError::SignatureInvalid {
                 extension_id: extension_id.to_string(),

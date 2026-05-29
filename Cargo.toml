@@ -5,11 +5,12 @@ members = [
     "crates/greentic-ext-runtime",
 ]
 
-# Sub-project #1 (extension capability flag) — research-branch dev patch.
-# greentic-extension-sdk-contract 1.2.3-research is not yet published to
-# crates.io; while iterating on the new AgenticWorkerMetadata + ToolCapability
-# types we consume the local sibling checkout. Remove this once the SDK tag
-# `v1.2.3-research` lands and the publish workflow uploads to crates.io.
+# Audit P5 (trust chain) — research-branch dev patch.
+# greentic-extension-sdk-contract 1.2.4-research (breaking: typed v2 describe +
+# C1/C2 trust-chain APIs — verify_describe_with_key, verify_manifest_binding) is
+# not yet published to crates.io. While the runtime adopts the new verify chain
+# we consume the local sibling checkout. Remove this once SDK tag
+# `v1.2.4-research` lands and the publish workflow uploads to crates.io.
 [patch.crates-io]
 greentic-extension-sdk-contract = { path = "../greentic-designer-sdk/crates/greentic-extension-sdk-contract" }
 greentic-extension-sdk-testing = { path = "../greentic-designer-sdk/crates/greentic-extension-sdk-testing" }

@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed (BREAKING — security)
+
+- **Contract bump to `1.2.4-research`** (typed v2 describe + C1/C2 trust-chain
+  APIs). The runtime now consumes `verify_describe_self_consistent` +
+  `verify_manifest_binding` from the contract.
+- **Extension verify now fails closed (audit P5).** `verify_dir_signature` →
+  `verify_dir_manifest` now: (1) rejects a pack with no `manifest.json`
+  (previously fail-open for legacy packs) — the `dev-allow-unsigned` build +
+  `GREENTIC_EXT_ALLOW_UNSIGNED` escape still loads it for local dev; (2) verifies
+  the signed describe is **bound** to the on-disk `manifest.json`
+  (`manifestSha256`), so the signature transitively covers the ledger — a
+  swapped manifest is rejected before any per-entry check; (3) keeps the
+  per-entry sha256 hash-match. Anchored authenticity (`verify_describe_with_key`
+  against a trust-anchored key) remains a follow-up: it needs a runtime trust
+  store and the org-provisioned prod root key.
+
 ## [0.3.0] - 2026-04-22
 
 ### Changed
