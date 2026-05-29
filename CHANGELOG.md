@@ -4,7 +4,7 @@
 
 ### Changed (BREAKING — security)
 
-- **Contract bump to `1.3.0-research`** (typed v2 describe + C1/C2 trust-chain
+- **Contract bump to `1.2.4-research`** (typed v2 describe + C1/C2 trust-chain
   APIs). The runtime now consumes `verify_describe_self_consistent` +
   `verify_manifest_binding` from the contract.
 - **Extension verify now fails closed (audit P5).** `verify_dir_signature` →
