@@ -18,7 +18,7 @@ greentic-extension-sdk-testing = { path = "../greentic-designer-sdk/crates/green
 
 [workspace.package]
 edition = "2024"
-version = "1.2.8"
+version = "1.2.12"
 license = "MIT"
 repository = "https://github.com/greenticai/greentic-designer-extensions"
 rust-version = "1.94"
