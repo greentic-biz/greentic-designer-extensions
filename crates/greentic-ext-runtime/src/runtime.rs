@@ -104,6 +104,23 @@ impl ExtensionRuntime {
     pub fn new(config: RuntimeConfig) -> Result<Self, RuntimeError> {
         let mut ec = wasmtime::Config::new();
         ec.wasm_component_model(true);
+
+        // Persist compiled component artifacts to an on-disk cache. Without
+        // this, every `Component::from_file` recompiles the WASM via Cranelift
+        // on each boot — the dominant designer startup cost (~28 extensions,
+        // several seconds). The default cache keys on the module bytes plus the
+        // compiler settings, so a warm cache turns subsequent boots into a
+        // deserialize instead of a recompile. Failing to initialise the cache
+        // is non-fatal: we log and fall back to the no-cache (recompile) path.
+        match wasmtime::Cache::from_file(None) {
+            Ok(cache) => {
+                ec.cache(Some(cache));
+            }
+            Err(e) => {
+                tracing::warn!("wasmtime compilation cache disabled: {e}");
+            }
+        }
+
         let engine = Engine::new(&ec).map_err(|e| RuntimeError::Wasmtime(e.into()))?;
         let (tx, _) = broadcast::channel(64);
         Ok(Self {
