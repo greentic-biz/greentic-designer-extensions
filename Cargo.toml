@@ -149,6 +149,7 @@ version = "43"
 features = [
     "component-model",
     "async",
+    "cache",
 ]
 
 [workspace.dependencies.zip]
