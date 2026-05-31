@@ -643,6 +643,8 @@ impl ExtensionRuntime {
                     description: String::new(),
                     input_schema_json: String::new(),
                     output_schema_json: None,
+                    capabilities: None,
+                    agentic_worker_metadata: None,
                 })
                 .collect());
         }
