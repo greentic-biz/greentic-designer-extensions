@@ -611,7 +611,13 @@ impl ExtensionRuntime {
     /// List all tools exposed by a loaded design extension.
     ///
     /// Calls `greentic:extension-design/tools::list-tools` (resolved
-    /// against `@0.2.0` first, then `@0.1.0`).
+    /// against `@0.2.0` first, then `@0.1.0`) for v1-contract
+    /// extensions. **v2 contract** (`apiVersion == "greentic.ai/v2"`)
+    /// reads the tools from `describe.contributions.tools[]` — the
+    /// runtime WIT no longer exports `list-tools` in that contract.
+    /// The declarative v2 entries only carry `name` + `export`, so
+    /// `description` / `input_schema_json` come back empty; callers
+    /// that need full schemas must introspect the named WIT export.
     pub fn list_tools(
         &self,
         ext_id: &str,
@@ -625,6 +631,23 @@ impl ExtensionRuntime {
             .cloned()
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
+        // v2 declarative path: tools live in describe.json, not in WIT.
+        if loaded.describe.api_version == "greentic.ai/v2" {
+            return Ok(loaded
+                .describe
+                .contributions
+                .tools
+                .iter()
+                .map(|t| crate::types::ToolDefinition {
+                    name: t.name.clone(),
+                    description: String::new(),
+                    input_schema_json: String::new(),
+                    output_schema_json: None,
+                })
+                .collect());
+        }
+
+        // v1 WIT-call path.
         let (mut store, instance) = loaded
             .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
             .map_err(RuntimeError::Wasmtime)?;
