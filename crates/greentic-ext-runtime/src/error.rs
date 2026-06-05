@@ -33,6 +33,9 @@ pub enum RuntimeError {
     #[error("watcher: {0}")]
     Watcher(String),
 
+    #[error("deploy extension error: {0}")]
+    Deploy(#[from] crate::types::DeployExtensionError),
+
     #[error("permission denied: {0}")]
     PermissionDenied(String),
 }

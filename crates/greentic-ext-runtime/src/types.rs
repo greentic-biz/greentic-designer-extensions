@@ -77,6 +77,56 @@ pub struct TargetSummary {
     pub supports_rollback: bool,
 }
 
+/// Host-side mirror of WIT `greentic:extension-deploy/deployment@0.1.0::deploy-request`.
+#[derive(Debug, Clone)]
+pub struct DeployRequest {
+    pub target_id: String,
+    pub artifact_bytes: Vec<u8>,
+    pub credentials_json: String,
+    pub config_json: String,
+    pub deployment_name: String,
+}
+
+/// Host-side mirror of WIT `greentic:extension-deploy/deployment@0.1.0::deploy-status`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DeployStatus {
+    Pending,
+    Provisioning,
+    Configuring,
+    Starting,
+    Running,
+    Failed,
+    RolledBack,
+}
+
+/// Host-side mirror of WIT `greentic:extension-deploy/deployment@0.1.0::deploy-job`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DeployJob {
+    pub id: String,
+    pub status: DeployStatus,
+    pub message: String,
+    pub endpoints: Vec<String>,
+}
+
+/// Typed extension-level error surfaced by `deploy`/`poll`/`rollback`.
+///
+/// Variant choice is a host-visible contract: the designer treats
+/// `Internal` from `deploy()` as "not implemented in WASM" (Mode A stub)
+/// and falls back to the greentic-deployer binary. Mode B extensions
+/// must use the other variants for expected failures.
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum DeployExtensionError {
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+    #[error("missing capability: {0}")]
+    MissingCapability(String),
+    #[error("permission denied: {0}")]
+    PermissionDenied(String),
+    #[error("internal: {0}")]
+    Internal(String),
+}
+
 /// Host-side mirror of WIT `greentic:extension-design/validation@0.2.0::validate-result`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ValidateResult {
