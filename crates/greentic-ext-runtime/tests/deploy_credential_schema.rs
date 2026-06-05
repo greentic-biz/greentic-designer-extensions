@@ -92,3 +92,24 @@ fn validate_credentials_returns_diagnostics_slice() {
         );
     }
 }
+
+#[test]
+fn deploy_on_mode_a_extension_surfaces_typed_internal_error() {
+    let Some((_tmp, rt, id)) = load_rt_from_pack() else {
+        eprintln!("skipping: GTDX_TEST_DEPLOY_GTXPACK not set.");
+        return;
+    };
+    let req = greentic_ext_runtime::DeployRequest {
+        target_id: "anything".into(),
+        artifact_bytes: vec![],
+        credentials_json: "{}".into(),
+        config_json: "{}".into(),
+        deployment_name: "smoke".into(),
+    };
+    match rt.deploy(&id, req) {
+        Err(greentic_ext_runtime::RuntimeError::Deploy(
+            greentic_ext_runtime::DeployExtensionError::Internal(msg),
+        )) => assert!(!msg.is_empty(), "Mode A stub should carry a message"),
+        other => panic!("expected Deploy(Internal), got {other:?}"),
+    }
+}

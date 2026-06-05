@@ -77,6 +77,11 @@ impl ExtensionRuntime {
     }
 
     /// Resolve a loaded extension into a fresh store + instance.
+    ///
+    /// Deliberate departure from the sibling dispatch modules (which inline
+    /// these lines per method): three callers here made the duplication
+    /// worth factoring, at the cost of naming wasmtime types in a private
+    /// signature.
     fn deploy_instance(
         &self,
         ext_id: &str,
@@ -148,18 +153,10 @@ fn err_to_host(e: WitExtensionError) -> DeployExtensionError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::discovery::DiscoveryPaths;
-    use crate::runtime::RuntimeConfig;
-
-    fn empty_runtime() -> (tempfile::TempDir, ExtensionRuntime) {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let config = RuntimeConfig::from_paths(DiscoveryPaths::new(tmp.path().to_path_buf()));
-        (tmp, ExtensionRuntime::new(config).unwrap())
-    }
 
     #[test]
     fn deploy_returns_not_found_for_unknown_extension() {
-        let (_tmp, rt) = empty_runtime();
+        let rt = ExtensionRuntime::for_test();
         let req = DeployRequest {
             target_id: "github-repo".into(),
             artifact_bytes: vec![1, 2, 3],
@@ -175,18 +172,18 @@ mod tests {
 
     #[test]
     fn deploy_poll_returns_not_found_for_unknown_extension() {
-        let (_tmp, rt) = empty_runtime();
+        let rt = ExtensionRuntime::for_test();
         match rt.deploy_poll("greentic.deploy-github", "job-1") {
-            Err(RuntimeError::NotFound(_)) => {}
+            Err(RuntimeError::NotFound(id)) => assert_eq!(id, "greentic.deploy-github"),
             other => panic!("expected NotFound, got {other:?}"),
         }
     }
 
     #[test]
     fn deploy_rollback_returns_not_found_for_unknown_extension() {
-        let (_tmp, rt) = empty_runtime();
+        let rt = ExtensionRuntime::for_test();
         match rt.deploy_rollback("greentic.deploy-github", "job-1") {
-            Err(RuntimeError::NotFound(_)) => {}
+            Err(RuntimeError::NotFound(id)) => assert_eq!(id, "greentic.deploy-github"),
             other => panic!("expected NotFound, got {other:?}"),
         }
     }
