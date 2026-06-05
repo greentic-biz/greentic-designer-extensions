@@ -78,6 +78,10 @@ pub struct TargetSummary {
 }
 
 /// Host-side mirror of WIT `greentic:extension-deploy/deployment@0.1.0::deploy-request`.
+///
+/// Note: no `serde` derives — `artifact_bytes` is a raw binary blob handed
+/// to the WASM guest verbatim; JSON-encoding it would be wasteful and
+/// incorrect.
 #[derive(Debug, Clone)]
 pub struct DeployRequest {
     pub target_id: String,
@@ -115,6 +119,10 @@ pub struct DeployJob {
 /// `Internal` from `deploy()` as "not implemented in WASM" (Mode A stub)
 /// and falls back to the greentic-deployer binary. Mode B extensions
 /// must use the other variants for expected failures.
+///
+/// Structurally mirrors [`HostExtensionError`] by design; kept separate
+/// because the two types participate in different dispatch paths and may
+/// diverge as the deploy surface grows.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum DeployExtensionError {
     #[error("invalid input: {0}")]
