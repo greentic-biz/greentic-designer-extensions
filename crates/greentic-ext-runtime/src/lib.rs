@@ -12,6 +12,7 @@ mod host_state;
 mod loaded;
 mod pool;
 mod runtime;
+mod runtime_deploy;
 mod runtime_dw_composer;
 mod runtime_roles;
 pub mod types;
@@ -30,9 +31,10 @@ pub use self::host_state::HostState;
 pub use self::loaded::{ExtensionId, HostOverrides, LoadedExtension, LoadedExtensionRef};
 pub use self::runtime::{ExtensionRuntime, RuntimeConfig, RuntimeEvent, WatcherGuard};
 pub use self::types::{
-    BundleArtifact, BundleSession, CompileContext, Diagnostic, HostExtensionError, KnowledgeEntry,
-    KnowledgeEntrySummary, PromptFragment, RoleError, RoleSpec, Severity, TargetKind,
-    TargetSummary, ToolDefinition, ValidateResult,
+    BundleArtifact, BundleSession, CompileContext, DeployExtensionError, DeployJob, DeployRequest,
+    DeployStatus, Diagnostic, HostExtensionError, KnowledgeEntry, KnowledgeEntrySummary,
+    PromptFragment, RoleError, RoleSpec, Severity, TargetKind, TargetSummary, ToolDefinition,
+    ValidateResult,
 };
 pub use self::url_matcher::UrlMatcher;
 
