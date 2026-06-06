@@ -521,6 +521,7 @@ impl ExtensionRuntime {
             "greentic:extension-design/tools",
             DESIGN_VERSIONS,
         )?;
+        warn_if_legacy_contract(ext_id, version, DESIGN_VERSIONS[0]);
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "invoke-tool")
             .ok_or_else(|| {
@@ -1175,6 +1176,36 @@ impl ExtensionRuntime {
 /// `roles@0.2.0` deliberately uses its own dedicated lookup (see
 /// `runtime_roles.rs`); it never existed at `@0.1.0`, so no fallback is
 /// appropriate there.
+/// Tracks extension ids already warned about a legacy WIT contract, so the
+/// deprecation notice fires once per extension per process instead of on
+/// every dispatch. Bounded by the number of distinct loaded extensions.
+static LEGACY_CONTRACT_WARNED: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::OnceLock::new();
+
+/// Emit a one-shot deprecation warning if `version` is not the newest entry
+/// in `newest`. No-op when the extension is already on the current contract
+/// or has been warned before.
+fn warn_if_legacy_contract(ext_id: &str, version: &str, newest: &str) {
+    if version == newest {
+        return;
+    }
+    let set = LEGACY_CONTRACT_WARNED
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+    let mut guard = match set.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if guard.insert(ext_id.to_string()) {
+        tracing::warn!(
+            extension = %ext_id,
+            contract = version,
+            newest = newest,
+            "extension uses a deprecated WIT contract version; rebuild against the current contract (unified 6-variant extension-error)"
+        );
+    }
+}
+
 /// Resolve `base@<ver>` against the instance's exports, trying `versions`
 /// in order (newest first). Returns the export index, the full resolved
 /// interface name, and the bare version string that matched — dispatch
