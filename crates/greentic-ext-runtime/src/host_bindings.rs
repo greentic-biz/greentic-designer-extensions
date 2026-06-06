@@ -4,6 +4,13 @@
 // wasmtime bindgen! generates:
 //   - add_to_linker() for `import` items (host implements these for the component)
 //   - typed export accessors for `export` items (host calls these on the component)
+//
+// NOTE: wasmtime appends a version suffix to package module names when multiple
+// versions of the same package namespace coexist in wit/deps (required for v2
+// dual-support). The unversioned paths that existed before Task 1 become:
+//   greentic::extension_design  ->  exports::greentic::extension_design0_2_0
+//   greentic::extension_base    ->  greentic::extension_base0_1_0
+// Callers in runtime*.rs use these versioned paths directly.
 wasmtime::component::bindgen!({
     path: "wit",
     world: "greentic:extension-design/design-extension@0.2.0",
@@ -55,5 +62,39 @@ pub mod dw_composer {
     wasmtime::component::bindgen!({
         path: "wit",
         world: "greentic:dw-composer/dw-composer-extension@0.1.0",
+    });
+}
+
+// ---------------------------------------------------------------------------
+// v2-contract bindings (unified 6-variant extension-error, spec
+// 2026-06-07-extension-response-envelope-design.md). Old-world modules above
+// stay for extensions built against the previous WIT; the runtime resolves
+// per-extension at dispatch time (see runtime::resolve_iface_versions).
+// ---------------------------------------------------------------------------
+pub mod design_v03 {
+    wasmtime::component::bindgen!({
+        path: "wit",
+        world: "greentic:extension-design/design-extension@0.3.0",
+    });
+}
+
+pub mod deploy_v02 {
+    wasmtime::component::bindgen!({
+        path: "wit",
+        world: "greentic:extension-deploy/deploy-extension@0.2.0",
+    });
+}
+
+pub mod bundle_v02 {
+    wasmtime::component::bindgen!({
+        path: "wit",
+        world: "greentic:extension-bundle/bundle-extension@0.2.0",
+    });
+}
+
+pub mod dw_composer_v02 {
+    wasmtime::component::bindgen!({
+        path: "wit",
+        world: "greentic:dw-composer/dw-composer-extension@0.2.0",
     });
 }
