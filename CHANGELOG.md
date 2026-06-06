@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added (security)
+
+- **Loopback-http rule for extension network allow-lists.** A declared
+  `http://127.0.0.1` / `http://localhost` pattern in an extension's
+  `runtime.permissions.network` now permits plain http to that loopback host
+  (the matcher enables `allow_http` only when a loopback http pattern is
+  present). Non-loopback `http://` patterns are dropped with a warning —
+  plain http to public hosts is never honoured. This lets a design extension
+  reach a local dev service (e.g. the telco-x service on
+  `http://127.0.0.1:8787`) without weakening the scheme-downgrade defence for
+  public hosts. Replace semantics remain: a non-empty declaration is the
+  authoritative allow-list for that extension; the host-level override is not
+  added.
+
 ### Changed (BREAKING — security)
 
 - **Contract bump to `1.2.4-research`** (typed v2 describe + C1/C2 trust-chain
