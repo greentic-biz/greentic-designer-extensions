@@ -96,6 +96,16 @@ impl LoadedExtension {
         broker::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         http::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
 
+        // Per-extension network allow-list: an extension that declares
+        // `runtime.permissions.network` gets a matcher built from exactly those
+        // patterns. Extensions with no declaration keep the host-level override
+        // (empty by default — deny all), which preserves existing behavior for
+        // extensions that do not need outbound HTTP.
+        let url_matcher = effective_url_matcher(
+            &self.describe.runtime.permissions.network,
+            host_overrides.url_matcher,
+        );
+
         let state = HostState::builder(
             self.id.as_str().to_string(),
             self.describe.runtime.permissions.clone(),
@@ -103,7 +113,7 @@ impl LoadedExtension {
         .translator(host_overrides.translator)
         .secrets_backend(host_overrides.secrets_backend)
         .http_client(host_overrides.http_client)
-        .url_matcher(host_overrides.url_matcher)
+        .url_matcher(url_matcher)
         .runtime_weak(host_overrides.runtime_weak)
         .call_depth_start(host_overrides.call_depth_start)
         .build();
@@ -179,6 +189,39 @@ fn wasm_component_path(describe: &DescribeJson, source_dir: &Path) -> anyhow::Re
         )
     })?;
     Ok(source_dir.join(gtpack.file.as_str()))
+}
+
+/// Select the URL matcher for a single extension instantiation.
+///
+/// When the extension's `describe.json` declares one or more patterns under
+/// `runtime.permissions.network`, those patterns are the authoritative
+/// allow-list for that extension and a fresh [`UrlMatcher`] is built from
+/// them. The host-level `override_matcher` is ignored in this path — it is
+/// the host-wide default that applies only to extensions that make no
+/// network declaration.
+///
+/// When the declaration is empty the host-level override is returned
+/// unchanged, which is the deny-all default in most deployments.
+///
+/// # Arguments
+///
+/// * `declared_patterns` — the `runtime.permissions.network` slice from
+///   the extension's parsed `describe.json`.
+/// * `override_matcher` — the host-level matcher supplied via
+///   [`HostOverrides`].
+///
+/// # Returns
+///
+/// A [`UrlMatcher`] that enforces the correct allow-list for this extension.
+pub(crate) fn effective_url_matcher(
+    declared_patterns: &[String],
+    override_matcher: crate::url_matcher::UrlMatcher,
+) -> crate::url_matcher::UrlMatcher {
+    if declared_patterns.is_empty() {
+        override_matcher
+    } else {
+        crate::url_matcher::UrlMatcher::from_patterns(declared_patterns.to_vec())
+    }
 }
 
 pub type LoadedExtensionRef = Arc<LoadedExtension>;
@@ -266,5 +309,66 @@ impl Default for HostOverrides {
             runtime_weak: std::sync::Weak::new(),
             call_depth_start: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::url_matcher::UrlMatcher;
+
+    fn empty_override() -> UrlMatcher {
+        UrlMatcher::default()
+    }
+
+    fn override_with_pattern(pattern: &str) -> UrlMatcher {
+        UrlMatcher::from_patterns(vec![pattern.to_string()])
+    }
+
+    /// Extensions that declare network patterns must have exactly those
+    /// patterns enforced — the host-level override must NOT apply.
+    #[test]
+    fn declared_patterns_allow_declared_host_and_deny_undeclared() {
+        let declared = vec!["https://api.github.com/*".to_string()];
+        let matcher = effective_url_matcher(&declared, empty_override());
+
+        assert!(
+            matcher.is_allowed("https://api.github.com/repos/org/repo"),
+            "declared host must be allowed"
+        );
+        assert!(
+            !matcher.is_allowed("https://evil.com/"),
+            "undeclared host must be denied even though host override is empty"
+        );
+    }
+
+    /// When no network patterns are declared the host-level override is
+    /// returned verbatim — behavior is unchanged for legacy extensions.
+    #[test]
+    fn empty_declaration_falls_back_to_host_override() {
+        let override_matcher = override_with_pattern("https://allowed.com/*");
+        let matcher = effective_url_matcher(&[], override_matcher);
+
+        assert!(
+            matcher.is_allowed("https://allowed.com/path"),
+            "host-override host must be reachable when declare is empty"
+        );
+        assert!(
+            !matcher.is_allowed("https://other.com/path"),
+            "host-override deny must still apply"
+        );
+    }
+
+    /// Empty declaration + empty host override must deny every URL —
+    /// this is the default deny-all posture for extensions that never
+    /// call the network.
+    #[test]
+    fn empty_declaration_and_empty_override_denies_everything() {
+        let matcher = effective_url_matcher(&[], empty_override());
+
+        assert!(
+            !matcher.is_allowed("https://api.github.com/anything"),
+            "empty declaration + empty override must produce deny-all matcher"
+        );
     }
 }
