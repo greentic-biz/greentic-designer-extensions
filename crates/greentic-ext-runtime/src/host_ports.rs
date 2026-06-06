@@ -129,15 +129,30 @@ pub enum LlmPortError {
 }
 
 /// Host port for LLM completions, implemented by the embedding host
-/// (designer maps it onto its per-tenant `llm_for(role)` seam).
+/// (designer maps it onto its per-tenant `llm_for(role, identity)` seam).
 /// Synchronous on purpose: wasmtime host fns are wired with the sync linker.
 pub trait LlmPort: Send + Sync {
+    /// Resolve and run a completion for `extension_id` against `role`.
+    ///
+    /// `tenant` is the tenant slug of the caller when the host runs
+    /// multi-tenant; `None` for single-tenant/dev hosts. The designer uses
+    /// it to resolve the role per-tenant (`llm_for(role, identity)`, strict,
+    /// no fallback).
     fn complete(
         &self,
         extension_id: &str,
+        tenant: Option<&str>,
         role: &str,
         request: LlmPortRequest,
     ) -> Result<LlmPortResponse, LlmPortError>;
+}
+
+/// Per-invocation caller context threaded from the embedding host into
+/// host-port calls. Extend cautiously: every field is visible to all ports.
+#[derive(Debug, Clone, Default)]
+pub struct HostCallContext {
+    /// Tenant slug of the end caller (e.g. the designer session's tenant).
+    pub tenant: Option<String>,
 }
 
 #[cfg(test)]
