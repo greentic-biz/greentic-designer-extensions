@@ -497,7 +497,7 @@ impl ExtensionRuntime {
         args_json: &str,
         ctx: &crate::host_ports::HostCallContext,
     ) -> Result<String, RuntimeError> {
-        use crate::host_bindings::greentic::extension_base::types::ExtensionError;
+        use crate::host_bindings::greentic::extension_base0_1_0::types::ExtensionError;
 
         let loaded = self
             .loaded
@@ -563,10 +563,10 @@ impl ExtensionRuntime {
         content_type: &str,
         content_json: &str,
     ) -> Result<crate::types::ValidateResult, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::validation::{
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::validation::{
             Diagnostic as WitDiagnostic, ValidateResult as WitValidateResult,
         };
-        use crate::host_bindings::greentic::extension_base::types::Severity as WitSeverity;
+        use crate::host_bindings::greentic::extension_base0_1_0::types::Severity as WitSeverity;
 
         let loaded = self
             .loaded
@@ -645,7 +645,7 @@ impl ExtensionRuntime {
         &self,
         ext_id: &str,
     ) -> Result<Vec<crate::types::ToolDefinition>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::tools::ToolDefinition as WitToolDef;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::tools::ToolDefinition as WitToolDef;
 
         let loaded = self
             .loaded
@@ -722,7 +722,7 @@ impl ExtensionRuntime {
         &self,
         ext_id: &str,
     ) -> Result<Vec<crate::types::PromptFragment>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::prompting::PromptFragment as WitFrag;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::prompting::PromptFragment as WitFrag;
 
         let loaded = self
             .loaded
@@ -778,7 +778,7 @@ impl ExtensionRuntime {
         ext_id: &str,
         category_filter: Option<&str>,
     ) -> Result<Vec<crate::types::KnowledgeEntrySummary>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::knowledge::EntrySummary as WitSummary;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::EntrySummary as WitSummary;
 
         let loaded = self
             .loaded
@@ -825,8 +825,8 @@ impl ExtensionRuntime {
         ext_id: &str,
         entry_id: &str,
     ) -> Result<crate::types::KnowledgeEntry, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::knowledge::Entry as WitEntry;
-        use crate::host_bindings::exports::greentic::extension_design::knowledge::ExtensionError;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::Entry as WitEntry;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::ExtensionError;
 
         let loaded = self
             .loaded
@@ -886,7 +886,7 @@ impl ExtensionRuntime {
         query: &str,
         limit: u32,
     ) -> Result<Vec<crate::types::KnowledgeEntrySummary>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::knowledge::EntrySummary as WitSummary;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::EntrySummary as WitSummary;
 
         let loaded = self
             .loaded
@@ -927,7 +927,7 @@ impl ExtensionRuntime {
 
 /// Convert a bindgen `EntrySummary` to the host-side type.
 fn wit_summary_to_host(
-    s: crate::host_bindings::exports::greentic::extension_design::knowledge::EntrySummary,
+    s: crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::EntrySummary,
 ) -> crate::types::KnowledgeEntrySummary {
     crate::types::KnowledgeEntrySummary {
         id: s.id,
@@ -946,8 +946,8 @@ impl ExtensionRuntime {
         target_id: &str,
         credentials_json: &str,
     ) -> Result<Vec<crate::types::Diagnostic>, RuntimeError> {
-        use crate::host_bindings::deploy::exports::greentic::extension_deploy::targets::Diagnostic as WitDiagnostic;
-        use crate::host_bindings::deploy::greentic::extension_base::types::Severity as WitSeverity;
+        use crate::host_bindings::deploy::exports::greentic::extension_deploy0_1_0::targets::Diagnostic as WitDiagnostic;
+        use crate::host_bindings::deploy::greentic::extension_base0_1_0::types::Severity as WitSeverity;
 
         let loaded = self
             .loaded
@@ -1012,7 +1012,7 @@ impl ExtensionRuntime {
     /// Return the JSON Schema (as a string) describing credentials required
     /// by the given deploy target.
     pub fn credential_schema(&self, ext_id: &str, target_id: &str) -> Result<String, RuntimeError> {
-        use crate::host_bindings::deploy::greentic::extension_base::types::ExtensionError;
+        use crate::host_bindings::deploy::greentic::extension_base0_1_0::types::ExtensionError;
 
         let loaded = self
             .loaded
@@ -1069,7 +1069,7 @@ impl ExtensionRuntime {
         &self,
         ext_id: &str,
     ) -> Result<Vec<crate::types::TargetSummary>, RuntimeError> {
-        use crate::host_bindings::deploy::exports::greentic::extension_deploy::targets::TargetSummary as WitTargetSummary;
+        use crate::host_bindings::deploy::exports::greentic::extension_deploy0_1_0::targets::TargetSummary as WitTargetSummary;
 
         let loaded = self
             .loaded
@@ -1188,10 +1188,10 @@ impl ExtensionRuntime {
         config_json: &str,
         session: crate::types::BundleSession,
     ) -> Result<crate::types::BundleArtifact, RuntimeError> {
-        use crate::host_bindings::bundle::exports::greentic::extension_bundle::bundling::{
+        use crate::host_bindings::bundle::exports::greentic::extension_bundle0_1_0::bundling::{
             BundleArtifact as WitBundleArtifact, DesignerSession as WitDesignerSession,
         };
-        use crate::host_bindings::bundle::greentic::extension_base::types::ExtensionError;
+        use crate::host_bindings::bundle::greentic::extension_base0_1_0::types::ExtensionError;
 
         let loaded = self
             .loaded

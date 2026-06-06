@@ -10,10 +10,10 @@ use crate::loaded::ExtensionId;
 use crate::runtime::ExtensionRuntime;
 use crate::types::{DeployExtensionError, DeployJob, DeployRequest, DeployStatus};
 
-use crate::host_bindings::deploy::exports::greentic::extension_deploy::deployment::{
+use crate::host_bindings::deploy::exports::greentic::extension_deploy0_1_0::deployment::{
     DeployJob as WitDeployJob, DeployRequest as WitDeployRequest, DeployStatus as WitDeployStatus,
 };
-use crate::host_bindings::deploy::greentic::extension_base::types::ExtensionError as WitExtensionError;
+use crate::host_bindings::deploy::greentic::extension_base0_1_0::types::ExtensionError as WitExtensionError;
 
 const IFACE_NAME: &str = "greentic:extension-deploy/deployment@0.1.0";
 

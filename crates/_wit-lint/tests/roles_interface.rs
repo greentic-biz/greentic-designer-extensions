@@ -5,8 +5,8 @@ fn extension_design_declares_roles_interface_at_0_2_0() {
     let wit =
         fs::read_to_string("../../wit/extension-design.wit").expect("read extension-design.wit");
     assert!(
-        wit.contains("package greentic:extension-design@0.2.0;"),
-        "package version must be bumped to 0.2.0 (found header: {:?})",
+        wit.contains("package greentic:extension-design@0.3.0;"),
+        "package version must be bumped to 0.3.0 (found header: {:?})",
         wit.lines().next()
     );
     assert!(

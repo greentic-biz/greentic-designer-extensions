@@ -22,7 +22,7 @@ impl ExtensionRuntime {
     /// callers can treat it as "no roles published" without reaching
     /// for `RuntimeError::Wasmtime`.
     pub fn list_roles(&self, ext_id: &str) -> Result<Vec<RoleSpec>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::roles::RoleSpec as WitRoleSpec;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::RoleSpec as WitRoleSpec;
 
         let loaded = self
             .loaded()
@@ -72,7 +72,7 @@ impl ExtensionRuntime {
         name: &str,
         entry_json: &str,
     ) -> Result<Vec<Diagnostic>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::roles::Diagnostic as WitDiagnostic;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::Diagnostic as WitDiagnostic;
 
         let loaded = self
             .loaded()
@@ -131,7 +131,7 @@ impl ExtensionRuntime {
         entry_json: &str,
         ctx: Option<&CompileContext>,
     ) -> Result<String, RoleError> {
-        use crate::host_bindings::exports::greentic::extension_design::roles::{
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::{
             CompileContext as WitCompileContext, RoleError as WitRoleError,
             TargetKind as WitTargetKind,
         };
@@ -204,7 +204,7 @@ impl ExtensionRuntime {
 }
 
 fn wit_role_spec_to_host(
-    s: crate::host_bindings::exports::greentic::extension_design::roles::RoleSpec,
+    s: crate::host_bindings::exports::greentic::extension_design0_2_0::roles::RoleSpec,
 ) -> RoleSpec {
     RoleSpec {
         name: s.name,
@@ -217,9 +217,9 @@ fn wit_role_spec_to_host(
 }
 
 fn wit_diagnostic_to_host(
-    d: crate::host_bindings::exports::greentic::extension_design::roles::Diagnostic,
+    d: crate::host_bindings::exports::greentic::extension_design0_2_0::roles::Diagnostic,
 ) -> Diagnostic {
-    use crate::host_bindings::greentic::extension_base::types::Severity as WitSeverity;
+    use crate::host_bindings::greentic::extension_base0_1_0::types::Severity as WitSeverity;
     Diagnostic {
         severity: match d.severity {
             WitSeverity::Error => Severity::Error,
@@ -234,9 +234,9 @@ fn wit_diagnostic_to_host(
 }
 
 fn wit_role_error_to_host(
-    e: crate::host_bindings::exports::greentic::extension_design::roles::RoleError,
+    e: crate::host_bindings::exports::greentic::extension_design0_2_0::roles::RoleError,
 ) -> RoleError {
-    use crate::host_bindings::exports::greentic::extension_design::roles::RoleError as WitRoleError;
+    use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::RoleError as WitRoleError;
     match e {
         WitRoleError::UnknownRole(s) => RoleError::UnknownRole(s),
         WitRoleError::InvalidInput(diags) => {
@@ -250,9 +250,9 @@ fn wit_role_error_to_host(
 }
 
 fn wit_extension_error_to_host(
-    e: crate::host_bindings::exports::greentic::extension_design::roles::ExtensionError,
+    e: crate::host_bindings::exports::greentic::extension_design0_2_0::roles::ExtensionError,
 ) -> HostExtensionError {
-    use crate::host_bindings::exports::greentic::extension_design::roles::ExtensionError as WitErr;
+    use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::ExtensionError as WitErr;
     match e {
         WitErr::InvalidInput(s) => HostExtensionError::InvalidInput(s),
         WitErr::MissingCapability(s) => HostExtensionError::MissingCapability(s),
@@ -263,8 +263,8 @@ fn wit_extension_error_to_host(
 
 fn target_to_wit(
     t: TargetKind,
-) -> crate::host_bindings::exports::greentic::extension_design::roles::TargetKind {
-    use crate::host_bindings::exports::greentic::extension_design::roles::TargetKind as Wit;
+) -> crate::host_bindings::exports::greentic::extension_design0_2_0::roles::TargetKind {
+    use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::TargetKind as Wit;
     match t {
         TargetKind::AdaptiveCard => Wit::AdaptiveCard,
         TargetKind::SlackBlockKit => Wit::SlackBlockKit,
@@ -274,9 +274,9 @@ fn target_to_wit(
 }
 
 fn target_from_wit(
-    t: crate::host_bindings::exports::greentic::extension_design::roles::TargetKind,
+    t: crate::host_bindings::exports::greentic::extension_design0_2_0::roles::TargetKind,
 ) -> TargetKind {
-    use crate::host_bindings::exports::greentic::extension_design::roles::TargetKind as Wit;
+    use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::TargetKind as Wit;
     match t {
         Wit::AdaptiveCard => TargetKind::AdaptiveCard,
         Wit::SlackBlockKit => TargetKind::SlackBlockKit,

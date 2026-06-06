@@ -1,3 +1,7 @@
+// Vendored from greentic-biz/greentic-designer-extensions
+// Pinned commit: 13cde45e554e9aa7734ff83f57cd3548c4c3e50d
+// Do not edit locally — sync via a tools/sync-wit.sh helper (added later).
+
 package greentic:extension-bundle@0.2.0;
 
 interface recipes {
