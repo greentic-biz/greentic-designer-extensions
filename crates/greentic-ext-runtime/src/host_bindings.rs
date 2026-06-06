@@ -6,7 +6,7 @@
 //   - typed export accessors for `export` items (host calls these on the component)
 wasmtime::component::bindgen!({
     path: "wit",
-    world: "greentic:extension-design/design-extension",
+    world: "greentic:extension-design/design-extension@0.2.0",
 });
 
 // ---------------------------------------------------------------------------
@@ -20,7 +20,7 @@ wasmtime::component::bindgen!({
 pub mod deploy {
     wasmtime::component::bindgen!({
         path: "wit",
-        world: "greentic:extension-deploy/deploy-extension",
+        world: "greentic:extension-deploy/deploy-extension@0.1.0",
     });
 }
 
@@ -37,7 +37,7 @@ pub mod deploy {
 pub mod bundle {
     wasmtime::component::bindgen!({
         path: "wit",
-        world: "greentic:extension-bundle/bundle-extension",
+        world: "greentic:extension-bundle/bundle-extension@0.1.0",
     });
 }
 
@@ -54,6 +54,6 @@ pub mod bundle {
 pub mod dw_composer {
     wasmtime::component::bindgen!({
         path: "wit",
-        world: "greentic:dw-composer/dw-composer-extension",
+        world: "greentic:dw-composer/dw-composer-extension@0.1.0",
     });
 }
