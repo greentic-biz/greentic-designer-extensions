@@ -397,14 +397,14 @@ at `crates/greentic-extension-sdk-contract/schemas/describe-v1.json`. It uses JS
 Schema draft 2020-12 and is identified by the `$id`:
 
 ```
-https://store.greentic.ai/schemas/describe-v1.json
+https://store.greentic.cloud/schemas/describe-v1.json
 ```
 
 You can reference it from your `describe.json` for editor tooling:
 
 ```json
 {
-  "$schema": "https://store.greentic.ai/schemas/describe-v1.json",
+  "$schema": "https://store.greentic.cloud/schemas/describe-v1.json",
   "apiVersion": "greentic.ai/v1",
   ...
 }
@@ -418,7 +418,7 @@ You can reference it from your `describe.json` for editor tooling:
 
 ```json
 {
-  "$schema": "https://store.greentic.ai/schemas/describe-v1.json",
+  "$schema": "https://store.greentic.cloud/schemas/describe-v1.json",
   "apiVersion": "greentic.ai/v1",
   "kind": "DesignExtension",
   "metadata": {
@@ -480,7 +480,7 @@ You can reference it from your `describe.json` for editor tooling:
 
 ```json
 {
-  "$schema": "https://store.greentic.ai/schemas/describe-v1.json",
+  "$schema": "https://store.greentic.cloud/schemas/describe-v1.json",
   "apiVersion": "greentic.ai/v1",
   "kind": "BundleExtension",
   "metadata": {
@@ -542,7 +542,7 @@ You can reference it from your `describe.json` for editor tooling:
 
 ```json
 {
-  "$schema": "https://store.greentic.ai/schemas/describe-v1.json",
+  "$schema": "https://store.greentic.cloud/schemas/describe-v1.json",
   "apiVersion": "greentic.ai/v1",
   "kind": "DeployExtension",
   "metadata": {

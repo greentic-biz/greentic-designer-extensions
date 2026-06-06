@@ -120,7 +120,7 @@ Create `describe.json` in the crate root:
 
 ```json
 {
-  "$schema": "https://store.greentic.ai/schemas/describe-v1.json",
+  "$schema": "https://store.greentic.cloud/schemas/describe-v1.json",
   "apiVersion": "greentic.ai/v1",
   "kind": "DesignExtension",
   "metadata": {
