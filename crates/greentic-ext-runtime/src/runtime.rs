@@ -1000,14 +1000,12 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-deploy/targets@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name, _version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-deploy/targets",
+            DEPLOY_VERSIONS,
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "validate-credentials")
             .ok_or_else(|| {
@@ -1048,8 +1046,6 @@ impl ExtensionRuntime {
     /// Return the JSON Schema (as a string) describing credentials required
     /// by the given deploy target.
     pub fn credential_schema(&self, ext_id: &str, target_id: &str) -> Result<String, RuntimeError> {
-        use crate::host_bindings::deploy::greentic::extension_base0_1_0::types::ExtensionError;
-
         let loaded = self
             .loaded
             .load()
@@ -1065,14 +1061,12 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-deploy/targets@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name, version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-deploy/targets",
+            DEPLOY_VERSIONS,
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "credential-schema")
             .ok_or_else(|| {
@@ -1081,19 +1075,28 @@ impl ExtensionRuntime {
                 ))
             })?;
 
-        let func = instance
-            .get_typed_func::<(String,), (Result<String, ExtensionError>,)>(&mut store, &func_idx)
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+        let call_args = (target_id.to_string(),);
+        let mapped: Result<String, crate::types::HostExtensionError> = if version == "0.2.0" {
+            use crate::host_bindings::deploy_v02::greentic::extension_base0_2_0::types::ExtensionError as E2;
+            let func = instance
+                .get_typed_func::<(String,), (Result<String, E2>,)>(&mut store, &func_idx)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            let (r,) = func
+                .call(&mut store, call_args)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            r.map_err(crate::ext_error::from_deploy_v02)
+        } else {
+            use crate::host_bindings::deploy::greentic::extension_base0_1_0::types::ExtensionError as E1;
+            let func = instance
+                .get_typed_func::<(String,), (Result<String, E1>,)>(&mut store, &func_idx)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            let (r,) = func
+                .call(&mut store, call_args)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            r.map_err(crate::ext_error::from_deploy_v01)
+        };
 
-        let (result,) = func
-            .call(&mut store, (target_id.to_string(),))
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
-
-        result.map_err(|e| {
-            RuntimeError::Wasmtime(anyhow::anyhow!(
-                "extension returned error for credential-schema target '{target_id}': {e:?}"
-            ))
-        })
+        mapped.map_err(RuntimeError::Extension)
     }
 }
 
@@ -1122,14 +1125,12 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-deploy/targets@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name, _version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-deploy/targets",
+            DEPLOY_VERSIONS,
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "list-targets")
             .ok_or_else(|| {
