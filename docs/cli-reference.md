@@ -563,7 +563,7 @@ List all configured registries and the current default.
 ```
 $ gtdx registries list
 default: greentic-store
-  greentic-store  https://store.greentic.ai
+  greentic-store  https://store.greentic.cloud
   local-mirror    https://registry.corp.example.com
 ```
 

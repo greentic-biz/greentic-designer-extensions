@@ -49,7 +49,7 @@ limit.
 
 ```
                 ┌──────────────────────────────────────────────┐
-                │   Greentic Store  (store.greentic.ai)         │
+                │   Greentic Store  (store.greentic.cloud)      │
                 │   Developers upload · end-users discover      │
                 └────────────────────────┬──────────────────────┘
                                          │ HTTPS / OpenAPI

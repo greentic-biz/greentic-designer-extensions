@@ -75,7 +75,7 @@ APIs, webhooks, event streams).
 
 ```
    ┌─────────────────────────────────────────────────────────┐
-   │              Greentic Store (store.greentic.ai)         │
+   │              Greentic Store (store.greentic.cloud)      │
    │    Developers upload — end-users discover + install     │
    └────────────────────────┬────────────────────────────────┘
                             │ HTTP API
