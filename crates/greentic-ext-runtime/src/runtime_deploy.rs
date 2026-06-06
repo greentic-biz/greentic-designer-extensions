@@ -125,7 +125,9 @@ impl ExtensionRuntime {
             result.map_err(|e| RuntimeError::Deploy(err_to_host_v2(e)))
         } else {
             let func = instance
-                .get_typed_func::<(String,), (Result<(), WitExtensionError>,)>(&mut store, &func_idx)
+                .get_typed_func::<(String,), (Result<(), WitExtensionError>,)>(
+                    &mut store, &func_idx,
+                )
                 .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
             let (result,) = func
                 .call(&mut store, (job_id.to_string(),))

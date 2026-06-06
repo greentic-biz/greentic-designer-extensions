@@ -112,20 +112,34 @@ mod tests {
     #[test]
     fn design_v01_maps_lossless() {
         use crate::host_bindings::greentic::extension_base0_1_0::types::ExtensionError as V1;
-        assert!(matches!(from_design_v01(V1::InvalidInput("a".into())), H::InvalidInput(s) if s == "a"));
-        assert!(matches!(from_design_v01(V1::MissingCapability("b".into())), H::MissingCapability(s) if s == "b"));
-        assert!(matches!(from_design_v01(V1::PermissionDenied("c".into())), H::PermissionDenied(s) if s == "c"));
+        assert!(
+            matches!(from_design_v01(V1::InvalidInput("a".into())), H::InvalidInput(s) if s == "a")
+        );
+        assert!(
+            matches!(from_design_v01(V1::MissingCapability("b".into())), H::MissingCapability(s) if s == "b")
+        );
+        assert!(
+            matches!(from_design_v01(V1::PermissionDenied("c".into())), H::PermissionDenied(s) if s == "c")
+        );
         assert!(matches!(from_design_v01(V1::Internal("d".into())), H::Internal(s) if s == "d"));
     }
 
     #[test]
     fn design_v03_maps_all_six() {
         use crate::host_bindings::design_v03::greentic::extension_base0_2_0::types::ExtensionError as V2;
-        assert!(matches!(from_design_v03(V2::InvalidInput("a".into())), H::InvalidInput(s) if s == "a"));
-        assert!(matches!(from_design_v03(V2::MissingCapability("b".into())), H::MissingCapability(s) if s == "b"));
-        assert!(matches!(from_design_v03(V2::PermissionDenied("c".into())), H::PermissionDenied(s) if s == "c"));
+        assert!(
+            matches!(from_design_v03(V2::InvalidInput("a".into())), H::InvalidInput(s) if s == "a")
+        );
+        assert!(
+            matches!(from_design_v03(V2::MissingCapability("b".into())), H::MissingCapability(s) if s == "b")
+        );
+        assert!(
+            matches!(from_design_v03(V2::PermissionDenied("c".into())), H::PermissionDenied(s) if s == "c")
+        );
         assert!(matches!(from_design_v03(V2::NotFound("x".into())), H::NotFound(s) if s == "x"));
-        assert!(matches!(from_design_v03(V2::SchemaInvalid("y".into())), H::SchemaInvalid(s) if s == "y"));
+        assert!(
+            matches!(from_design_v03(V2::SchemaInvalid("y".into())), H::SchemaInvalid(s) if s == "y")
+        );
         assert!(matches!(from_design_v03(V2::Internal("z".into())), H::Internal(s) if s == "z"));
     }
 

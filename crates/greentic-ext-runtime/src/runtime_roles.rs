@@ -107,8 +107,12 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let (iface_idx, iface_name, _version) =
-            crate::runtime::resolve_iface_versions(&mut store, &instance, IFACE_BASE, ROLES_VERSIONS)?;
+        let (iface_idx, iface_name, _version) = crate::runtime::resolve_iface_versions(
+            &mut store,
+            &instance,
+            IFACE_BASE,
+            ROLES_VERSIONS,
+        )?;
 
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "validate-role")
@@ -398,8 +402,7 @@ fn wit_diagnostic_to_host_v03(
 
 fn target_to_wit_v03(
     t: TargetKind,
-) -> crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::TargetKind
-{
+) -> crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::TargetKind {
     use crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::TargetKind as Wit;
     match t {
         TargetKind::AdaptiveCard => Wit::AdaptiveCard,

@@ -46,8 +46,7 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let (iface_idx, iface_name, _version) =
-            resolve_dw_composer_iface(&mut store, &instance)?;
+        let (iface_idx, iface_name, _version) = resolve_dw_composer_iface(&mut store, &instance)?;
 
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "metadata")
@@ -104,8 +103,7 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let (iface_idx, iface_name, version) =
-            resolve_dw_composer_iface(&mut store, &instance)?;
+        let (iface_idx, iface_name, version) = resolve_dw_composer_iface(&mut store, &instance)?;
 
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "compose")
@@ -167,8 +165,7 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let (iface_idx, iface_name, _version) =
-            resolve_dw_composer_iface(&mut store, &instance)?;
+        let (iface_idx, iface_name, _version) = resolve_dw_composer_iface(&mut store, &instance)?;
 
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "validate")
@@ -211,8 +208,7 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let (iface_idx, iface_name, _version) =
-            resolve_dw_composer_iface(&mut store, &instance)?;
+        let (iface_idx, iface_name, _version) = resolve_dw_composer_iface(&mut store, &instance)?;
 
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "templates")

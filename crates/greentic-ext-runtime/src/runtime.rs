@@ -1215,7 +1215,14 @@ pub(crate) fn resolve_iface_versions(
     instance: &wasmtime::component::Instance,
     base: &str,
     versions: &[&'static str],
-) -> Result<(wasmtime::component::ComponentExportIndex, String, &'static str), RuntimeError> {
+) -> Result<
+    (
+        wasmtime::component::ComponentExportIndex,
+        String,
+        &'static str,
+    ),
+    RuntimeError,
+> {
     for &v in versions {
         let name = format!("{base}@{v}");
         if let Some(idx) = instance.get_export_index(&mut *store, None, &name) {
@@ -1237,8 +1244,7 @@ fn resolve_design_iface(
     instance: &wasmtime::component::Instance,
     base: &str,
 ) -> Result<(wasmtime::component::ComponentExportIndex, String), RuntimeError> {
-    resolve_iface_versions(store, instance, base, DESIGN_VERSIONS)
-        .map(|(idx, name, _)| (idx, name))
+    resolve_iface_versions(store, instance, base, DESIGN_VERSIONS).map(|(idx, name, _)| (idx, name))
 }
 
 fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {
