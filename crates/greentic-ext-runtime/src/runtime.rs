@@ -469,9 +469,9 @@ impl ExtensionRuntime {
     /// Invoke a named tool on a loaded extension.
     ///
     /// Builds a fresh wasmtime Store + Instance, calls
-    /// `greentic:extension-design/tools::invoke-tool` (resolved against
-    /// `@0.2.0` first, then `@0.1.0` for older extensions), and returns
-    /// the JSON result string.
+    /// `greentic:extension-design/tools::invoke-tool` (resolved
+    /// newest-first across 0.3.0/0.2.0/0.1.0; WIT errors surface as
+    /// `RuntimeError::Extension`), and returns the JSON result string.
     pub fn invoke_tool(
         &self,
         ext_id: &str,
@@ -497,8 +497,6 @@ impl ExtensionRuntime {
         args_json: &str,
         ctx: &crate::host_ports::HostCallContext,
     ) -> Result<String, RuntimeError> {
-        use crate::host_bindings::greentic::extension_base0_1_0::types::ExtensionError;
-
         let loaded = self
             .loaded
             .load()
@@ -512,10 +510,17 @@ impl ExtensionRuntime {
 
         // Resolve the nested export: first the interface instance, then the function.
         // This is the wasmtime 43 pattern: get_export_index(store, parent, name).
-        // Try @0.2.0 first; fall back to @0.1.0 for extensions still built against
-        // the original WIT (http, llm-generic, webhook, platform-bootstrap, ...).
-        let (iface_idx, iface_name) =
-            resolve_design_iface(&mut store, &instance, "greentic:extension-design/tools")?;
+        // The interface is resolved newest-first across the design version table;
+        // the matched version selects which `extension-error` ABI to deserialize
+        // (6-variant base at 0.3.0, 4-variant base at 0.2.0/0.1.0). The
+        // invoke-tool signature is identical across versions — only the error
+        // variant set differs.
+        let (iface_idx, iface_name, version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-design/tools",
+            DESIGN_VERSIONS,
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "invoke-tool")
             .ok_or_else(|| {
@@ -524,22 +529,29 @@ impl ExtensionRuntime {
                 ))
             })?;
 
-        let func = instance
-            .get_typed_func::<(String, String), (Result<String, ExtensionError>,)>(
-                &mut store, &func_idx,
-            )
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
-
-        let (result,) = func
-            .call(&mut store, (tool_name.to_string(), args_json.to_string()))
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+        let call_args = (tool_name.to_string(), args_json.to_string());
         // post_return is deprecated/no-op in wasmtime 43 — not called.
+        let mapped: Result<String, crate::types::HostExtensionError> = if version == "0.3.0" {
+            use crate::host_bindings::design_v03::greentic::extension_base0_2_0::types::ExtensionError as E2;
+            let func = instance
+                .get_typed_func::<(String, String), (Result<String, E2>,)>(&mut store, &func_idx)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            let (r,) = func
+                .call(&mut store, call_args)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            r.map_err(crate::ext_error::from_design_v03)
+        } else {
+            use crate::host_bindings::greentic::extension_base0_1_0::types::ExtensionError as E1;
+            let func = instance
+                .get_typed_func::<(String, String), (Result<String, E1>,)>(&mut store, &func_idx)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            let (r,) = func
+                .call(&mut store, call_args)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            r.map_err(crate::ext_error::from_design_v01)
+        };
 
-        result.map_err(|e| {
-            RuntimeError::Wasmtime(anyhow::anyhow!(
-                "extension returned error for tool '{tool_name}': {e:?}"
-            ))
-        })
+        mapped.map_err(RuntimeError::Extension)
     }
 }
 

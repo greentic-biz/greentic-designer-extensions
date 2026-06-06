@@ -5,9 +5,10 @@
 //!
 //! The scaffold's TODO-stub returns `ExtensionError::InvalidInput("unknown
 //! tool: <name>")` so a successful loop ends with the runtime surfacing that
-//! error back through the wasmtime dispatch — proving the full pipeline
-//! (scaffold → cargo-component build → pack → discovery → component
-//! instantiation → typed-function call → host-side error decoding) works.
+//! error as `RuntimeError::Extension(HostExtensionError::InvalidInput(..))` —
+//! proving the full pipeline (scaffold → cargo-component build → pack →
+//! discovery → component instantiation → typed-function call → host-side
+//! error decoding) works.
 //!
 //! Gated behind `GTDX_RUN_BUILD=1` because it requires cargo-component on
 //! PATH. Skips silently otherwise.
@@ -112,7 +113,7 @@ fn scaffolded_design_extension_loads_and_invoke_tool_returns_stub_error() {
 
     // 7. Invoke a tool — the scaffold implements `tools::invoke_tool` as a
     //    TODO-stub that always returns ExtensionError::InvalidInput. The
-    //    runtime wraps the guest error in RuntimeError::Wasmtime with the
+    //    runtime surfaces the guest error as RuntimeError::Extension with the
     //    original message preserved in its Display form.
     let result = rt.invoke_tool("com.example.demo", "something", "{}");
     match result {
