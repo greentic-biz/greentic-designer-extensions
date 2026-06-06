@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
-use crate::host_bindings::greentic::extension_host::{broker, http, i18n, logging, secrets};
-use crate::host_ports::{KeyTranslator, SecretsBackend, Translator};
+use crate::host_bindings::greentic::extension_host::{broker, http, i18n, llm, logging, secrets};
+use crate::host_ports::{KeyTranslator, LlmPort, SecretsBackend, Translator};
 use crate::url_matcher::UrlMatcher;
 use greentic_extension_sdk_contract::describe::Permissions;
 
@@ -22,6 +22,7 @@ pub struct HostState {
     translator: Arc<dyn Translator>,
     secrets_backend: Arc<dyn SecretsBackend>,
     http_client: Option<reqwest::blocking::Client>,
+    llm_port: Option<Arc<dyn LlmPort>>,
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     // WASI state — required because cargo-component-built WASM components
@@ -41,6 +42,7 @@ impl HostState {
             translator: Arc::new(KeyTranslator),
             secrets_backend: Arc::new(crate::host_ports::InMemorySecrets::new()),
             http_client: None,
+            llm_port: None,
             url_matcher: UrlMatcher::default(),
             runtime_weak: std::sync::Weak::new(),
             call_depth_start: 0,
@@ -70,6 +72,7 @@ pub struct HostStateBuilder {
     translator: Arc<dyn Translator>,
     secrets_backend: Arc<dyn SecretsBackend>,
     http_client: Option<reqwest::blocking::Client>,
+    llm_port: Option<Arc<dyn LlmPort>>,
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     call_depth_start: u32,
@@ -89,6 +92,11 @@ impl HostStateBuilder {
     #[must_use]
     pub fn http_client(mut self, c: Option<reqwest::blocking::Client>) -> Self {
         self.http_client = c;
+        self
+    }
+    #[must_use]
+    pub fn llm_port(mut self, p: Option<Arc<dyn LlmPort>>) -> Self {
+        self.llm_port = p;
         self
     }
     #[must_use]
@@ -118,6 +126,7 @@ impl HostStateBuilder {
             translator: self.translator,
             secrets_backend: self.secrets_backend,
             http_client: self.http_client,
+            llm_port: self.llm_port,
             url_matcher: self.url_matcher,
             runtime_weak: self.runtime_weak,
             wasi,
@@ -332,6 +341,66 @@ impl http::Host for HostState {
     }
 }
 
+impl llm::Host for HostState {
+    fn complete(&mut self, request: llm::LlmRequest) -> Result<llm::LlmResponse, String> {
+        // 1. Resolve the effective role from describe permissions. A `role_hint`
+        //    must be one the extension declared; with no hint we allow the sole
+        //    declared role and otherwise require disambiguation.
+        let declared = &self.permissions.llm_roles;
+        let role = match (&request.role_hint, declared.as_slice()) {
+            (Some(hint), roles) if roles.iter().any(|r| r == hint) => hint.clone(),
+            (Some(hint), _) => {
+                tracing::warn!(ext = %self.extension_id, requested = %hint, "llm role not permitted");
+                return Err(format!("llm role not permitted: {hint}"));
+            }
+            (None, [sole]) => sole.clone(),
+            (None, []) => {
+                return Err("llm role not permitted: extension declares no llm_roles".to_string());
+            }
+            (None, _many) => {
+                return Err(
+                    "llm role-hint required: extension declares multiple llm_roles".to_string(),
+                );
+            }
+        };
+
+        // 2. Resolve the port. Absent in unit tests and runtimes the host did
+        //    not wire for LLM use — surface a clean error rather than panic.
+        let Some(port) = self.llm_port.as_ref() else {
+            return Err("llm not configured for this runtime".to_string());
+        };
+
+        // 3. Map the WIT request onto the host port, call, map the response.
+        let port_req = crate::host_ports::LlmPortRequest {
+            system_prompt: request.system_prompt,
+            messages: request
+                .messages
+                .into_iter()
+                .map(|m| (m.role, m.content))
+                .collect(),
+            response_format: match request.response_format {
+                None | Some(llm::ResponseFormat::Text) => {
+                    crate::host_ports::LlmPortResponseFormat::Text
+                }
+                Some(llm::ResponseFormat::Json) => crate::host_ports::LlmPortResponseFormat::Json,
+                Some(llm::ResponseFormat::JsonSchema(s)) => {
+                    crate::host_ports::LlmPortResponseFormat::JsonSchema(s)
+                }
+            },
+        };
+        match port.complete(&self.extension_id, &role, port_req) {
+            Ok(r) => Ok(llm::LlmResponse {
+                content: r.content,
+                total_tokens: r.total_tokens,
+            }),
+            Err(e) => {
+                tracing::warn!(ext = %self.extension_id, %role, error = %e, "llm port error");
+                Err(e.to_string())
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -485,6 +554,108 @@ mod tests {
             .build();
         let err = h.get("api.openai.com/api_key".to_string()).unwrap_err();
         assert!(err.contains("not found"), "got: {err}");
+    }
+
+    /// In-test [`LlmPort`] that records the `extension_id` / `role` it was
+    /// called with and echoes the system prompt back. Asserts the host
+    /// resolved the expected role before forwarding.
+    struct FakeLlm {
+        expected_extension_id: String,
+        expected_role: String,
+    }
+
+    impl crate::host_ports::LlmPort for FakeLlm {
+        fn complete(
+            &self,
+            extension_id: &str,
+            role: &str,
+            request: crate::host_ports::LlmPortRequest,
+        ) -> Result<crate::host_ports::LlmPortResponse, crate::host_ports::LlmPortError> {
+            assert_eq!(extension_id, self.expected_extension_id, "extension_id");
+            assert_eq!(role, self.expected_role, "role");
+            Ok(crate::host_ports::LlmPortResponse {
+                content: format!("echo:{}", request.system_prompt),
+                total_tokens: Some(7),
+            })
+        }
+    }
+
+    fn llm_request(role_hint: Option<&str>) -> llm::LlmRequest {
+        llm::LlmRequest {
+            role_hint: role_hint.map(str::to_string),
+            system_prompt: "you are a composer".to_string(),
+            messages: vec![],
+            response_format: None,
+        }
+    }
+
+    #[test]
+    fn llm_complete_resolves_sole_declared_role() {
+        use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
+
+        let mut perms = Permissions::default();
+        perms.llm_roles.push("sorla_composer".to_string());
+        let port = Arc::new(FakeLlm {
+            expected_extension_id: "test-ext".to_string(),
+            expected_role: "sorla_composer".to_string(),
+        });
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .llm_port(Some(port))
+            .build();
+
+        let resp = h
+            .complete(llm_request(None))
+            .expect("complete should succeed");
+        assert_eq!(resp.content, "echo:you are a composer");
+        assert_eq!(resp.total_tokens, Some(7));
+    }
+
+    #[test]
+    fn llm_complete_rejects_undeclared_role() {
+        use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
+
+        let perms = Permissions::default(); // no llm_roles declared
+        let port = Arc::new(FakeLlm {
+            expected_extension_id: "test-ext".to_string(),
+            expected_role: "sorla_composer".to_string(),
+        });
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .llm_port(Some(port))
+            .build();
+
+        let err = h.complete(llm_request(Some("sorla_composer"))).unwrap_err();
+        assert!(err.contains("llm role not permitted"), "got: {err}");
+    }
+
+    #[test]
+    fn llm_complete_without_port_errors() {
+        use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
+
+        let mut perms = Permissions::default();
+        perms.llm_roles.push("sorla_composer".to_string());
+        let mut h = HostState::builder("test-ext".to_string(), perms).build();
+
+        let err = h.complete(llm_request(None)).unwrap_err();
+        assert!(err.contains("llm not configured"), "got: {err}");
+    }
+
+    #[test]
+    fn llm_complete_requires_hint_when_multiple_roles() {
+        use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
+
+        let mut perms = Permissions::default();
+        perms.llm_roles.push("a".to_string());
+        perms.llm_roles.push("b".to_string());
+        let port = Arc::new(FakeLlm {
+            expected_extension_id: "test-ext".to_string(),
+            expected_role: "unused".to_string(),
+        });
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .llm_port(Some(port))
+            .build();
+
+        let err = h.complete(llm_request(None)).unwrap_err();
+        assert!(err.contains("role-hint required"), "got: {err}");
     }
 
     #[test]
