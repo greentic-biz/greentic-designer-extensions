@@ -108,7 +108,6 @@ pub(crate) fn from_composer_v01(msg: String) -> H {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::HostExtensionError as H;
 
     #[test]
     fn design_v01_maps_lossless() {

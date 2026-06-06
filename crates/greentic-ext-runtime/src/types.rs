@@ -245,6 +245,7 @@ impl HostExtensionError {
     /// Stable kebab-case code matching the WIT `extension-error` variant
     /// name. This string is the wire contract for the designer's
     /// `{ok, data, error}` envelope — never rename existing codes.
+    #[must_use]
     pub fn code(&self) -> &'static str {
         match self {
             Self::InvalidInput(_) => "invalid-input",
