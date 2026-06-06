@@ -23,6 +23,10 @@ pub struct HostState {
     secrets_backend: Arc<dyn SecretsBackend>,
     http_client: Option<reqwest::blocking::Client>,
     llm_port: Option<Arc<dyn LlmPort>>,
+    /// Tenant slug of the end caller for this dispatch, threaded from the
+    /// host's per-call [`crate::host_ports::HostCallContext`]. `None` when the
+    /// host runs single-tenant/dev.
+    call_tenant: Option<String>,
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     // WASI state — required because cargo-component-built WASM components
@@ -43,6 +47,7 @@ impl HostState {
             secrets_backend: Arc::new(crate::host_ports::InMemorySecrets::new()),
             http_client: None,
             llm_port: None,
+            call_tenant: None,
             url_matcher: UrlMatcher::default(),
             runtime_weak: std::sync::Weak::new(),
             call_depth_start: 0,
@@ -73,6 +78,7 @@ pub struct HostStateBuilder {
     secrets_backend: Arc<dyn SecretsBackend>,
     http_client: Option<reqwest::blocking::Client>,
     llm_port: Option<Arc<dyn LlmPort>>,
+    call_tenant: Option<String>,
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     call_depth_start: u32,
@@ -97,6 +103,13 @@ impl HostStateBuilder {
     #[must_use]
     pub fn llm_port(mut self, p: Option<Arc<dyn LlmPort>>) -> Self {
         self.llm_port = p;
+        self
+    }
+    /// Set the tenant slug of the end caller for this dispatch. Threaded into
+    /// host ports (today the LLM port) so the host can resolve per-tenant.
+    #[must_use]
+    pub fn call_tenant(mut self, tenant: Option<String>) -> Self {
+        self.call_tenant = tenant;
         self
     }
     #[must_use]
@@ -127,6 +140,7 @@ impl HostStateBuilder {
             secrets_backend: self.secrets_backend,
             http_client: self.http_client,
             llm_port: self.llm_port,
+            call_tenant: self.call_tenant,
             url_matcher: self.url_matcher,
             runtime_weak: self.runtime_weak,
             wasi,
@@ -388,7 +402,12 @@ impl llm::Host for HostState {
                 }
             },
         };
-        match port.complete(&self.extension_id, &role, port_req) {
+        match port.complete(
+            &self.extension_id,
+            self.call_tenant.as_deref(),
+            &role,
+            port_req,
+        ) {
             Ok(r) => Ok(llm::LlmResponse {
                 content: r.content,
                 total_tokens: r.total_tokens,
@@ -556,11 +575,17 @@ mod tests {
         assert!(err.contains("not found"), "got: {err}");
     }
 
-    /// In-test [`LlmPort`] that records the `extension_id` / `role` it was
-    /// called with and echoes the system prompt back. Asserts the host
-    /// resolved the expected role before forwarding.
+    /// In-test [`LlmPort`] that records the `extension_id` / `tenant` / `role`
+    /// it was called with and echoes the system prompt back. Asserts the host
+    /// resolved the expected role and threaded the expected tenant before
+    /// forwarding.
+    ///
+    /// `expected_*` prefix is deliberate (these are the values the port asserts
+    /// against, not generic data), so the shared-prefix lint is silenced here.
+    #[allow(clippy::struct_field_names)]
     struct FakeLlm {
         expected_extension_id: String,
+        expected_tenant: Option<String>,
         expected_role: String,
     }
 
@@ -568,10 +593,12 @@ mod tests {
         fn complete(
             &self,
             extension_id: &str,
+            tenant: Option<&str>,
             role: &str,
             request: crate::host_ports::LlmPortRequest,
         ) -> Result<crate::host_ports::LlmPortResponse, crate::host_ports::LlmPortError> {
             assert_eq!(extension_id, self.expected_extension_id, "extension_id");
+            assert_eq!(tenant, self.expected_tenant.as_deref(), "tenant");
             assert_eq!(role, self.expected_role, "role");
             Ok(crate::host_ports::LlmPortResponse {
                 content: format!("echo:{}", request.system_prompt),
@@ -597,10 +624,12 @@ mod tests {
         perms.llm_roles.push("sorla_composer".to_string());
         let port = Arc::new(FakeLlm {
             expected_extension_id: "test-ext".to_string(),
+            expected_tenant: Some("acme".to_string()),
             expected_role: "sorla_composer".to_string(),
         });
         let mut h = HostState::builder("test-ext".to_string(), perms)
             .llm_port(Some(port))
+            .call_tenant(Some("acme".into()))
             .build();
 
         let resp = h
@@ -611,12 +640,36 @@ mod tests {
     }
 
     #[test]
+    fn llm_complete_passes_none_tenant_by_default() {
+        use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
+
+        let mut perms = Permissions::default();
+        perms.llm_roles.push("sorla_composer".to_string());
+        let port = Arc::new(FakeLlm {
+            expected_extension_id: "test-ext".to_string(),
+            expected_tenant: None,
+            expected_role: "sorla_composer".to_string(),
+        });
+        // No `.call_tenant(...)` in the builder chain — the host runs
+        // single-tenant/dev, so the port must observe `None`.
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .llm_port(Some(port))
+            .build();
+
+        let resp = h
+            .complete(llm_request(None))
+            .expect("complete should succeed");
+        assert_eq!(resp.content, "echo:you are a composer");
+    }
+
+    #[test]
     fn llm_complete_rejects_undeclared_role() {
         use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
 
         let perms = Permissions::default(); // no llm_roles declared
         let port = Arc::new(FakeLlm {
             expected_extension_id: "test-ext".to_string(),
+            expected_tenant: None,
             expected_role: "sorla_composer".to_string(),
         });
         let mut h = HostState::builder("test-ext".to_string(), perms)
@@ -648,6 +701,7 @@ mod tests {
         perms.llm_roles.push("b".to_string());
         let port = Arc::new(FakeLlm {
             expected_extension_id: "test-ext".to_string(),
+            expected_tenant: None,
             expected_role: "unused".to_string(),
         });
         let mut h = HostState::builder("test-ext".to_string(), perms)

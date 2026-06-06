@@ -98,7 +98,11 @@ impl ExtensionRuntime {
             .cloned()
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
         loaded
-            .build_store_and_instance(self.engine(), self.host_overrides().clone())
+            .build_store_and_instance(
+                self.engine(),
+                self.host_overrides().clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)
     }
 }

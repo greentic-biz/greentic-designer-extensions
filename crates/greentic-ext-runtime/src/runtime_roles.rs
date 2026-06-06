@@ -31,7 +31,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(self.engine(), self.host_overrides().clone())
+            .build_store_and_instance(
+                self.engine(),
+                self.host_overrides().clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let Some(iface_idx) = instance.get_export_index(&mut store, None, IFACE_NAME) else {
@@ -77,7 +81,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(self.engine(), self.host_overrides().clone())
+            .build_store_and_instance(
+                self.engine(),
+                self.host_overrides().clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_idx = instance
@@ -135,7 +143,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RoleError::UnknownRole(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(self.engine(), self.host_overrides().clone())
+            .build_store_and_instance(
+                self.engine(),
+                self.host_overrides().clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(|e| {
                 RoleError::Host(HostExtensionError::Internal(format!(
                     "instantiate '{ext_id}': {e}"

@@ -37,7 +37,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(self.engine(), self.host_overrides().clone())
+            .build_store_and_instance(
+                self.engine(),
+                self.host_overrides().clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) = resolve_dw_composer_iface(&mut store, &instance)?;
@@ -88,7 +92,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(self.engine(), self.host_overrides().clone())
+            .build_store_and_instance(
+                self.engine(),
+                self.host_overrides().clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) = resolve_dw_composer_iface(&mut store, &instance)?;
@@ -135,7 +143,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(self.engine(), self.host_overrides().clone())
+            .build_store_and_instance(
+                self.engine(),
+                self.host_overrides().clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) = resolve_dw_composer_iface(&mut store, &instance)?;
@@ -174,7 +186,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(self.engine(), self.host_overrides().clone())
+            .build_store_and_instance(
+                self.engine(),
+                self.host_overrides().clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) = resolve_dw_composer_iface(&mut store, &instance)?;

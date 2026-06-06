@@ -478,6 +478,25 @@ impl ExtensionRuntime {
         tool_name: &str,
         args_json: &str,
     ) -> Result<String, RuntimeError> {
+        self.invoke_tool_ctx(
+            ext_id,
+            tool_name,
+            args_json,
+            &crate::host_ports::HostCallContext::default(),
+        )
+    }
+
+    /// Like [`Self::invoke_tool`] but threads a per-call
+    /// [`crate::host_ports::HostCallContext`] (e.g. the caller's tenant slug)
+    /// into the host ports for this dispatch. Multi-tenant hosts (the
+    /// designer) use this so the LLM port can resolve roles per-tenant.
+    pub fn invoke_tool_ctx(
+        &self,
+        ext_id: &str,
+        tool_name: &str,
+        args_json: &str,
+        ctx: &crate::host_ports::HostCallContext,
+    ) -> Result<String, RuntimeError> {
         use crate::host_bindings::greentic::extension_base::types::ExtensionError;
 
         let loaded = self
@@ -488,7 +507,7 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
+            .build_store_and_instance(&self.engine, self.config.host_overrides.clone(), ctx)
             .map_err(RuntimeError::Wasmtime)?;
 
         // Resolve the nested export: first the interface instance, then the function.
@@ -557,7 +576,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) = resolve_design_iface(
@@ -651,7 +674,11 @@ impl ExtensionRuntime {
 
         // v1 WIT-call path.
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) =
@@ -705,7 +732,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) =
@@ -757,7 +788,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) =
@@ -801,7 +836,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) =
@@ -857,7 +896,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let (iface_idx, iface_name) =
@@ -914,7 +957,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-deploy/targets@0.1.0";
@@ -975,7 +1022,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-deploy/targets@0.1.0";
@@ -1028,7 +1079,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-deploy/targets@0.1.0";
@@ -1146,7 +1201,11 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone())
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
             .map_err(RuntimeError::Wasmtime)?;
 
         let iface_name = "greentic:extension-bundle/bundling@0.1.0";
