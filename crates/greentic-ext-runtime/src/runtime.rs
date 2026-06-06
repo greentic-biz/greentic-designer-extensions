@@ -1233,8 +1233,11 @@ impl ExtensionRuntime {
     /// extension wants written.
     ///
     /// Returns `RuntimeError::NotFound` when no extension is loaded
-    /// at `ext_id`, and surfaces every other failure as
-    /// `RuntimeError::Wasmtime` with the WIT-level error attached.
+    /// at `ext_id`. The `bundling` interface is resolved newest-first
+    /// across `@0.2.0`/`@0.1.0`; host-level failures surface as
+    /// `RuntimeError::Wasmtime`, while the extension's WIT-level error
+    /// surfaces as `RuntimeError::Extension` (6-variant base at `@0.2.0`,
+    /// 4-variant base at `@0.1.0`).
     pub fn render_bundle(
         &self,
         ext_id: &str,
@@ -1242,11 +1245,6 @@ impl ExtensionRuntime {
         config_json: &str,
         session: crate::types::BundleSession,
     ) -> Result<crate::types::BundleArtifact, RuntimeError> {
-        use crate::host_bindings::bundle::exports::greentic::extension_bundle0_1_0::bundling::{
-            BundleArtifact as WitBundleArtifact, DesignerSession as WitDesignerSession,
-        };
-        use crate::host_bindings::bundle::greentic::extension_base0_1_0::types::ExtensionError;
-
         let loaded = self
             .loaded
             .load()
@@ -1262,14 +1260,12 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-bundle/bundling@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name, version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-bundle/bundling",
+            BUNDLE_VERSIONS,
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "render")
             .ok_or_else(|| {
@@ -1278,38 +1274,68 @@ impl ExtensionRuntime {
                 ))
             })?;
 
-        let func = instance
-            .get_typed_func::<
-                (String, String, WitDesignerSession),
-                (Result<WitBundleArtifact, ExtensionError>,),
-            >(&mut store, &func_idx)
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+        let mapped: Result<crate::types::BundleArtifact, crate::types::HostExtensionError> =
+            if version == "0.2.0" {
+                use crate::host_bindings::bundle_v02::exports::greentic::extension_bundle0_2_0::bundling::{
+                    BundleArtifact as WitBundleArtifact, DesignerSession as WitDesignerSession,
+                };
+                use crate::host_bindings::bundle_v02::greentic::extension_base0_2_0::types::ExtensionError as E2;
+                let func = instance
+                    .get_typed_func::<
+                        (String, String, WitDesignerSession),
+                        (Result<WitBundleArtifact, E2>,),
+                    >(&mut store, &func_idx)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                let wit_session = WitDesignerSession {
+                    flows_json: session.flows_json,
+                    contents_json: session.contents_json,
+                    assets: session.assets,
+                    capabilities_used: session.capabilities_used,
+                };
+                let (r,) = func
+                    .call(
+                        &mut store,
+                        (recipe_id.to_string(), config_json.to_string(), wit_session),
+                    )
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                r.map(|a| crate::types::BundleArtifact {
+                    filename: a.filename,
+                    bytes: a.bytes,
+                    sha256: a.sha256,
+                })
+                .map_err(crate::ext_error::from_bundle_v02)
+            } else {
+                use crate::host_bindings::bundle::exports::greentic::extension_bundle0_1_0::bundling::{
+                    BundleArtifact as WitBundleArtifact, DesignerSession as WitDesignerSession,
+                };
+                use crate::host_bindings::bundle::greentic::extension_base0_1_0::types::ExtensionError as E1;
+                let func = instance
+                    .get_typed_func::<
+                        (String, String, WitDesignerSession),
+                        (Result<WitBundleArtifact, E1>,),
+                    >(&mut store, &func_idx)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                let wit_session = WitDesignerSession {
+                    flows_json: session.flows_json,
+                    contents_json: session.contents_json,
+                    assets: session.assets,
+                    capabilities_used: session.capabilities_used,
+                };
+                let (r,) = func
+                    .call(
+                        &mut store,
+                        (recipe_id.to_string(), config_json.to_string(), wit_session),
+                    )
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                r.map(|a| crate::types::BundleArtifact {
+                    filename: a.filename,
+                    bytes: a.bytes,
+                    sha256: a.sha256,
+                })
+                .map_err(crate::ext_error::from_bundle_v01)
+            };
 
-        let wit_session = WitDesignerSession {
-            flows_json: session.flows_json,
-            contents_json: session.contents_json,
-            assets: session.assets,
-            capabilities_used: session.capabilities_used,
-        };
-
-        let (result,) = func
-            .call(
-                &mut store,
-                (recipe_id.to_string(), config_json.to_string(), wit_session),
-            )
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
-
-        let artifact = result.map_err(|e| {
-            RuntimeError::Wasmtime(anyhow::anyhow!(
-                "extension '{ext_id}' returned error rendering recipe '{recipe_id}': {e:?}"
-            ))
-        })?;
-
-        Ok(crate::types::BundleArtifact {
-            filename: artifact.filename,
-            bytes: artifact.bytes,
-            sha256: artifact.sha256,
-        })
+        mapped.map_err(RuntimeError::Extension)
     }
 }
 
