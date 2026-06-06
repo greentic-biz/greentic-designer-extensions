@@ -80,7 +80,7 @@ impl LoadedExtension {
         host_overrides: HostOverrides,
     ) -> anyhow::Result<(Store<HostState>, Instance)> {
         use crate::host_bindings::greentic::extension_host::{
-            broker, http, i18n, logging, secrets,
+            broker, http, i18n, llm, logging, secrets,
         };
 
         let mut linker: Linker<HostState> = Linker::new(engine);
@@ -95,6 +95,7 @@ impl LoadedExtension {
         secrets::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         broker::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         http::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
+        llm::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
 
         // Per-extension network allow-list: an extension that declares
         // `runtime.permissions.network` gets a matcher built from exactly those
@@ -113,6 +114,7 @@ impl LoadedExtension {
         .translator(host_overrides.translator)
         .secrets_backend(host_overrides.secrets_backend)
         .http_client(host_overrides.http_client)
+        .llm_port(host_overrides.llm_port)
         .url_matcher(url_matcher)
         .runtime_weak(host_overrides.runtime_weak)
         .call_depth_start(host_overrides.call_depth_start)
@@ -243,6 +245,7 @@ pub struct HostOverrides {
     pub translator: std::sync::Arc<dyn crate::host_ports::Translator>,
     pub secrets_backend: std::sync::Arc<dyn crate::host_ports::SecretsBackend>,
     pub http_client: Option<reqwest::blocking::Client>,
+    pub llm_port: Option<std::sync::Arc<dyn crate::host_ports::LlmPort>>,
     pub url_matcher: crate::url_matcher::UrlMatcher,
     pub runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     pub call_depth_start: u32,
@@ -260,6 +263,7 @@ impl std::fmt::Debug for HostOverrides {
                 "http_client",
                 &self.http_client.as_ref().map(|_| "<Client>"),
             )
+            .field("llm_port", &self.llm_port.as_ref().map(|_| "<dyn LlmPort>"))
             .field("url_matcher", &self.url_matcher)
             .field(
                 "runtime_weak",
@@ -305,6 +309,7 @@ impl Default for HostOverrides {
             translator: std::sync::Arc::new(crate::host_ports::KeyTranslator),
             secrets_backend: std::sync::Arc::new(crate::host_ports::InMemorySecrets::new()),
             http_client: None,
+            llm_port: None,
             url_matcher: crate::url_matcher::UrlMatcher::default(),
             runtime_weak: std::sync::Weak::new(),
             call_depth_start: 0,

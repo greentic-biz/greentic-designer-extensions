@@ -86,6 +86,60 @@ impl SecretsBackend for InMemorySecrets {
     }
 }
 
+/// Chat-completion request forwarded to the host. Credential-free by design:
+/// the host resolves provider/model/key from the resolved `role`.
+#[derive(Debug, Clone)]
+pub struct LlmPortRequest {
+    pub system_prompt: String,
+    /// (role, content) pairs; role is "system" | "user" | "assistant".
+    pub messages: Vec<(String, String)>,
+    pub response_format: LlmPortResponseFormat,
+}
+
+/// Desired shape of the completion output. `Text` is the default; `Json`
+/// requests a free-form JSON object; `JsonSchema` carries a serialized JSON
+/// Schema the host should constrain the model to.
+#[derive(Debug, Clone, Default)]
+pub enum LlmPortResponseFormat {
+    #[default]
+    Text,
+    Json,
+    JsonSchema(String),
+}
+
+/// Successful completion result returned by the host.
+#[derive(Debug, Clone)]
+pub struct LlmPortResponse {
+    pub content: String,
+    pub total_tokens: Option<u32>,
+}
+
+/// Errors the runtime surfaces when an LLM completion fails. Mirrors
+/// [`SecretsError`]'s plain-enum + `thiserror` style so `host_state` can
+/// stringify the failure for the WIT `result<_, string>` boundary.
+#[derive(Debug, Error)]
+pub enum LlmPortError {
+    /// The resolved role is not assigned to the extension (or the host has
+    /// no mapping for it). Carries the offending role name.
+    #[error("llm role unassigned: {0}")]
+    RoleUnassigned(String),
+    /// The host LLM backend failed (network, provider, quota, etc.).
+    #[error("backend error: {0}")]
+    Backend(String),
+}
+
+/// Host port for LLM completions, implemented by the embedding host
+/// (designer maps it onto its per-tenant `llm_for(role)` seam).
+/// Synchronous on purpose: wasmtime host fns are wired with the sync linker.
+pub trait LlmPort: Send + Sync {
+    fn complete(
+        &self,
+        extension_id: &str,
+        role: &str,
+        request: LlmPortRequest,
+    ) -> Result<LlmPortResponse, LlmPortError>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

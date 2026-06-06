@@ -218,6 +218,7 @@ and path is a slash-separated capability path. Examples:
 | `permissions.network` | string[] | No | HTTPS origin allowlist. Unspecified = no network access. |
 | `permissions.secrets` | string[] | No | Secret URI patterns the extension may read via the host `secrets` interface. |
 | `permissions.callExtensionKinds` | enum[] | No | Extension kinds this extension may call via the broker. Values: `design`, `bundle`, `deploy`. |
+| `permissions.llmRoles` | array of strings | optional | LLM role wire names (e.g. `sorla_composer`) the extension may request via the `greentic:extension-host/llm` import. The host resolves each role to a tenant-configured provider. Empty/absent = the extension may not call the llm import. With exactly one declared role, `role-hint` may be omitted in requests; with multiple, it is required. |
 
 **Default-deny:** All permission fields default to empty — the extension is
 denied until explicitly granted. An extension that leaves `network` empty
