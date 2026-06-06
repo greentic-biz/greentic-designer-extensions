@@ -830,16 +830,16 @@ impl ExtensionRuntime {
 
     /// Retrieve a single knowledge entry by ID.
     ///
-    /// Calls `greentic:extension-design/knowledge::get-entry`
-    /// (resolved against `@0.2.0` first, then `@0.1.0`).
+    /// Calls `greentic:extension-design/knowledge::get-entry`, resolving the
+    /// interface newest-first across `@0.3.0`/`@0.2.0`/`@0.1.0`. The matched
+    /// version selects which `extension-error` ABI to deserialize (6-variant
+    /// base at `@0.3.0`, 4-variant base at `@0.2.0`/`@0.1.0`); WIT errors
+    /// surface as `RuntimeError::Extension`.
     pub fn knowledge_get(
         &self,
         ext_id: &str,
         entry_id: &str,
     ) -> Result<crate::types::KnowledgeEntry, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::Entry as WitEntry;
-        use crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::ExtensionError;
-
         let loaded = self
             .loaded
             .load()
@@ -855,8 +855,12 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let (iface_idx, iface_name) =
-            resolve_design_iface(&mut store, &instance, "greentic:extension-design/knowledge")?;
+        let (iface_idx, iface_name, version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-design/knowledge",
+            DESIGN_VERSIONS,
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "get-entry")
             .ok_or_else(|| {
@@ -865,27 +869,47 @@ impl ExtensionRuntime {
                 ))
             })?;
 
-        let func = instance
-            .get_typed_func::<(String,), (Result<WitEntry, ExtensionError>,)>(&mut store, &func_idx)
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+        let call_args = (entry_id.to_string(),);
+        let mapped: Result<crate::types::KnowledgeEntry, crate::types::HostExtensionError> =
+            if version == "0.3.0" {
+                use crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::knowledge::{
+                    Entry as WitEntry, ExtensionError as E2,
+                };
+                let func = instance
+                    .get_typed_func::<(String,), (Result<WitEntry, E2>,)>(&mut store, &func_idx)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                let (r,) = func
+                    .call(&mut store, call_args)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                r.map(|e| crate::types::KnowledgeEntry {
+                    id: e.id,
+                    title: e.title,
+                    category: e.category,
+                    tags: e.tags,
+                    content_json: e.content_json,
+                })
+                .map_err(crate::ext_error::from_design_v03)
+            } else {
+                use crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::{
+                    Entry as WitEntry, ExtensionError as E1,
+                };
+                let func = instance
+                    .get_typed_func::<(String,), (Result<WitEntry, E1>,)>(&mut store, &func_idx)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                let (r,) = func
+                    .call(&mut store, call_args)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                r.map(|e| crate::types::KnowledgeEntry {
+                    id: e.id,
+                    title: e.title,
+                    category: e.category,
+                    tags: e.tags,
+                    content_json: e.content_json,
+                })
+                .map_err(crate::ext_error::from_design_v01)
+            };
 
-        let (result,) = func
-            .call(&mut store, (entry_id.to_string(),))
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
-
-        result
-            .map(|e| crate::types::KnowledgeEntry {
-                id: e.id,
-                title: e.title,
-                category: e.category,
-                tags: e.tags,
-                content_json: e.content_json,
-            })
-            .map_err(|e| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension returned error for get-entry '{entry_id}': {e:?}"
-                ))
-            })
+        mapped.map_err(RuntimeError::Extension)
     }
 
     /// Suggest knowledge entries matching a query.
