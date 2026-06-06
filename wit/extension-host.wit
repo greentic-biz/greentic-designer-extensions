@@ -46,20 +46,25 @@ interface http {
   fetch: func(req: request) -> result<response, string>;
 }
 
+/// Host interface for invoking tenant-configured LLM providers.
 interface llm {
   record llm-message {
-    role: string,        // "system" | "user" | "assistant"
+    /// Message role: "system", "user", or "assistant".
+    role: string,
     content: string,
   }
   variant response-format {
     text,
     json,
-    json-schema(string), // serialized JSON Schema
+    /// Constrain output to a serialized JSON Schema document.
+    json-schema(string),
   }
   record llm-request {
-    // LLM role wire name (e.g. "sorla_composer"). none = the extension's
-    // single declared llm-roles entry. Must be present in the extension's
-    // describe.runtime.permissions.llmRoles.
+    /// LLM role wire name as declared in the extension's
+    /// `describe.runtime.permissions.llmRoles` list. Pass `none` when the
+    /// extension declares exactly one role (the host selects it); required
+    /// when multiple roles are declared. Roles outside the declared list
+    /// are rejected.
     role-hint: option<string>,
     system-prompt: string,
     messages: list<llm-message>,
