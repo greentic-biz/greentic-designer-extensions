@@ -219,6 +219,11 @@ pub struct CompileContext {
 /// Host-level failure that a role compiler may surface. Mirrored here
 /// so [`RoleError::Host`] can carry the variant without dragging in
 /// the bindgen-generated type at the public API boundary.
+///
+/// The `code()` method returns a stable kebab-case string that matches
+/// the WIT `extension-error` variant name — used as the wire contract
+/// for the designer's `{ok, data, error}` response envelope. Never
+/// rename existing codes without a wire-breaking version bump.
 #[derive(Debug, Clone, thiserror::Error, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "kind", content = "message")]
 pub enum HostExtensionError {
@@ -228,8 +233,28 @@ pub enum HostExtensionError {
     MissingCapability(String),
     #[error("permission denied: {0}")]
     PermissionDenied(String),
+    #[error("not found: {0}")]
+    NotFound(String),
+    #[error("schema invalid: {0}")]
+    SchemaInvalid(String),
     #[error("internal: {0}")]
     Internal(String),
+}
+
+impl HostExtensionError {
+    /// Stable kebab-case code matching the WIT `extension-error` variant
+    /// name. This string is the wire contract for the designer's
+    /// `{ok, data, error}` envelope — never rename existing codes.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidInput(_) => "invalid-input",
+            Self::MissingCapability(_) => "missing-capability",
+            Self::PermissionDenied(_) => "permission-denied",
+            Self::NotFound(_) => "not-found",
+            Self::SchemaInvalid(_) => "schema-invalid",
+            Self::Internal(_) => "internal",
+        }
+    }
 }
 
 /// Host-side mirror of WIT
@@ -254,6 +279,27 @@ pub enum RoleError {
     VersionNotSupported(u32),
     #[error("host: {0}")]
     Host(#[from] HostExtensionError),
+}
+
+#[cfg(test)]
+mod host_extension_error_tests {
+    use super::*;
+
+    #[test]
+    fn host_extension_error_codes_are_stable_kebab() {
+        use super::HostExtensionError as E;
+        let cases = [
+            (E::InvalidInput("x".into()), "invalid-input"),
+            (E::MissingCapability("x".into()), "missing-capability"),
+            (E::PermissionDenied("x".into()), "permission-denied"),
+            (E::NotFound("x".into()), "not-found"),
+            (E::SchemaInvalid("x".into()), "schema-invalid"),
+            (E::Internal("x".into()), "internal"),
+        ];
+        for (e, code) in cases {
+            assert_eq!(e.code(), code);
+        }
+    }
 }
 
 #[cfg(test)]
