@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Unified 6-variant `extension-error` WIT contract with host dual-support.**
+  `extension-base@0.2.0` adds `not-found` + `schema-invalid`; design@0.3.0,
+  bundle/deploy/provider/dw-composer/runtime-side@0.2.0 adopt it. provider drops
+  its local 3-variant error; dw-composer `compose` returns `extension-error`
+  instead of a bare string. The runtime resolves each extension's contract
+  version at dispatch and maps old (4-variant) and new (6-variant) errors into
+  a single typed `RuntimeError::Extension` / `RoleError` / `DeployExtensionError`
+  surface — legacy extensions keep working, with a one-shot deprecation warning.
+
 ### Added (security)
 
 - **Loopback-http rule for extension network allow-lists.** A declared

@@ -469,9 +469,9 @@ impl ExtensionRuntime {
     /// Invoke a named tool on a loaded extension.
     ///
     /// Builds a fresh wasmtime Store + Instance, calls
-    /// `greentic:extension-design/tools::invoke-tool` (resolved against
-    /// `@0.2.0` first, then `@0.1.0` for older extensions), and returns
-    /// the JSON result string.
+    /// `greentic:extension-design/tools::invoke-tool` (resolved
+    /// newest-first across 0.3.0/0.2.0/0.1.0; WIT errors surface as
+    /// `RuntimeError::Extension`), and returns the JSON result string.
     pub fn invoke_tool(
         &self,
         ext_id: &str,
@@ -497,8 +497,6 @@ impl ExtensionRuntime {
         args_json: &str,
         ctx: &crate::host_ports::HostCallContext,
     ) -> Result<String, RuntimeError> {
-        use crate::host_bindings::greentic::extension_base::types::ExtensionError;
-
         let loaded = self
             .loaded
             .load()
@@ -512,10 +510,18 @@ impl ExtensionRuntime {
 
         // Resolve the nested export: first the interface instance, then the function.
         // This is the wasmtime 43 pattern: get_export_index(store, parent, name).
-        // Try @0.2.0 first; fall back to @0.1.0 for extensions still built against
-        // the original WIT (http, llm-generic, webhook, platform-bootstrap, ...).
-        let (iface_idx, iface_name) =
-            resolve_design_iface(&mut store, &instance, "greentic:extension-design/tools")?;
+        // The interface is resolved newest-first across the design version table;
+        // the matched version selects which `extension-error` ABI to deserialize
+        // (6-variant base at 0.3.0, 4-variant base at 0.2.0/0.1.0). The
+        // invoke-tool signature is identical across versions — only the error
+        // variant set differs.
+        let (iface_idx, iface_name, version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-design/tools",
+            DESIGN_VERSIONS,
+        )?;
+        warn_if_legacy_contract(ext_id, version, DESIGN_VERSIONS[0]);
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "invoke-tool")
             .ok_or_else(|| {
@@ -524,22 +530,29 @@ impl ExtensionRuntime {
                 ))
             })?;
 
-        let func = instance
-            .get_typed_func::<(String, String), (Result<String, ExtensionError>,)>(
-                &mut store, &func_idx,
-            )
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
-
-        let (result,) = func
-            .call(&mut store, (tool_name.to_string(), args_json.to_string()))
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+        let call_args = (tool_name.to_string(), args_json.to_string());
         // post_return is deprecated/no-op in wasmtime 43 — not called.
+        let mapped: Result<String, crate::types::HostExtensionError> = if version == "0.3.0" {
+            use crate::host_bindings::design_v03::greentic::extension_base0_2_0::types::ExtensionError as E2;
+            let func = instance
+                .get_typed_func::<(String, String), (Result<String, E2>,)>(&mut store, &func_idx)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            let (r,) = func
+                .call(&mut store, call_args)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            r.map_err(crate::ext_error::from_design_v03)
+        } else {
+            use crate::host_bindings::greentic::extension_base0_1_0::types::ExtensionError as E1;
+            let func = instance
+                .get_typed_func::<(String, String), (Result<String, E1>,)>(&mut store, &func_idx)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            let (r,) = func
+                .call(&mut store, call_args)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            r.map_err(crate::ext_error::from_design_v01)
+        };
 
-        result.map_err(|e| {
-            RuntimeError::Wasmtime(anyhow::anyhow!(
-                "extension returned error for tool '{tool_name}': {e:?}"
-            ))
-        })
+        mapped.map_err(RuntimeError::Extension)
     }
 }
 
@@ -563,10 +576,10 @@ impl ExtensionRuntime {
         content_type: &str,
         content_json: &str,
     ) -> Result<crate::types::ValidateResult, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::validation::{
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::validation::{
             Diagnostic as WitDiagnostic, ValidateResult as WitValidateResult,
         };
-        use crate::host_bindings::greentic::extension_base::types::Severity as WitSeverity;
+        use crate::host_bindings::greentic::extension_base0_1_0::types::Severity as WitSeverity;
 
         let loaded = self
             .loaded
@@ -645,7 +658,7 @@ impl ExtensionRuntime {
         &self,
         ext_id: &str,
     ) -> Result<Vec<crate::types::ToolDefinition>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::tools::ToolDefinition as WitToolDef;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::tools::ToolDefinition as WitToolDef;
 
         let loaded = self
             .loaded
@@ -722,7 +735,7 @@ impl ExtensionRuntime {
         &self,
         ext_id: &str,
     ) -> Result<Vec<crate::types::PromptFragment>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::prompting::PromptFragment as WitFrag;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::prompting::PromptFragment as WitFrag;
 
         let loaded = self
             .loaded
@@ -778,7 +791,7 @@ impl ExtensionRuntime {
         ext_id: &str,
         category_filter: Option<&str>,
     ) -> Result<Vec<crate::types::KnowledgeEntrySummary>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::knowledge::EntrySummary as WitSummary;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::EntrySummary as WitSummary;
 
         let loaded = self
             .loaded
@@ -818,16 +831,16 @@ impl ExtensionRuntime {
 
     /// Retrieve a single knowledge entry by ID.
     ///
-    /// Calls `greentic:extension-design/knowledge::get-entry`
-    /// (resolved against `@0.2.0` first, then `@0.1.0`).
+    /// Calls `greentic:extension-design/knowledge::get-entry`, resolving the
+    /// interface newest-first across `@0.3.0`/`@0.2.0`/`@0.1.0`. The matched
+    /// version selects which `extension-error` ABI to deserialize (6-variant
+    /// base at `@0.3.0`, 4-variant base at `@0.2.0`/`@0.1.0`); WIT errors
+    /// surface as `RuntimeError::Extension`.
     pub fn knowledge_get(
         &self,
         ext_id: &str,
         entry_id: &str,
     ) -> Result<crate::types::KnowledgeEntry, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::knowledge::Entry as WitEntry;
-        use crate::host_bindings::exports::greentic::extension_design::knowledge::ExtensionError;
-
         let loaded = self
             .loaded
             .load()
@@ -843,8 +856,12 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let (iface_idx, iface_name) =
-            resolve_design_iface(&mut store, &instance, "greentic:extension-design/knowledge")?;
+        let (iface_idx, iface_name, version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-design/knowledge",
+            DESIGN_VERSIONS,
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "get-entry")
             .ok_or_else(|| {
@@ -853,27 +870,47 @@ impl ExtensionRuntime {
                 ))
             })?;
 
-        let func = instance
-            .get_typed_func::<(String,), (Result<WitEntry, ExtensionError>,)>(&mut store, &func_idx)
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+        let call_args = (entry_id.to_string(),);
+        let mapped: Result<crate::types::KnowledgeEntry, crate::types::HostExtensionError> =
+            if version == "0.3.0" {
+                use crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::knowledge::{
+                    Entry as WitEntry, ExtensionError as E2,
+                };
+                let func = instance
+                    .get_typed_func::<(String,), (Result<WitEntry, E2>,)>(&mut store, &func_idx)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                let (r,) = func
+                    .call(&mut store, call_args)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                r.map(|e| crate::types::KnowledgeEntry {
+                    id: e.id,
+                    title: e.title,
+                    category: e.category,
+                    tags: e.tags,
+                    content_json: e.content_json,
+                })
+                .map_err(crate::ext_error::from_design_v03)
+            } else {
+                use crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::{
+                    Entry as WitEntry, ExtensionError as E1,
+                };
+                let func = instance
+                    .get_typed_func::<(String,), (Result<WitEntry, E1>,)>(&mut store, &func_idx)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                let (r,) = func
+                    .call(&mut store, call_args)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                r.map(|e| crate::types::KnowledgeEntry {
+                    id: e.id,
+                    title: e.title,
+                    category: e.category,
+                    tags: e.tags,
+                    content_json: e.content_json,
+                })
+                .map_err(crate::ext_error::from_design_v01)
+            };
 
-        let (result,) = func
-            .call(&mut store, (entry_id.to_string(),))
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
-
-        result
-            .map(|e| crate::types::KnowledgeEntry {
-                id: e.id,
-                title: e.title,
-                category: e.category,
-                tags: e.tags,
-                content_json: e.content_json,
-            })
-            .map_err(|e| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension returned error for get-entry '{entry_id}': {e:?}"
-                ))
-            })
+        mapped.map_err(RuntimeError::Extension)
     }
 
     /// Suggest knowledge entries matching a query.
@@ -886,7 +923,7 @@ impl ExtensionRuntime {
         query: &str,
         limit: u32,
     ) -> Result<Vec<crate::types::KnowledgeEntrySummary>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design::knowledge::EntrySummary as WitSummary;
+        use crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::EntrySummary as WitSummary;
 
         let loaded = self
             .loaded
@@ -927,7 +964,7 @@ impl ExtensionRuntime {
 
 /// Convert a bindgen `EntrySummary` to the host-side type.
 fn wit_summary_to_host(
-    s: crate::host_bindings::exports::greentic::extension_design::knowledge::EntrySummary,
+    s: crate::host_bindings::exports::greentic::extension_design0_2_0::knowledge::EntrySummary,
 ) -> crate::types::KnowledgeEntrySummary {
     crate::types::KnowledgeEntrySummary {
         id: s.id,
@@ -946,8 +983,8 @@ impl ExtensionRuntime {
         target_id: &str,
         credentials_json: &str,
     ) -> Result<Vec<crate::types::Diagnostic>, RuntimeError> {
-        use crate::host_bindings::deploy::exports::greentic::extension_deploy::targets::Diagnostic as WitDiagnostic;
-        use crate::host_bindings::deploy::greentic::extension_base::types::Severity as WitSeverity;
+        use crate::host_bindings::deploy::exports::greentic::extension_deploy0_1_0::targets::Diagnostic as WitDiagnostic;
+        use crate::host_bindings::deploy::greentic::extension_base0_1_0::types::Severity as WitSeverity;
 
         let loaded = self
             .loaded
@@ -964,14 +1001,12 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-deploy/targets@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name, _version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-deploy/targets",
+            DEPLOY_VERSIONS,
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "validate-credentials")
             .ok_or_else(|| {
@@ -1012,8 +1047,6 @@ impl ExtensionRuntime {
     /// Return the JSON Schema (as a string) describing credentials required
     /// by the given deploy target.
     pub fn credential_schema(&self, ext_id: &str, target_id: &str) -> Result<String, RuntimeError> {
-        use crate::host_bindings::deploy::greentic::extension_base::types::ExtensionError;
-
         let loaded = self
             .loaded
             .load()
@@ -1029,14 +1062,12 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-deploy/targets@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name, version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-deploy/targets",
+            DEPLOY_VERSIONS,
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "credential-schema")
             .ok_or_else(|| {
@@ -1045,19 +1076,28 @@ impl ExtensionRuntime {
                 ))
             })?;
 
-        let func = instance
-            .get_typed_func::<(String,), (Result<String, ExtensionError>,)>(&mut store, &func_idx)
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+        let call_args = (target_id.to_string(),);
+        let mapped: Result<String, crate::types::HostExtensionError> = if version == "0.2.0" {
+            use crate::host_bindings::deploy_v02::greentic::extension_base0_2_0::types::ExtensionError as E2;
+            let func = instance
+                .get_typed_func::<(String,), (Result<String, E2>,)>(&mut store, &func_idx)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            let (r,) = func
+                .call(&mut store, call_args)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            r.map_err(crate::ext_error::from_deploy_v02)
+        } else {
+            use crate::host_bindings::deploy::greentic::extension_base0_1_0::types::ExtensionError as E1;
+            let func = instance
+                .get_typed_func::<(String,), (Result<String, E1>,)>(&mut store, &func_idx)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            let (r,) = func
+                .call(&mut store, call_args)
+                .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+            r.map_err(crate::ext_error::from_deploy_v01)
+        };
 
-        let (result,) = func
-            .call(&mut store, (target_id.to_string(),))
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
-
-        result.map_err(|e| {
-            RuntimeError::Wasmtime(anyhow::anyhow!(
-                "extension returned error for credential-schema target '{target_id}': {e:?}"
-            ))
-        })
+        mapped.map_err(RuntimeError::Extension)
     }
 }
 
@@ -1069,7 +1109,7 @@ impl ExtensionRuntime {
         &self,
         ext_id: &str,
     ) -> Result<Vec<crate::types::TargetSummary>, RuntimeError> {
-        use crate::host_bindings::deploy::exports::greentic::extension_deploy::targets::TargetSummary as WitTargetSummary;
+        use crate::host_bindings::deploy::exports::greentic::extension_deploy0_1_0::targets::TargetSummary as WitTargetSummary;
 
         let loaded = self
             .loaded
@@ -1086,14 +1126,12 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-deploy/targets@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name, _version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-deploy/targets",
+            DEPLOY_VERSIONS,
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "list-targets")
             .ok_or_else(|| {
@@ -1138,22 +1176,75 @@ impl ExtensionRuntime {
 /// `roles@0.2.0` deliberately uses its own dedicated lookup (see
 /// `runtime_roles.rs`); it never existed at `@0.1.0`, so no fallback is
 /// appropriate there.
+/// Tracks extension ids already warned about a legacy WIT contract, so the
+/// deprecation notice fires once per extension per process instead of on
+/// every dispatch. Bounded by the number of distinct loaded extensions.
+static LEGACY_CONTRACT_WARNED: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::OnceLock::new();
+
+/// Emit a one-shot deprecation warning if `version` is not the newest entry
+/// in `newest`. No-op when the extension is already on the current contract
+/// or has been warned before.
+fn warn_if_legacy_contract(ext_id: &str, version: &str, newest: &str) {
+    if version == newest {
+        return;
+    }
+    let set = LEGACY_CONTRACT_WARNED
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+    let mut guard = match set.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if guard.insert(ext_id.to_string()) {
+        tracing::warn!(
+            extension = %ext_id,
+            contract = version,
+            newest = newest,
+            "extension uses a deprecated WIT contract version; rebuild against the current contract (unified 6-variant extension-error)"
+        );
+    }
+}
+
+/// Resolve `base@<ver>` against the instance's exports, trying `versions`
+/// in order (newest first). Returns the export index, the full resolved
+/// interface name, and the bare version string that matched — dispatch
+/// code branches on the version to pick the matching typed signature.
+pub(crate) fn resolve_iface_versions(
+    store: &mut wasmtime::Store<crate::host_state::HostState>,
+    instance: &wasmtime::component::Instance,
+    base: &str,
+    versions: &[&'static str],
+) -> Result<
+    (
+        wasmtime::component::ComponentExportIndex,
+        String,
+        &'static str,
+    ),
+    RuntimeError,
+> {
+    for &v in versions {
+        let name = format!("{base}@{v}");
+        if let Some(idx) = instance.get_export_index(&mut *store, None, &name) {
+            return Ok((idx, name, v));
+        }
+    }
+    Err(RuntimeError::Wasmtime(anyhow::anyhow!(
+        "extension does not export interface '{base}' at any supported version ({versions:?})"
+    )))
+}
+
+/// Version tables per package family — newest first.
+const DESIGN_VERSIONS: &[&str] = &["0.3.0", "0.2.0", "0.1.0"];
+pub(crate) const DEPLOY_VERSIONS: &[&str] = &["0.2.0", "0.1.0"];
+const BUNDLE_VERSIONS: &[&str] = &["0.2.0", "0.1.0"];
+
 fn resolve_design_iface(
     store: &mut wasmtime::Store<crate::host_state::HostState>,
     instance: &wasmtime::component::Instance,
     base: &str,
 ) -> Result<(wasmtime::component::ComponentExportIndex, String), RuntimeError> {
-    let primary = format!("{base}@0.2.0");
-    if let Some(idx) = instance.get_export_index(&mut *store, None, &primary) {
-        return Ok((idx, primary));
-    }
-    let secondary = format!("{base}@0.1.0");
-    if let Some(idx) = instance.get_export_index(&mut *store, None, &secondary) {
-        return Ok((idx, secondary));
-    }
-    Err(RuntimeError::Wasmtime(anyhow::anyhow!(
-        "extension does not export interface '{primary}' or '{secondary}'"
-    )))
+    resolve_iface_versions(store, instance, base, DESIGN_VERSIONS).map(|(idx, name, _)| (idx, name))
 }
 
 fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {
@@ -1179,8 +1270,11 @@ impl ExtensionRuntime {
     /// extension wants written.
     ///
     /// Returns `RuntimeError::NotFound` when no extension is loaded
-    /// at `ext_id`, and surfaces every other failure as
-    /// `RuntimeError::Wasmtime` with the WIT-level error attached.
+    /// at `ext_id`. The `bundling` interface is resolved newest-first
+    /// across `@0.2.0`/`@0.1.0`; host-level failures surface as
+    /// `RuntimeError::Wasmtime`, while the extension's WIT-level error
+    /// surfaces as `RuntimeError::Extension` (6-variant base at `@0.2.0`,
+    /// 4-variant base at `@0.1.0`).
     pub fn render_bundle(
         &self,
         ext_id: &str,
@@ -1188,11 +1282,6 @@ impl ExtensionRuntime {
         config_json: &str,
         session: crate::types::BundleSession,
     ) -> Result<crate::types::BundleArtifact, RuntimeError> {
-        use crate::host_bindings::bundle::exports::greentic::extension_bundle::bundling::{
-            BundleArtifact as WitBundleArtifact, DesignerSession as WitDesignerSession,
-        };
-        use crate::host_bindings::bundle::greentic::extension_base::types::ExtensionError;
-
         let loaded = self
             .loaded
             .load()
@@ -1208,14 +1297,12 @@ impl ExtensionRuntime {
             )
             .map_err(RuntimeError::Wasmtime)?;
 
-        let iface_name = "greentic:extension-bundle/bundling@0.1.0";
-        let iface_idx = instance
-            .get_export_index(&mut store, None, iface_name)
-            .ok_or_else(|| {
-                RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "extension does not export interface '{iface_name}'"
-                ))
-            })?;
+        let (iface_idx, iface_name, version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-bundle/bundling",
+            BUNDLE_VERSIONS,
+        )?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "render")
             .ok_or_else(|| {
@@ -1224,38 +1311,68 @@ impl ExtensionRuntime {
                 ))
             })?;
 
-        let func = instance
-            .get_typed_func::<
-                (String, String, WitDesignerSession),
-                (Result<WitBundleArtifact, ExtensionError>,),
-            >(&mut store, &func_idx)
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+        let mapped: Result<crate::types::BundleArtifact, crate::types::HostExtensionError> =
+            if version == "0.2.0" {
+                use crate::host_bindings::bundle_v02::exports::greentic::extension_bundle0_2_0::bundling::{
+                    BundleArtifact as WitBundleArtifact, DesignerSession as WitDesignerSession,
+                };
+                use crate::host_bindings::bundle_v02::greentic::extension_base0_2_0::types::ExtensionError as E2;
+                let func = instance
+                    .get_typed_func::<
+                        (String, String, WitDesignerSession),
+                        (Result<WitBundleArtifact, E2>,),
+                    >(&mut store, &func_idx)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                let wit_session = WitDesignerSession {
+                    flows_json: session.flows_json,
+                    contents_json: session.contents_json,
+                    assets: session.assets,
+                    capabilities_used: session.capabilities_used,
+                };
+                let (r,) = func
+                    .call(
+                        &mut store,
+                        (recipe_id.to_string(), config_json.to_string(), wit_session),
+                    )
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                r.map(|a| crate::types::BundleArtifact {
+                    filename: a.filename,
+                    bytes: a.bytes,
+                    sha256: a.sha256,
+                })
+                .map_err(crate::ext_error::from_bundle_v02)
+            } else {
+                use crate::host_bindings::bundle::exports::greentic::extension_bundle0_1_0::bundling::{
+                    BundleArtifact as WitBundleArtifact, DesignerSession as WitDesignerSession,
+                };
+                use crate::host_bindings::bundle::greentic::extension_base0_1_0::types::ExtensionError as E1;
+                let func = instance
+                    .get_typed_func::<
+                        (String, String, WitDesignerSession),
+                        (Result<WitBundleArtifact, E1>,),
+                    >(&mut store, &func_idx)
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                let wit_session = WitDesignerSession {
+                    flows_json: session.flows_json,
+                    contents_json: session.contents_json,
+                    assets: session.assets,
+                    capabilities_used: session.capabilities_used,
+                };
+                let (r,) = func
+                    .call(
+                        &mut store,
+                        (recipe_id.to_string(), config_json.to_string(), wit_session),
+                    )
+                    .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+                r.map(|a| crate::types::BundleArtifact {
+                    filename: a.filename,
+                    bytes: a.bytes,
+                    sha256: a.sha256,
+                })
+                .map_err(crate::ext_error::from_bundle_v01)
+            };
 
-        let wit_session = WitDesignerSession {
-            flows_json: session.flows_json,
-            contents_json: session.contents_json,
-            assets: session.assets,
-            capabilities_used: session.capabilities_used,
-        };
-
-        let (result,) = func
-            .call(
-                &mut store,
-                (recipe_id.to_string(), config_json.to_string(), wit_session),
-            )
-            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
-
-        let artifact = result.map_err(|e| {
-            RuntimeError::Wasmtime(anyhow::anyhow!(
-                "extension '{ext_id}' returned error rendering recipe '{recipe_id}': {e:?}"
-            ))
-        })?;
-
-        Ok(crate::types::BundleArtifact {
-            filename: artifact.filename,
-            bytes: artifact.bytes,
-            sha256: artifact.sha256,
-        })
+        mapped.map_err(RuntimeError::Extension)
     }
 }
 

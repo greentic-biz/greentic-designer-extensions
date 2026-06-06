@@ -5,6 +5,7 @@ pub mod broker;
 pub mod capability;
 pub mod discovery;
 mod error;
+mod ext_error;
 mod health;
 mod host_bindings;
 pub mod host_ports;
