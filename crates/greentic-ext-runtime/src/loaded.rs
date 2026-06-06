@@ -359,6 +359,25 @@ mod tests {
         );
     }
 
+    /// Non-empty declaration REPLACES (not unions) the host-level
+    /// override. A broader operator override must not bleed through to
+    /// an extension that declared its own narrower allow-list.
+    #[test]
+    fn declared_patterns_replace_not_union_host_override() {
+        let declared = vec!["https://api.github.com/*".to_string()];
+        let override_matcher = override_with_pattern("https://operator-allowed.com/*");
+        let matcher = effective_url_matcher(&declared, override_matcher);
+
+        assert!(
+            matcher.is_allowed("https://api.github.com/repos/org/repo"),
+            "declared host must be allowed"
+        );
+        assert!(
+            !matcher.is_allowed("https://operator-allowed.com/anything"),
+            "operator override must NOT bleed through when declaration is non-empty"
+        );
+    }
+
     /// Empty declaration + empty host override must deny every URL —
     /// this is the default deny-all posture for extensions that never
     /// call the network.
