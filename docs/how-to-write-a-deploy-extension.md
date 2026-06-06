@@ -93,7 +93,7 @@ imports to match the canonical deploy-extension world.
 
 ```json
 {
-  "$schema": "https://store.greentic.ai/schemas/describe-v1.json",
+  "$schema": "https://store.greentic.cloud/schemas/describe-v1.json",
   "apiVersion": "greentic.ai/v1",
   "kind": "DeployExtension",
   "metadata": {
