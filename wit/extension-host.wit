@@ -46,10 +46,37 @@ interface http {
   fetch: func(req: request) -> result<response, string>;
 }
 
+interface llm {
+  record llm-message {
+    role: string,        // "system" | "user" | "assistant"
+    content: string,
+  }
+  variant response-format {
+    text,
+    json,
+    json-schema(string), // serialized JSON Schema
+  }
+  record llm-request {
+    // LLM role wire name (e.g. "sorla_composer"). none = the extension's
+    // single declared llm-roles entry. Must be present in the extension's
+    // describe.runtime.permissions.llmRoles.
+    role-hint: option<string>,
+    system-prompt: string,
+    messages: list<llm-message>,
+    response-format: option<response-format>,
+  }
+  record llm-response {
+    content: string,
+    total-tokens: option<u32>,
+  }
+  complete: func(request: llm-request) -> result<llm-response, string>;
+}
+
 world extension-host-world {
   import logging;
   import i18n;
   import secrets;
   import broker;
   import http;
+  import llm;
 }
