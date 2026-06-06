@@ -1,7 +1,7 @@
 use std::fs;
 
 #[test]
-fn extension_design_declares_roles_interface_at_0_2_0() {
+fn extension_design_declares_roles_interface_at_0_3_0() {
     let wit =
         fs::read_to_string("../../wit/extension-design.wit").expect("read extension-design.wit");
     assert!(
