@@ -1138,22 +1138,39 @@ impl ExtensionRuntime {
 /// `roles@0.2.0` deliberately uses its own dedicated lookup (see
 /// `runtime_roles.rs`); it never existed at `@0.1.0`, so no fallback is
 /// appropriate there.
+/// Resolve `base@<ver>` against the instance's exports, trying `versions`
+/// in order (newest first). Returns the export index, the full resolved
+/// interface name, and the bare version string that matched — dispatch
+/// code branches on the version to pick the matching typed signature.
+fn resolve_iface_versions(
+    store: &mut wasmtime::Store<crate::host_state::HostState>,
+    instance: &wasmtime::component::Instance,
+    base: &str,
+    versions: &[&'static str],
+) -> Result<(wasmtime::component::ComponentExportIndex, String, &'static str), RuntimeError> {
+    for &v in versions {
+        let name = format!("{base}@{v}");
+        if let Some(idx) = instance.get_export_index(&mut *store, None, &name) {
+            return Ok((idx, name, v));
+        }
+    }
+    Err(RuntimeError::Wasmtime(anyhow::anyhow!(
+        "extension does not export interface '{base}' at any supported version ({versions:?})"
+    )))
+}
+
+/// Version tables per package family — newest first.
+const DESIGN_VERSIONS: &[&str] = &["0.3.0", "0.2.0", "0.1.0"];
+const DEPLOY_VERSIONS: &[&str] = &["0.2.0", "0.1.0"];
+const BUNDLE_VERSIONS: &[&str] = &["0.2.0", "0.1.0"];
+
 fn resolve_design_iface(
     store: &mut wasmtime::Store<crate::host_state::HostState>,
     instance: &wasmtime::component::Instance,
     base: &str,
 ) -> Result<(wasmtime::component::ComponentExportIndex, String), RuntimeError> {
-    let primary = format!("{base}@0.2.0");
-    if let Some(idx) = instance.get_export_index(&mut *store, None, &primary) {
-        return Ok((idx, primary));
-    }
-    let secondary = format!("{base}@0.1.0");
-    if let Some(idx) = instance.get_export_index(&mut *store, None, &secondary) {
-        return Ok((idx, secondary));
-    }
-    Err(RuntimeError::Wasmtime(anyhow::anyhow!(
-        "extension does not export interface '{primary}' or '{secondary}'"
-    )))
+    resolve_iface_versions(store, instance, base, DESIGN_VERSIONS)
+        .map(|(idx, name, _)| (idx, name))
 }
 
 fn find_extension_dir(p: &std::path::Path) -> Option<std::path::PathBuf> {
