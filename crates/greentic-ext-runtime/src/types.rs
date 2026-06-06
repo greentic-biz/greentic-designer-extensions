@@ -288,8 +288,6 @@ pub enum RoleError {
 
 #[cfg(test)]
 mod host_extension_error_tests {
-    use super::*;
-
     #[test]
     fn host_extension_error_codes_are_stable_kebab() {
         use super::HostExtensionError as E;
