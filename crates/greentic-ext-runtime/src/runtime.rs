@@ -1179,7 +1179,7 @@ impl ExtensionRuntime {
 /// in order (newest first). Returns the export index, the full resolved
 /// interface name, and the bare version string that matched — dispatch
 /// code branches on the version to pick the matching typed signature.
-fn resolve_iface_versions(
+pub(crate) fn resolve_iface_versions(
     store: &mut wasmtime::Store<crate::host_state::HostState>,
     instance: &wasmtime::component::Instance,
     base: &str,
@@ -1198,7 +1198,7 @@ fn resolve_iface_versions(
 
 /// Version tables per package family — newest first.
 const DESIGN_VERSIONS: &[&str] = &["0.3.0", "0.2.0", "0.1.0"];
-const DEPLOY_VERSIONS: &[&str] = &["0.2.0", "0.1.0"];
+pub(crate) const DEPLOY_VERSIONS: &[&str] = &["0.2.0", "0.1.0"];
 const BUNDLE_VERSIONS: &[&str] = &["0.2.0", "0.1.0"];
 
 fn resolve_design_iface(

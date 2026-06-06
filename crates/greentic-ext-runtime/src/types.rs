@@ -131,6 +131,10 @@ pub enum DeployExtensionError {
     MissingCapability(String),
     #[error("permission denied: {0}")]
     PermissionDenied(String),
+    #[error("not found: {0}")]
+    NotFound(String),
+    #[error("schema invalid: {0}")]
+    SchemaInvalid(String),
     #[error("internal: {0}")]
     Internal(String),
 }
