@@ -310,6 +310,24 @@ cargo test -p greentic-ext-runtime --test ac_invoke -- --nocapture
 
 The test self-skips if the env var is unset.
 
+A second, v2-contract variant (`ac_invoke_v2`) exercises the same dispatch
+path against an extension built with extension-base@0.2.0 /
+extension-design@0.3.0 (the 6-variant `extension-error` ABI). It reads
+`GTDX_TEST_GTXPACK_V2` and covers both a success invoke and a typed
+`RuntimeError::Extension` error path. The v2 fixture (AC-MCP PR #74,
+`2.0.4-research`) ships unsigned, so it needs the dev escape hatch:
+
+```bash
+GREENTIC_EXT_ALLOW_UNSIGNED=1 \
+  GTDX_TEST_GTXPACK_V2=/path/to/ac-v2.gtxpack \
+  cargo test -p greentic-ext-runtime --features dev-allow-unsigned \
+    --test ac_invoke_v2 -- --nocapture
+```
+
+Both real-wasm tests self-skip when their env var is unset, so CI's
+`cargo test --workspace --all-features` run (which does not set them)
+passes them as no-ops — they are opt-in dev-local checks only.
+
 ---
 
 ## Releases
