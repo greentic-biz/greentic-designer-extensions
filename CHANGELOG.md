@@ -43,6 +43,18 @@
   against a trust-anchored key) remains a follow-up: it needs a runtime trust
   store and the org-provisioned prod root key.
 
+### Tests
+
+- **Real-wasm v2-contract two-path coverage.** New optional end-to-end test
+  `ac_invoke_v2` (reads `GTDX_TEST_GTXPACK_V2`) loads an adaptive-cards
+  extension built against the v2 contract (extension-base@0.2.0,
+  extension-design@0.3.0, 6-variant `extension-error`) and asserts both a
+  success invoke (`validate_card` → `valid=true`) and a typed
+  `RuntimeError::Extension` error path (unknown tool → `not-found`). Mirrors
+  the v1 `ac_invoke` gating and self-skips when the env var is unset. Fixture
+  provenance: AC-MCP PR #74, `2.0.4-research`. The unsigned local fixture
+  requires the `dev-allow-unsigned` build + `GREENTIC_EXT_ALLOW_UNSIGNED=1`.
+
 ## [0.3.0] - 2026-04-22
 
 ### Changed
