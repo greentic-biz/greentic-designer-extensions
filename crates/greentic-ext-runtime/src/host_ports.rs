@@ -134,14 +134,17 @@ pub enum LlmPortError {
 pub trait LlmPort: Send + Sync {
     /// Resolve and run a completion for `extension_id` against `role`.
     ///
-    /// `tenant` is the tenant slug of the caller when the host runs
-    /// multi-tenant; `None` for single-tenant/dev hosts. The designer uses
-    /// it to resolve the role per-tenant (`llm_for(role, identity)`, strict,
-    /// no fallback).
+    /// `ctx` is the per-call [`HostCallContext`] threaded from the embedding
+    /// host: it carries the caller's tenant slug and the authenticated end
+    /// user's email. The designer uses `ctx.tenant` to resolve the role
+    /// per-tenant (`llm_for(role, identity)`, strict, no fallback) and
+    /// `ctx.user_email` to satisfy the admin's per-user identity check
+    /// (`X-Greentic-User`) — without it the admin's service-key auth rejects
+    /// the call with 403.
     fn complete(
         &self,
         extension_id: &str,
-        tenant: Option<&str>,
+        ctx: &HostCallContext,
         role: &str,
         request: LlmPortRequest,
     ) -> Result<LlmPortResponse, LlmPortError>;
@@ -151,8 +154,13 @@ pub trait LlmPort: Send + Sync {
 /// host-port calls. Extend cautiously: every field is visible to all ports.
 #[derive(Debug, Clone, Default)]
 pub struct HostCallContext {
-    /// Tenant slug of the end caller (e.g. the designer session's tenant).
+    /// Tenant slug of the end caller (multi-tenant hosts); None for
+    /// single-tenant/dev.
     pub tenant: Option<String>,
+    /// Email of the authenticated end user on whose behalf the call runs.
+    /// Hosts that validate per-user identity (e.g. the designer-admin) require
+    /// it.
+    pub user_email: Option<String>,
 }
 
 #[cfg(test)]
