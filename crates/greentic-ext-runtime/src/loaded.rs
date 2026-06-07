@@ -117,7 +117,7 @@ impl LoadedExtension {
         .secrets_backend(host_overrides.secrets_backend)
         .http_client(host_overrides.http_client)
         .llm_port(host_overrides.llm_port)
-        .call_tenant(ctx.tenant.clone())
+        .call_ctx(ctx.clone())
         .url_matcher(url_matcher)
         .runtime_weak(host_overrides.runtime_weak)
         .call_depth_start(host_overrides.call_depth_start)
