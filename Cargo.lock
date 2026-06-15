@@ -310,6 +310,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono"
+version = "0.4.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
+dependencies = [
+ "iana-time-zone",
+ "num-traits",
+ "serde",
+ "windows-link",
+]
+
+[[package]]
 name = "ciborium"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1102,10 +1114,11 @@ dependencies = [
 
 [[package]]
 name = "greentic-extension-sdk-contract"
-version = "1.2.7-research"
+version = "1.2.8-research"
 dependencies = [
  "anyhow",
  "base64",
+ "chrono",
  "ed25519-dalek",
  "jsonschema",
  "semver",
@@ -1119,7 +1132,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-extension-sdk-testing"
-version = "1.2.7-research"
+version = "1.2.8-research"
 dependencies = [
  "anyhow",
  "ciborium",
