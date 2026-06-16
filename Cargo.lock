@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "_wit-lint"
-version = "1.2.23"
+version = "1.2.24-research"
 dependencies = [
  "wit-parser 0.221.3",
 ]
@@ -1191,7 +1191,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-ext-runtime"
-version = "1.2.23"
+version = "1.2.24-research"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -1224,7 +1224,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-extension-sdk-contract"
-version = "1.2.10-research"
+version = "1.2.11-research"
 dependencies = [
  "anyhow",
  "base64",
@@ -1243,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-extension-sdk-testing"
-version = "1.2.10-research"
+version = "1.2.11-research"
 dependencies = [
  "anyhow",
  "ciborium",
