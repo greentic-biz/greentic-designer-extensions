@@ -643,6 +643,26 @@ impl ExtensionRuntime {
     }
 }
 
+/// Map a v2 describe `Tool` contribution to a host-side [`crate::types::ToolDefinition`].
+///
+/// `description` and `input_schema_json` are left empty: the v2 declarative
+/// contract omits per-tool schemas from `describe.json`. Callers that need
+/// full schemas must introspect the named WIT export directly.
+#[must_use]
+pub fn contribution_tool_to_definition(
+    t: &greentic_extension_sdk_contract::describe::contributions::Tool,
+) -> crate::types::ToolDefinition {
+    crate::types::ToolDefinition {
+        name: t.name.clone(),
+        description: String::new(),
+        input_schema_json: String::new(),
+        output_schema_json: None,
+        capabilities: t.capabilities.clone(),
+        agentic_worker_metadata: None,
+        secret_requirements: t.secret_requirements.clone(),
+    }
+}
+
 impl ExtensionRuntime {
     /// List all tools exposed by a loaded design extension.
     ///
@@ -674,14 +694,7 @@ impl ExtensionRuntime {
                 .contributions
                 .tools
                 .iter()
-                .map(|t| crate::types::ToolDefinition {
-                    name: t.name.clone(),
-                    description: String::new(),
-                    input_schema_json: String::new(),
-                    output_schema_json: None,
-                    capabilities: None,
-                    agentic_worker_metadata: None,
-                })
+                .map(contribution_tool_to_definition)
                 .collect());
         }
 
@@ -721,6 +734,7 @@ impl ExtensionRuntime {
                 output_schema_json: d.output_schema_json,
                 capabilities: d.capabilities,
                 agentic_worker_metadata: d.agentic_worker_metadata,
+                secret_requirements: Vec::new(),
             })
             .collect())
     }

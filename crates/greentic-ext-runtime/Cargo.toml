@@ -16,7 +16,8 @@ default = []
 dev-allow-unsigned = []
 
 [dependencies]
-greentic-extension-sdk-contract = "=1.2.9-research"
+greentic-extension-sdk-contract = "=1.2.10-research"
+greentic-types = { workspace = true }
 
 [dependencies.anyhow]
 workspace = true
@@ -70,7 +71,7 @@ workspace = true
 
 [dev-dependencies]
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
-greentic-extension-sdk-testing = "=1.2.9-research"
+greentic-extension-sdk-testing = "=1.2.10-research"
 wat = "1"
 
 [dev-dependencies.wiremock]

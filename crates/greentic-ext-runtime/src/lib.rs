@@ -30,7 +30,9 @@ pub use self::host_ports::{
 };
 pub use self::host_state::HostState;
 pub use self::loaded::{ExtensionId, HostOverrides, LoadedExtension, LoadedExtensionRef};
-pub use self::runtime::{ExtensionRuntime, RuntimeConfig, RuntimeEvent, WatcherGuard};
+pub use self::runtime::{
+    ExtensionRuntime, RuntimeConfig, RuntimeEvent, WatcherGuard, contribution_tool_to_definition,
+};
 pub use self::types::{
     BundleArtifact, BundleSession, CompileContext, DeployExtensionError, DeployJob, DeployRequest,
     DeployStatus, Diagnostic, HostExtensionError, KnowledgeEntry, KnowledgeEntrySummary,

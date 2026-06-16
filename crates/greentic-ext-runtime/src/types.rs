@@ -14,6 +14,10 @@ pub struct ToolDefinition {
     /// `greentic_extension_sdk_contract::AgenticWorkerMetadata::decode`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agentic_worker_metadata: Option<String>,
+    /// Per-tool secret/credential requirements (v2 declarative tools).
+    /// Legacy v1 WIT tools have none; defaults to empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secret_requirements: Vec<greentic_types::secrets::SecretRequirement>,
 }
 
 /// Host-side mirror of WIT `greentic:extension-design/prompting@0.2.0::prompt-fragment`.
