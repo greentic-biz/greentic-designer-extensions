@@ -6,6 +6,7 @@ pub mod capability;
 pub mod discovery;
 mod error;
 mod ext_error;
+pub mod guardrail_map;
 mod health;
 mod host_bindings;
 pub mod host_ports;
@@ -24,6 +25,7 @@ pub use self::broker::{Broker, BrokerError, BrokerResult};
 pub use self::capability::{CapabilityRegistry, OfferedBinding, ResolutionPlan};
 pub use self::discovery::DiscoveryPaths;
 pub use self::error::RuntimeError;
+pub use self::guardrail_map::GuardrailVerdictWire;
 pub use self::health::{ExtensionHealth, HealthReason};
 pub use self::host_ports::{
     InMemorySecrets, KeyTranslator, SecretsBackend, SecretsError, Translator,

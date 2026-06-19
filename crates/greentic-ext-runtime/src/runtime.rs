@@ -557,6 +557,82 @@ impl ExtensionRuntime {
 }
 
 impl ExtensionRuntime {
+    /// Evaluate a guardrail extension against `input_json` and return the
+    /// verdict as a JSON string.
+    ///
+    /// Loads the extension identified by `ext_id`, resolves the
+    /// `greentic:extension-design/guardrail@0.3.0` interface, calls the
+    /// `evaluate` export, and maps the returned `verdict` variant to
+    /// [`crate::GuardrailVerdictWire`] serialised as JSON.
+    ///
+    /// `input_json` must be a JSON object with fields matching the WIT
+    /// `guardrail-input` record:
+    ///
+    /// ```json
+    /// {
+    ///   "direction": "inbound",
+    ///   "content": "…",
+    ///   "agent_id": "…",
+    ///   "session_id": "…",
+    ///   "tenant_id": "…",
+    ///   "env_id": "…",
+    ///   "context": null
+    /// }
+    /// ```
+    ///
+    /// Returns the verdict as JSON, e.g. `{"kind":"accept"}` or
+    /// `{"kind":"deny","code":"…","message":"…","details":null}`.
+    ///
+    /// # Errors
+    ///
+    /// - [`RuntimeError::NotFound`] when no extension is loaded at `ext_id`.
+    /// - [`RuntimeError::Wasmtime`] when store/instance construction fails,
+    ///   the interface is not exported, the typed-func call fails, or
+    ///   `input_json` cannot be deserialised.
+    pub fn evaluate_guardrail(
+        &self,
+        ext_id: &str,
+        input_json: &str,
+    ) -> Result<String, RuntimeError> {
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                &crate::host_ports::HostCallContext::default(),
+            )
+            .map_err(RuntimeError::Wasmtime)?;
+
+        // Guardrail interface only exists at 0.3.0 — a single-version table.
+        let (iface_idx, iface_name, _version) = resolve_iface_versions(
+            &mut store,
+            &instance,
+            "greentic:extension-design/guardrail",
+            GUARDRAIL_VERSIONS,
+        )?;
+
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "evaluate")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "interface '{iface_name}' does not export 'evaluate'"
+                ))
+            })?;
+
+        let wire =
+            crate::guardrail_map::call_evaluate(&mut store, &instance, &func_idx, input_json)?;
+
+        serde_json::to_string(&wire).map_err(|e| RuntimeError::Wasmtime(e.into()))
+    }
+}
+
+impl ExtensionRuntime {
     /// Validate extension-specific content against the extension's schema.
     ///
     /// Calls `greentic:extension-design/validation::validate-content`
@@ -1252,6 +1328,8 @@ pub(crate) fn resolve_iface_versions(
 const DESIGN_VERSIONS: &[&str] = &["0.3.0", "0.2.0", "0.1.0"];
 pub(crate) const DEPLOY_VERSIONS: &[&str] = &["0.2.0", "0.1.0"];
 const BUNDLE_VERSIONS: &[&str] = &["0.2.0", "0.1.0"];
+/// Guardrail interface only exists at 0.3.0 — single-version table.
+const GUARDRAIL_VERSIONS: &[&str] = &["0.3.0"];
 
 fn resolve_design_iface(
     store: &mut wasmtime::Store<crate::host_state::HostState>,
