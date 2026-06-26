@@ -15,6 +15,8 @@ fn v2_contribution_tool_maps_capabilities_and_secret_requirements() {
         runtime_ref: None,
         capabilities: Some(vec!["agentic_worker".into()]),
         secret_requirements: vec![req],
+        description: Some("Search the web.".into()),
+        input_schema: Some(r#"{"type":"object"}"#.into()),
     };
 
     let def = greentic_ext_runtime::contribution_tool_to_definition(&t);
@@ -22,6 +24,10 @@ fn v2_contribution_tool_maps_capabilities_and_secret_requirements() {
     assert_eq!(def.capabilities, Some(vec!["agentic_worker".to_string()]));
     assert_eq!(def.secret_requirements.len(), 1);
     assert_eq!(def.secret_requirements[0].key.as_str(), "tavily/api_key");
+    // v2 input_schema/description surface through to the tool definition the
+    // LLM sees (designer-sdk #57 + ext-runtime #93).
+    assert_eq!(def.description, "Search the web.");
+    assert_eq!(def.input_schema_json, r#"{"type":"object"}"#);
 }
 
 #[test]
