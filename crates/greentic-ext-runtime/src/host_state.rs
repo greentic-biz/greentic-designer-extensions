@@ -30,6 +30,9 @@ pub struct HostState {
     call_ctx: crate::host_ports::HostCallContext,
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
+    // consumed by the broker Host impl in the next task
+    #[allow(dead_code)]
+    oauth_config: Option<crate::oauth::OAuthBrokerConfig>,
     // WASI state — required because cargo-component-built WASM components
     // implicitly import WASI interfaces (wasi:cli/environment etc.).
     wasi: WasiCtx,
@@ -52,6 +55,7 @@ impl HostState {
             url_matcher: UrlMatcher::default(),
             runtime_weak: std::sync::Weak::new(),
             call_depth_start: 0,
+            oauth_config: None,
         }
     }
 
@@ -83,6 +87,7 @@ pub struct HostStateBuilder {
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     call_depth_start: u32,
+    oauth_config: Option<crate::oauth::OAuthBrokerConfig>,
 }
 
 impl HostStateBuilder {
@@ -129,6 +134,11 @@ impl HostStateBuilder {
         self.call_depth_start = n;
         self
     }
+    #[must_use]
+    pub fn oauth_config(mut self, c: Option<crate::oauth::OAuthBrokerConfig>) -> Self {
+        self.oauth_config = c;
+        self
+    }
 
     #[must_use]
     pub fn build(self) -> HostState {
@@ -145,6 +155,7 @@ impl HostStateBuilder {
             call_ctx: self.call_ctx,
             url_matcher: self.url_matcher,
             runtime_weak: self.runtime_weak,
+            oauth_config: self.oauth_config,
             wasi,
             table,
         }
@@ -768,5 +779,21 @@ mod tests {
             vec![("name".to_string(), "Bima".to_string())],
         );
         assert_eq!(got, "Halo Bima!");
+    }
+
+    #[test]
+    fn host_state_carries_oauth_config() {
+        use crate::oauth::OAuthBrokerConfig;
+        let cfg = OAuthBrokerConfig {
+            http_base_url: "https://oauth.example/".into(),
+            env: "dev".into(),
+            tenant: "acme".into(),
+            team: None,
+            shared_secret: Some("s".into()),
+        };
+        let h = HostState::builder("test-ext".to_string(), Permissions::default())
+            .oauth_config(Some(cfg.clone()))
+            .build();
+        assert_eq!(h.oauth_config.as_ref().unwrap().tenant, "acme");
     }
 }
