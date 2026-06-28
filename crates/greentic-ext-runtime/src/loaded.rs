@@ -97,6 +97,10 @@ impl LoadedExtension {
         broker::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         http::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         llm::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
+        crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::add_to_linker::<
+            HostState,
+            HasSelf<HostState>,
+        >(&mut linker, |s| s)?;
 
         // Per-extension network allow-list: when the extension declares
         // `runtime.permissions.network` patterns, those patterns become the
@@ -121,6 +125,7 @@ impl LoadedExtension {
         .url_matcher(url_matcher)
         .runtime_weak(host_overrides.runtime_weak)
         .call_depth_start(host_overrides.call_depth_start)
+        .oauth_config(host_overrides.oauth_config.clone())
         .build();
 
         let mut store = Store::new(engine, state);
@@ -338,6 +343,7 @@ pub struct HostOverrides {
     pub url_matcher: crate::url_matcher::UrlMatcher,
     pub runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     pub call_depth_start: u32,
+    pub oauth_config: Option<crate::oauth::OAuthBrokerConfig>,
 }
 
 impl std::fmt::Debug for HostOverrides {
@@ -362,6 +368,10 @@ impl std::fmt::Debug for HostOverrides {
                     .map(|_| "<Arc<ExtensionRuntime>>"),
             )
             .field("call_depth_start", &self.call_depth_start)
+            .field(
+                "oauth_config",
+                &self.oauth_config.as_ref().map(|_| "<OAuthBrokerConfig>"),
+            )
             .finish()
     }
 }
@@ -402,6 +412,7 @@ impl Default for HostOverrides {
             url_matcher: crate::url_matcher::UrlMatcher::default(),
             runtime_weak: std::sync::Weak::new(),
             call_depth_start: 0,
+            oauth_config: None,
         }
     }
 }

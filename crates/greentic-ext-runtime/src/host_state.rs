@@ -30,6 +30,8 @@ pub struct HostState {
     call_ctx: crate::host_ports::HostCallContext,
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
+    // consumed by the oauth broker Host impl below
+    oauth_config: Option<crate::oauth::OAuthBrokerConfig>,
     // WASI state — required because cargo-component-built WASM components
     // implicitly import WASI interfaces (wasi:cli/environment etc.).
     wasi: WasiCtx,
@@ -52,6 +54,7 @@ impl HostState {
             url_matcher: UrlMatcher::default(),
             runtime_weak: std::sync::Weak::new(),
             call_depth_start: 0,
+            oauth_config: None,
         }
     }
 
@@ -83,6 +86,7 @@ pub struct HostStateBuilder {
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     call_depth_start: u32,
+    oauth_config: Option<crate::oauth::OAuthBrokerConfig>,
 }
 
 impl HostStateBuilder {
@@ -129,6 +133,11 @@ impl HostStateBuilder {
         self.call_depth_start = n;
         self
     }
+    #[must_use]
+    pub fn oauth_config(mut self, c: Option<crate::oauth::OAuthBrokerConfig>) -> Self {
+        self.oauth_config = c;
+        self
+    }
 
     #[must_use]
     pub fn build(self) -> HostState {
@@ -145,6 +154,7 @@ impl HostStateBuilder {
             call_ctx: self.call_ctx,
             url_matcher: self.url_matcher,
             runtime_weak: self.runtime_weak,
+            oauth_config: self.oauth_config,
             wasi,
             table,
         }
@@ -414,6 +424,97 @@ impl llm::Host for HostState {
                 Err(e.to_string())
             }
         }
+    }
+}
+
+impl crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::Host for HostState {
+    /// Retrieve a token for the given OAuth provider.
+    ///
+    /// Permission gate: the provider must be declared in
+    /// `permissions.oauth_providers`. If not, returns a JSON error string with
+    /// `"error": "permission_denied"` — fails closed.
+    ///
+    /// When permitted but no `oauth_config` or `http_client` is present (e.g.
+    /// the runtime was not configured with an OAuth broker), returns
+    /// `"error": "oauth_broker_unconfigured"`.
+    ///
+    /// The `shared_secret` is NEVER logged.
+    fn get_token(&mut self, provider_id: String, _subject: String, scopes: Vec<String>) -> String {
+        // Permission gate — mirror the secrets/network allowlist checks.
+        if !self
+            .permissions
+            .oauth_providers
+            .iter()
+            .any(|p| p == &provider_id)
+        {
+            tracing::warn!(
+                ext = %self.extension_id,
+                provider = %provider_id,
+                "oauth get-token permission denied"
+            );
+            return serde_json::json!({"error": "permission_denied", "provider": provider_id})
+                .to_string();
+        }
+
+        let Some(cfg) = self.oauth_config.clone() else {
+            return "{\"error\":\"oauth_broker_unconfigured\"}".to_string();
+        };
+        let Some(client) = self.http_client.clone() else {
+            return "{\"error\":\"oauth_broker_unconfigured\"}".to_string();
+        };
+
+        let req = crate::oauth::ResourceTokenRequest {
+            http_base_url: cfg.http_base_url,
+            env: cfg.env,
+            tenant: cfg.tenant,
+            team: cfg.team,
+            resource_id: provider_id.clone(),
+            scopes,
+        };
+
+        match crate::oauth::request_resource_token_blocking(
+            &client,
+            &req,
+            cfg.shared_secret.as_deref(),
+        ) {
+            Ok(resp) => serde_json::to_string(&resp)
+                .unwrap_or_else(|_| "{\"error\":\"encode_failed\"}".to_string()),
+            Err(e) => {
+                tracing::warn!(provider = %provider_id, error = %e, "oauth get-token failed");
+                "{\"error\":\"broker_request_failed\"}".to_string()
+            }
+        }
+    }
+
+    /// Build a consent URL for the given OAuth provider.
+    ///
+    /// Not yet implemented in the design-extension runtime — returns an empty
+    /// string. Consent flows are handled by the OAuth broker service directly;
+    /// this stub satisfies the WIT interface contract.
+    fn get_consent_url(
+        &mut self,
+        _provider_id: String,
+        _subject: String,
+        _scopes: Vec<String>,
+        _redirect_path: String,
+        _extra_json: String,
+    ) -> String {
+        String::new()
+    }
+
+    /// Exchange an authorization code for a token set.
+    ///
+    /// Not yet implemented in the design-extension runtime — returns an empty
+    /// string. Code exchange is handled by the OAuth broker service directly;
+    /// this stub satisfies the WIT interface contract.
+    fn exchange_code(
+        &mut self,
+        _provider_id: String,
+        _subject: String,
+        _code: String,
+        _redirect_path: String,
+    ) -> String {
+        String::new()
     }
 }
 
@@ -768,5 +869,39 @@ mod tests {
             vec![("name".to_string(), "Bima".to_string())],
         );
         assert_eq!(got, "Halo Bima!");
+    }
+
+    #[test]
+    fn oauth_get_token_denied_when_provider_not_declared() {
+        use crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::Host as OAuthHost;
+        let mut h = HostState::builder("ext".into(), Permissions::default()).build();
+        let out = h.get_token("hubspot".into(), String::new(), vec![]);
+        assert!(out.contains("permission_denied"), "got: {out}");
+    }
+
+    #[test]
+    fn oauth_get_token_errors_when_unconfigured() {
+        use crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::Host as OAuthHost;
+        let mut perms = Permissions::default();
+        perms.oauth_providers.push("hubspot".into());
+        let mut h = HostState::builder("ext".into(), perms).build();
+        let out = h.get_token("hubspot".into(), String::new(), vec![]);
+        assert!(out.contains("oauth_broker_unconfigured"), "got: {out}");
+    }
+
+    #[test]
+    fn host_state_carries_oauth_config() {
+        use crate::oauth::OAuthBrokerConfig;
+        let cfg = OAuthBrokerConfig {
+            http_base_url: "https://oauth.example/".into(),
+            env: "dev".into(),
+            tenant: "acme".into(),
+            team: None,
+            shared_secret: Some("s".into()),
+        };
+        let h = HostState::builder("test-ext".to_string(), Permissions::default())
+            .oauth_config(Some(cfg.clone()))
+            .build();
+        assert_eq!(h.oauth_config.as_ref().unwrap().tenant, "acme");
     }
 }
