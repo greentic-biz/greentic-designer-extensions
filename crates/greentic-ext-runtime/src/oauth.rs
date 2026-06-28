@@ -45,8 +45,9 @@ pub fn request_resource_token_blocking(
     shared_secret: Option<&str>,
 ) -> anyhow::Result<ResourceTokenResponse> {
     let base = Url::parse(&request.http_base_url)?;
+    let is_local = base.host_str() == Some("127.0.0.1") || base.host_str() == Some("localhost");
     anyhow::ensure!(
-        base.scheme() == "https",
+        base.scheme() == "https" || is_local,
         "oauth broker http_base_url must be https"
     );
     anyhow::ensure!(
