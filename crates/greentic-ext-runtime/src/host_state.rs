@@ -452,7 +452,8 @@ impl crate::host_bindings::greentic::oauth_broker::broker_v1::Host for HostState
                 provider = %provider_id,
                 "oauth get-token permission denied"
             );
-            return format!("{{\"error\":\"permission_denied\",\"provider\":\"{provider_id}\"}}");
+            return serde_json::json!({"error": "permission_denied", "provider": provider_id})
+                .to_string();
         }
 
         let Some(cfg) = self.oauth_config.clone() else {
