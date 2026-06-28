@@ -15,6 +15,8 @@ fn v2_contribution_tool_maps_capabilities_and_secret_requirements() {
         runtime_ref: None,
         capabilities: Some(vec!["agentic_worker".into()]),
         secret_requirements: vec![req],
+        description: None,
+        input_schema: None,
     };
 
     let def = greentic_ext_runtime::contribution_tool_to_definition(&t);
