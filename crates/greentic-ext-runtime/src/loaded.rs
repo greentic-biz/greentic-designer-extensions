@@ -97,6 +97,10 @@ impl LoadedExtension {
         broker::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         http::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         llm::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
+        crate::host_bindings::greentic::oauth_broker::broker_v1::add_to_linker::<
+            HostState,
+            HasSelf<HostState>,
+        >(&mut linker, |s| s)?;
 
         // Per-extension network allow-list: when the extension declares
         // `runtime.permissions.network` patterns, those patterns become the
