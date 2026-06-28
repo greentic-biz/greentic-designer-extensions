@@ -5,7 +5,7 @@ This file provides guidance to Claude Code when working in this repository.
 ## What this repo is
 
 `greentic-ext-runtime` — the wasmtime-based host the Greentic Designer
-uses to load and dispatch WebAssembly extensions. Three extension
+uses to load and dispatch WebAssembly extensions. Four extension
 kinds share a unified contract:
 
 - **Design extension** (e.g. `greentic.adaptive-cards`) — exposes
@@ -22,6 +22,11 @@ kinds share a unified contract:
   `greentic-bundle ext render` subprocess was retired (cf. designer
   PR #130 + plan
   `greentic-designer/docs/superpowers/plans/2026-04-30-bundle-dispatch-in-runtime.md`).
+- **Provider extension** (messaging, event-source, event-sink) —
+  exposes provider-specific interfaces. WIT at
+  `wit/extension-provider.wit` (worlds `messaging-only-provider`,
+  `event-source-only-provider`, `event-sink-only-provider`).
+  Discovery path: `~/.greentic/extensions/provider/`.
 
 The runtime lives at `crates/greentic-ext-runtime`. The supporting
 SDK crates (`-contract`, `-state`, `-cli`, `-registry`, `-testing`)
@@ -87,16 +92,50 @@ broker + logging + i18n imports).
 - **English only** in source, tests, comments, commit messages,
   tracing logs.
 - **No Claude co-authorship** on commits.
-- **Husky hooks** — pre-commit runs fmt + clippy; pre-push runs full
-  `ci/local_check.sh`.
+- **No Husky hooks.** Run `bash ci/local_check.sh` manually before
+  pushing (fmt → clippy → test → release build, all `--locked`).
+  A second script `ci/build-ac-ext.sh` exists for adaptive-card
+  extension builds.
 - **Feature branches + PRs** — never push directly to `main`.
-- **Tag releases** — `v0.X.Y` workspace tags + `<crate>-vX.Y.Z` per-
-  crate tags. Designer pins to the workspace tag.
+- **Tag releases** — `vX.Y.Z` workspace tags + `<crate>-vX.Y.Z` per-
+  crate tags. Designer pins to the workspace tag. Current dev
+  version: `1.1.0-dev.0`.
+
+## Key dependencies (straggler status)
+
+This repo pins **wasmtime 43** / `wit-bindgen 0.41` / `wit-component
+0.221`. The fleet canonical is wasmtime 45 / wit-bindgen 0.54. Do not
+upgrade without coordinating with `greentic-designer` (primary
+consumer). The `rust-version` MSRV in `Cargo.toml` is `1.94`; the
+build toolchain in `rust-toolchain.toml` is `1.95.0`.
+
+| Dependency | Pinned | Fleet canonical |
+|------------|--------|-----------------|
+| `wasmtime` | 43 | 45 |
+| `wit-bindgen` | 0.41 | 0.54 |
+| `greentic-extension-sdk-contract` | `>=1.1.0-dev, <1.2.0-0` | — |
+
+## Key modules
+
+Beyond the public API surface, these modules matter:
+
+- `broker.rs` — extension-to-designer message bus (`Broker` trait).
+- `capability.rs` — `CapabilityRegistry`: tracks offered/required
+  bindings and builds `ResolutionPlan`s.
+- `discovery.rs` — `DiscoveryPaths`: filesystem layout conventions
+  for locating extensions on disk.
+- `pool.rs` — wasmtime instance pooling.
+- `watcher.rs` — hot-reload via `notify`; `start_watcher()` returns
+  a `WatcherGuard`.
+- `health.rs` — `ExtensionHealth` / `HealthReason` status reporting.
+- `loaded.rs` — `LoadedExtension` / `ExtensionId` bookkeeping.
 
 ## Adding a new world / interface
 
 1. Vendor the WIT under `crates/greentic-ext-runtime/wit/deps/<package>/`
    (each kind gets its own subdir to dodge namespace collisions).
+   Primary WIT sources also live at the top-level `wit/` directory
+   (e.g. `wit/extension-design.wit`, `wit/extension-provider.wit`).
 2. Add a sibling `mod <kind>` in `host_bindings.rs` with
    `wasmtime::component::bindgen!({ path: "wit", world: "..." })`.
 3. Mirror the WIT records as Rust structs in `types.rs`; re-export
@@ -122,6 +161,10 @@ example to mirror.
   this runtime instead).
 - **`greentic-adaptive-card-mcp`** — ships the `adaptive-cards`
   design extension (built against this runtime's WIT).
+- **`greentic-provider-extensions`** — reference messaging-provider
+  extensions (Telegram, Slack, etc.) built against this runtime's
+  provider WIT.
 - **`greentic-store-server`** — distributes signed `.gtxpack`
-  artefacts; the runtime's `verify_describe` checks signatures
-  against the store's published key set.
+  artefacts; the runtime's `verify_describe` (via
+  `greentic-extension-sdk-contract`) checks signatures against the
+  store's published key set.
