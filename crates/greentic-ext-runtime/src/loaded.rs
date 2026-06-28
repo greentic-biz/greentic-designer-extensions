@@ -97,7 +97,7 @@ impl LoadedExtension {
         broker::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         http::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
         llm::add_to_linker::<HostState, HasSelf<HostState>>(&mut linker, |s| s)?;
-        crate::host_bindings::greentic::oauth_broker::broker_v1::add_to_linker::<
+        crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::add_to_linker::<
             HostState,
             HasSelf<HostState>,
         >(&mut linker, |s| s)?;

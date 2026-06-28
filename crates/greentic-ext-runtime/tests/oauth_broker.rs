@@ -4,7 +4,7 @@
 //! a fixed JSON token body. `HostState::get_token` (the broker-v1 Host impl)
 //! must pass the permission gate and forward the request to the stub, then
 //! deserialize and return the access token.
-use greentic_ext_runtime::host_bindings::greentic::oauth_broker::broker_v1::Host as OAuthHost;
+use greentic_ext_runtime::host_bindings::design_v04::greentic::oauth_broker::broker_v1::Host as OAuthHost;
 use greentic_ext_runtime::oauth::OAuthBrokerConfig;
 use greentic_ext_runtime::{HostState, reqwest};
 use greentic_extension_sdk_contract::describe::Permissions;

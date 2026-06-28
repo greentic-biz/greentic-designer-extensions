@@ -427,7 +427,7 @@ impl llm::Host for HostState {
     }
 }
 
-impl crate::host_bindings::greentic::oauth_broker::broker_v1::Host for HostState {
+impl crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::Host for HostState {
     /// Retrieve a token for the given OAuth provider.
     ///
     /// Permission gate: the provider must be declared in
@@ -873,7 +873,7 @@ mod tests {
 
     #[test]
     fn oauth_get_token_denied_when_provider_not_declared() {
-        use crate::host_bindings::greentic::oauth_broker::broker_v1::Host as OAuthHost;
+        use crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::Host as OAuthHost;
         let mut h = HostState::builder("ext".into(), Permissions::default()).build();
         let out = h.get_token("hubspot".into(), String::new(), vec![]);
         assert!(out.contains("permission_denied"), "got: {out}");
@@ -881,7 +881,7 @@ mod tests {
 
     #[test]
     fn oauth_get_token_errors_when_unconfigured() {
-        use crate::host_bindings::greentic::oauth_broker::broker_v1::Host as OAuthHost;
+        use crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::Host as OAuthHost;
         let mut perms = Permissions::default();
         perms.oauth_providers.push("hubspot".into());
         let mut h = HostState::builder("ext".into(), perms).build();

@@ -78,6 +78,25 @@ pub mod design_v03 {
     });
 }
 
+// ---------------------------------------------------------------------------
+// design-extension @0.4.0 bindings.
+//
+// Identical to the @0.3.0 world plus one additive import:
+// `greentic:oauth-broker/broker-v1@1.0.0`. The version bump (rather than an
+// in-place edit of @0.3.0) keeps the world signature versioned, so a component
+// compiled against the broker-capable world is distinguishable from one that is
+// not. This is the only world that generates the oauth-broker host bindings;
+// the broker `Host` impl (host_state.rs) and linker wiring (loaded.rs) target
+// this module. Registering broker-v1 once in the shared linker covers every
+// instantiated component regardless of the world version it targets.
+// ---------------------------------------------------------------------------
+pub mod design_v04 {
+    wasmtime::component::bindgen!({
+        path: "wit",
+        world: "greentic:extension-design/design-extension@0.4.0",
+    });
+}
+
 pub mod deploy_v02 {
     wasmtime::component::bindgen!({
         path: "wit",
