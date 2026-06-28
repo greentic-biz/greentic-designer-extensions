@@ -12,6 +12,7 @@ mod host_bindings;
 pub mod host_ports;
 mod host_state;
 mod loaded;
+mod oauth;
 mod pool;
 mod runtime;
 mod runtime_deploy;
