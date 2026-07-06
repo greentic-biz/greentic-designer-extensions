@@ -1,0 +1,21 @@
+# Publish greentic-ext-runtime to crates.io (org reusable workflow).
+name: Publish to crates.io
+
+on:
+  push:
+    tags: ["extrt-v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    uses: greenticai/.github/.github/workflows/crates-publish.yml@main
+    with:
+      crates: "greentic-ext-runtime"
+    secrets: inherit
