@@ -134,7 +134,7 @@ features = [
 ]
 
 [workspace.dependencies.wasmtime]
-version = "43"
+version = "46"
 features = [
     "component-model",
     "async",
