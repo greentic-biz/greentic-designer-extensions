@@ -84,7 +84,7 @@ broker + logging + i18n imports).
 
 ## Conventions
 
-- **Rust 1.95.0**, edition 2024 (`rust-toolchain.toml` is canonical).
+- **Toolchain Rust 1.95.0**, MSRV (`rust-version`) 1.94, edition 2024 (`rust-toolchain.toml` is canonical).
 - **WASM target** for reference extensions: `wasm32-wasip2` —
   governed by the consuming repo (`greentic-bundle-extensions`,
   `greentic-deployer-extensions`).
