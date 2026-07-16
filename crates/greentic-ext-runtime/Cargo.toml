@@ -28,6 +28,14 @@ greentic-types = { workspace = true }
 [dependencies.directories]
 workspace = true
 
+# Both are needed to parse the publisher key out of a signed describe and check
+# the signature against it (anchored verify). Previously dev-only.
+[dependencies.base64]
+workspace = true
+
+[dependencies.ed25519-dalek]
+workspace = true
+
 [dependencies.anyhow]
 workspace = true
 

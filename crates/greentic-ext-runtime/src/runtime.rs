@@ -262,7 +262,7 @@ impl ExtensionRuntime {
     }
 
     pub fn register_loaded_from_dir(&mut self, dir: &std::path::Path) -> Result<(), RuntimeError> {
-        Self::verify_dir_signature(dir)?;
+        self.verify_dir_signature(dir)?;
         let loaded = LoadedExtension::load_from_dir(&self.engine, dir)?;
         let id = loaded.id.clone();
 
@@ -294,7 +294,37 @@ impl ExtensionRuntime {
         Ok(())
     }
 
-    fn verify_dir_signature(dir: &std::path::Path) -> Result<(), RuntimeError> {
+    /// Parse a base64 (optionally `ed25519:`-prefixed) ed25519 public key.
+    ///
+    /// This is a deliberate mirror of the SDK's own `parse_verifying_key`
+    /// (`greentic-extension-sdk-registry/src/verify.rs:11-23`), which is
+    /// private to that crate and so cannot be reused from here. The
+    /// `ed25519:` prefix tolerance must stay in step with that copy: a
+    /// describe signed by a producer that emits the prefixed form has to
+    /// verify identically on both sides, or the same pack would install via
+    /// `gtdx` and be rejected here.
+    fn parse_verifying_key(
+        extension_id: &str,
+        key_b64: &str,
+    ) -> Result<ed25519_dalek::VerifyingKey, RuntimeError> {
+        use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+
+        let invalid = |reason: String| RuntimeError::SignatureInvalid {
+            extension_id: extension_id.to_string(),
+            reason,
+        };
+        let bytes = B64
+            .decode(key_b64.strip_prefix("ed25519:").unwrap_or(key_b64))
+            .map_err(|e| invalid(format!("publisher key b64: {e}")))?;
+        let arr: [u8; 32] = bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| invalid("publisher key length != 32".to_string()))?;
+        ed25519_dalek::VerifyingKey::from_bytes(&arr)
+            .map_err(|e| invalid(format!("publisher key parse: {e}")))
+    }
+
+    fn verify_dir_signature(&self, dir: &std::path::Path) -> Result<(), RuntimeError> {
         #[cfg(feature = "dev-allow-unsigned")]
         if std::env::var("GREENTIC_EXT_ALLOW_UNSIGNED").is_ok() {
             tracing::warn!(
@@ -306,26 +336,52 @@ impl ExtensionRuntime {
         let path = dir.join("describe.json");
         let raw = std::fs::read_to_string(&path)?;
         let describe: greentic_extension_sdk_contract::DescribeJson = serde_json::from_str(&raw)?;
-        // Integrity: the describe is unmodified since signing. This is NOT
-        // authenticity — it proves nothing about *who* signed (an attacker can
-        // re-sign with their own key). Anchored authenticity
-        // (`verify_describe_with_key` against a trust-store / RootVerifier key)
-        // is the audit C1 follow-up; it needs a runtime trust store and the
-        // org-provisioned prod root key (both currently blocked).
+        // Step 1 — integrity: the describe is unmodified since signing. This is
+        // NOT authenticity: it proves nothing about *who* signed, because an
+        // attacker can re-sign their own describe with their own key and pass
+        // this check trivially. Steps 2 and 3 below supply authenticity.
         greentic_extension_sdk_contract::verify_describe_self_consistent(&describe).map_err(
             |e| RuntimeError::SignatureInvalid {
                 extension_id: describe.metadata.id.clone(),
                 reason: e.to_string(),
             },
         )?;
-        let pub_prefix = describe.signature.as_ref().map_or_else(
-            || "?".to_string(),
-            |s| s.public_key.chars().take(16).collect::<String>(),
-        );
+
+        let invalid = |reason: String| RuntimeError::SignatureInvalid {
+            extension_id: describe.metadata.id.clone(),
+            reason,
+        };
+        // `verify_describe_self_consistent` already rejects an unsigned
+        // describe, so this is belt-and-braces rather than a live path — but
+        // failing closed here keeps the invariant local and obvious.
+        let key_b64 = describe
+            .signature
+            .as_ref()
+            .map(|s| s.public_key.clone())
+            .ok_or_else(|| invalid("unsigned describe cannot be anchored".to_string()))?;
+
+        // Step 2 — authenticity: the signature really was made by the key the
+        // describe names.
+        let verifying_key = Self::parse_verifying_key(&describe.metadata.id, &key_b64)?;
+        greentic_extension_sdk_contract::verify_describe_with_key(&describe, &verifying_key)
+            .map_err(|e| invalid(e.to_string()))?;
+
+        // Step 3 — anchor (TOFU): that key must be the one pinned for this
+        // extension id on first load. Ordering matters: this runs strictly
+        // AFTER step 2 so a describe with a bad signature can never poison the
+        // pin (an attacker must not be able to pre-pin their own key for an id
+        // this runtime has not seen yet). Mirrors the same ordering rule
+        // documented at `greentic-extension-sdk-registry/src/verify.rs:52-56`.
+        let trust_root = self.config.resolve_trust_root()?;
+        greentic_extension_sdk_registry::trust_store::TrustStore::new(&trust_root)
+            .pin_or_verify(&describe.metadata.id, &key_b64)
+            .map_err(|e| invalid(e.to_string()))?;
+
+        let pub_prefix = key_b64.chars().take(16).collect::<String>();
         tracing::info!(
             extension_id = %describe.metadata.id,
             key_prefix = %pub_prefix,
-            "extension signature verified"
+            "extension signature verified and anchored to the pinned publisher key"
         );
         Self::verify_dir_manifest(dir, &describe)?;
         Ok(())
