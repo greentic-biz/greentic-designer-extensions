@@ -313,36 +313,6 @@ impl ExtensionRuntime {
         Ok(registry)
     }
 
-    /// Parse a base64 (optionally `ed25519:`-prefixed) ed25519 public key.
-    ///
-    /// This is a deliberate mirror of the SDK's own `parse_verifying_key`
-    /// (`greentic-extension-sdk-registry/src/verify.rs:11-23`), which is
-    /// private to that crate and so cannot be reused from here. The
-    /// `ed25519:` prefix tolerance must stay in step with that copy: a
-    /// describe signed by a producer that emits the prefixed form has to
-    /// verify identically on both sides, or the same pack would install via
-    /// `gtdx` and be rejected here.
-    fn parse_verifying_key(
-        extension_id: &str,
-        key_b64: &str,
-    ) -> Result<ed25519_dalek::VerifyingKey, RuntimeError> {
-        use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
-
-        let invalid = |reason: String| RuntimeError::SignatureInvalid {
-            extension_id: extension_id.to_string(),
-            reason,
-        };
-        let bytes = B64
-            .decode(key_b64.strip_prefix("ed25519:").unwrap_or(key_b64))
-            .map_err(|e| invalid(format!("publisher key b64: {e}")))?;
-        let arr: [u8; 32] = bytes
-            .as_slice()
-            .try_into()
-            .map_err(|_| invalid("publisher key length != 32".to_string()))?;
-        ed25519_dalek::VerifyingKey::from_bytes(&arr)
-            .map_err(|e| invalid(format!("publisher key parse: {e}")))
-    }
-
     fn verify_dir_signature(&self, dir: &std::path::Path) -> Result<(), RuntimeError> {
         #[cfg(feature = "dev-allow-unsigned")]
         if std::env::var("GREENTIC_EXT_ALLOW_UNSIGNED").is_ok() {
@@ -379,18 +349,29 @@ impl ExtensionRuntime {
             .map(|s| s.public_key.clone())
             .ok_or_else(|| invalid("unsigned describe cannot be anchored".to_string()))?;
 
-        // Step 2 — authenticity: the signature really was made by the key the
-        // describe names.
-        let verifying_key = Self::parse_verifying_key(&describe.metadata.id, &key_b64)?;
-        greentic_extension_sdk_contract::verify_describe_with_key(&describe, &verifying_key)
-            .map_err(|e| invalid(e.to_string()))?;
+        // Step 2 — integrity of the artifact itself, not just of the describe.
+        // This must run BEFORE the anchor below, because pinning is a *write*
+        // into a store shared with `gtdx`: a pin left behind by a load that
+        // then fails would permanently block the genuine publisher for this id
+        // in both tools, recoverable only by hand-editing publishers.json.
+        //
+        // `gtdx` orders it the same way, one level up — see
+        // `sdk-registry/src/lifecycle.rs`, `verify_integrity` then
+        // `verify_authenticity`. The ordering rule inside
+        // `sdk-registry/src/verify.rs` covers only signature-then-anchor
+        // because integrity is already done by the time it is called; reading
+        // that rule without its caller is what put the pin ahead of the ledger
+        // here.
+        Self::verify_dir_manifest(dir, &describe)?;
 
-        // Step 3 — anchor (TOFU): that key must be the one pinned for this
-        // extension id on first load. Ordering matters: this runs strictly
-        // AFTER step 2 so a describe with a bad signature can never poison the
-        // pin (an attacker must not be able to pre-pin their own key for an id
-        // this runtime has not seen yet). Mirrors the same ordering rule
-        // documented at `greentic-extension-sdk-registry/src/verify.rs:52-56`.
+        // Step 3 — anchor (TOFU): the key that signed this describe must be the
+        // one pinned for this extension id on first load. Step 1 proved the
+        // signature verifies against `key_b64`; pinning `key_b64` is therefore
+        // what turns integrity into authenticity. There is no separate
+        // `verify_describe_with_key` step: passing it a key read out of the
+        // describe compares that key against itself, which is a tautology the
+        // SDK's own doc warns against ("the key must come from a trust anchor
+        // ... never from the artifact alone"). The anchor IS the trust anchor.
         let trust_root = self.config.resolve_trust_root()?;
         greentic_extension_sdk_registry::trust_store::TrustStore::new(&trust_root)
             .pin_or_verify(&describe.metadata.id, &key_b64)
@@ -402,7 +383,6 @@ impl ExtensionRuntime {
             key_prefix = %pub_prefix,
             "extension signature verified and anchored to the pinned publisher key"
         );
-        Self::verify_dir_manifest(dir, &describe)?;
         Ok(())
     }
 

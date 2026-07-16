@@ -196,3 +196,68 @@ fn registry_gains_offerings_on_watcher_add() {
         "a hot-reloaded extension's caps must be registered"
     );
 }
+
+/// The base64 public key the fixture's signed describe.json advertises.
+fn describe_public_key(dir: &Path) -> String {
+    let raw = std::fs::read_to_string(dir.join("describe.json")).expect("read describe.json");
+    let describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).expect("parse describe.json");
+    describe
+        .signature
+        .expect("fixture describe must be signed")
+        .public_key
+}
+
+#[test]
+fn watcher_path_rejects_a_different_key_for_a_pinned_id() {
+    // The cross-product this whole gate exists for: watcher x anchor.
+    //
+    // The other watcher tests use unsigned/tampered fixtures, so they trip
+    // step 1 and would pass with the anchor deleted entirely. This one cannot:
+    // both describes are perfectly self-consistent, so only the pin can tell
+    // them apart. It is also the realistic attack — an attacker who can write
+    // to a watched dir re-signs a known id with their own key and waits for
+    // the hot-reload, rather than re-signing nothing and being caught by
+    // step 1.
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
+    let trust = tempfile::TempDir::new().unwrap();
+
+    let (genuine, _sk1) = signed_fixture(ExtensionKind::Design, "greentic.watch-swap", "0.1.0");
+    let (attacker, _sk2) = signed_fixture(ExtensionKind::Design, "greentic.watch-swap", "0.1.0");
+    let pinned = describe_public_key(genuine.root());
+    let presented = describe_public_key(attacker.root());
+    assert_ne!(
+        pinned, presented,
+        "signed_fixture must mint a fresh key per call, or this test proves nothing"
+    );
+
+    let rt = runtime_with_trust_root(trust.path());
+    rt.handle_added_or_modified(genuine.root())
+        .expect("first hot-reload pins the genuine key");
+
+    let err = rt
+        .handle_added_or_modified(attacker.root())
+        .expect_err("the hot-reload path must reject a key swap on a pinned id");
+    match err {
+        RuntimeError::SignatureInvalid {
+            extension_id,
+            reason,
+        } => {
+            assert_eq!(extension_id, "greentic.watch-swap");
+            assert!(
+                reason.contains(&pinned) && reason.contains(&presented),
+                "reason must name both keys so a rotation is distinguishable \
+                 from an attack; got: {reason}"
+            );
+        }
+        other => panic!("expected SignatureInvalid, got {other:?}"),
+    }
+
+    // The genuine extension must survive the rejected swap.
+    assert!(
+        rt.loaded()
+            .values()
+            .any(|e| e.id.as_str() == "greentic.watch-swap"),
+        "the rejected reload must not evict the extension already loaded"
+    );
+}

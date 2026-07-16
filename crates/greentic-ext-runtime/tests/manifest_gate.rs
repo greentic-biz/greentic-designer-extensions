@@ -129,3 +129,32 @@ fn tampered_manifest_breaks_binding() {
         other => panic!("expected SignatureInvalid, got {other:?}"),
     }
 }
+
+#[test]
+fn valid_signature_with_broken_manifest_pins_nothing() {
+    // Ordering gate: the anchor must not be written until the artifact's
+    // integrity ledger has passed. The signature here is genuinely valid — only
+    // the ledger is broken — so steps 1 and 2 accept and the pin is the next
+    // thing that would run.
+    //
+    // The trust store is deliberately the same one gtdx writes. A pin from a
+    // *rejected* load is therefore not a local mistake: it permanently blocks
+    // the real publisher for this id, in both tools, until someone hand-edits
+    // publishers.json. An attacker who cannot complete a load must not be able
+    // to squat an id this way.
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
+    let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.guardrail-pii", "0.1.0");
+    std::fs::remove_file(manifest_path(fx.root())).unwrap();
+
+    let (mut rt, trust) = new_runtime();
+    rt.register_loaded_from_dir(fx.root())
+        .expect_err("a pack with no manifest must be rejected");
+
+    // Asserted one level above publishers.json: `pin_or_verify` creates the
+    // trust dir and its lockfile before inserting, so the directory existing at
+    // all proves the store was reached.
+    assert!(
+        !trust.path().join("trust").exists(),
+        "a rejected load touched the shared trust store"
+    );
+}
