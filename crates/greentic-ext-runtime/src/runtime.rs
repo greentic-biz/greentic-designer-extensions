@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -34,6 +35,10 @@ pub struct RuntimeConfig {
     /// Production callers replace this via [`RuntimeConfig::with_host_overrides`]
     /// or the ergonomic [`ExtensionRuntime::with_host_overrides`] builder.
     pub host_overrides: HostOverrides,
+    /// Root of the TOFU publisher-key store (`<root>/trust/publishers.json`).
+    /// `None` resolves as [`RuntimeConfig::resolve_trust_root`] describes —
+    /// `$GREENTIC_HOME`, else `~/.greentic`. Tests point this at a temp dir.
+    pub trust_root: Option<PathBuf>,
 }
 
 impl RuntimeConfig {
@@ -44,7 +49,59 @@ impl RuntimeConfig {
         Self {
             paths,
             host_overrides: HostOverrides::default(),
+            trust_root: None,
         }
+    }
+
+    /// Override the TOFU trust-store root. Returns `self` for builder-style
+    /// chaining. Mainly for tests — production should leave this `None` so the
+    /// root resolves to the same store `gtdx` writes.
+    #[must_use]
+    pub fn with_trust_root(mut self, root: PathBuf) -> Self {
+        self.trust_root = Some(root);
+        self
+    }
+
+    /// Resolve the root under which the TOFU publisher-key store lives.
+    ///
+    /// Resolution order, mirroring `gtdx` exactly
+    /// (`greentic-extension-sdk-cli/src/main.rs:116-124`):
+    /// 1. an explicit [`RuntimeConfig::with_trust_root`] override,
+    /// 2. `$GREENTIC_HOME` (gtdx's `--home` flag reads the same var),
+    /// 3. `~/.greentic`.
+    ///
+    /// This deliberately does **not** derive from [`DiscoveryPaths`]. The
+    /// trust store keys publisher keys by extension *id*; it has no
+    /// relationship to where an extension directory happens to live.
+    /// `DiscoveryPaths::home()` equals `~/.greentic` only by coincidence in
+    /// the default layout and diverges under either `$GREENTIC_HOME` or the
+    /// runner's `GREENTIC_EXTENSIONS_DIR` override — in which case a TOFU
+    /// check would silently re-pin into a *different* store instead of
+    /// matching the one gtdx populated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Io`] when no override or `$GREENTIC_HOME` is
+    /// set and the platform reports no home directory. Failing closed is
+    /// deliberate: any invented fallback root would pin somewhere gtdx never
+    /// reads, which is the silent-mismatch failure this resolution exists to
+    /// prevent.
+    pub fn resolve_trust_root(&self) -> Result<PathBuf, RuntimeError> {
+        if let Some(root) = &self.trust_root {
+            return Ok(root.clone());
+        }
+        if let Some(home) = std::env::var_os("GREENTIC_HOME").filter(|v| !v.is_empty()) {
+            return Ok(PathBuf::from(home));
+        }
+        directories::BaseDirs::new()
+            .map(|d| d.home_dir().join(".greentic"))
+            .ok_or_else(|| {
+                RuntimeError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "cannot resolve the extension trust root: no home directory on this platform \
+                     and GREENTIC_HOME is unset",
+                ))
+            })
     }
 
     /// Replace the [`HostOverrides`] bundle. Returns `self` for builder-style
@@ -205,31 +262,17 @@ impl ExtensionRuntime {
     }
 
     pub fn register_loaded_from_dir(&mut self, dir: &std::path::Path) -> Result<(), RuntimeError> {
-        Self::verify_dir_signature(dir)?;
+        self.verify_dir_signature(dir)?;
         let loaded = LoadedExtension::load_from_dir(&self.engine, dir)?;
         let id = loaded.id.clone();
 
-        // Build new registry: clone existing offerings, add new extension's offerings.
-        let mut new_registry = CapabilityRegistry::new();
-        for existing in self.capability_registry.load().offerings() {
-            new_registry.add_offering(existing.clone());
-        }
-        for cap in &loaded.describe.capabilities.offered {
-            let version: semver::Version = cap.version.parse().map_err(|e: semver::Error| {
-                RuntimeError::Wasmtime(anyhow::anyhow!("bad offered version: {e}"))
-            })?;
-            new_registry.add_offering(OfferedBinding {
-                extension_id: id.as_str().to_string(),
-                cap_id: cap.id.clone(),
-                version,
-                kind: loaded.kind,
-                export_path: String::new(),
-            });
-        }
-
-        // Atomically swap in new loaded map and registry.
         let mut new_map = (**self.loaded.load()).clone();
         new_map.insert(id.clone(), Arc::new(loaded));
+        let new_registry = Self::rebuild_registry(&new_map)?;
+
+        // Atomically swap in the new loaded map and its registry. Both stores
+        // happen only after the rebuild succeeds, so a bad offered version
+        // leaves the runtime exactly as it was.
         self.loaded.store(Arc::new(new_map));
         self.capability_registry.store(Arc::new(new_registry));
 
@@ -237,7 +280,70 @@ impl ExtensionRuntime {
         Ok(())
     }
 
-    fn verify_dir_signature(dir: &std::path::Path) -> Result<(), RuntimeError> {
+    /// Derive the capability registry from the loaded set.
+    ///
+    /// The registry holds nothing that is not already derivable from the
+    /// loaded describes, so it is rebuilt wholesale rather than patched
+    /// incrementally at each call site. That is what makes eviction correct by
+    /// construction: a capability dropped from a describe, an extension that
+    /// was removed, and a re-registered dir all fall out of the new map
+    /// automatically instead of each needing its own fix. The previous
+    /// clone-forward-then-append approach got all three wrong.
+    fn rebuild_registry(
+        loaded: &HashMap<ExtensionId, LoadedExtensionRef>,
+    ) -> Result<CapabilityRegistry, RuntimeError> {
+        let mut registry = CapabilityRegistry::new();
+        for (id, ext) in loaded {
+            for cap in &ext.describe.capabilities.offered {
+                let version: semver::Version =
+                    cap.version.parse().map_err(|e: semver::Error| {
+                        RuntimeError::Wasmtime(anyhow::anyhow!("bad offered version: {e}"))
+                    })?;
+                registry.add_offering(OfferedBinding {
+                    extension_id: id.as_str().to_string(),
+                    cap_id: cap.id.clone(),
+                    version,
+                    kind: ext.kind,
+                    // Source-dir registration has no export path; preserved
+                    // from the original behaviour.
+                    export_path: String::new(),
+                });
+            }
+        }
+        Ok(registry)
+    }
+
+    /// Parse a base64 (optionally `ed25519:`-prefixed) ed25519 public key.
+    ///
+    /// This is a deliberate mirror of the SDK's own `parse_verifying_key`
+    /// (`greentic-extension-sdk-registry/src/verify.rs:11-23`), which is
+    /// private to that crate and so cannot be reused from here. The
+    /// `ed25519:` prefix tolerance must stay in step with that copy: a
+    /// describe signed by a producer that emits the prefixed form has to
+    /// verify identically on both sides, or the same pack would install via
+    /// `gtdx` and be rejected here.
+    fn parse_verifying_key(
+        extension_id: &str,
+        key_b64: &str,
+    ) -> Result<ed25519_dalek::VerifyingKey, RuntimeError> {
+        use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+
+        let invalid = |reason: String| RuntimeError::SignatureInvalid {
+            extension_id: extension_id.to_string(),
+            reason,
+        };
+        let bytes = B64
+            .decode(key_b64.strip_prefix("ed25519:").unwrap_or(key_b64))
+            .map_err(|e| invalid(format!("publisher key b64: {e}")))?;
+        let arr: [u8; 32] = bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| invalid("publisher key length != 32".to_string()))?;
+        ed25519_dalek::VerifyingKey::from_bytes(&arr)
+            .map_err(|e| invalid(format!("publisher key parse: {e}")))
+    }
+
+    fn verify_dir_signature(&self, dir: &std::path::Path) -> Result<(), RuntimeError> {
         #[cfg(feature = "dev-allow-unsigned")]
         if std::env::var("GREENTIC_EXT_ALLOW_UNSIGNED").is_ok() {
             tracing::warn!(
@@ -249,26 +355,52 @@ impl ExtensionRuntime {
         let path = dir.join("describe.json");
         let raw = std::fs::read_to_string(&path)?;
         let describe: greentic_extension_sdk_contract::DescribeJson = serde_json::from_str(&raw)?;
-        // Integrity: the describe is unmodified since signing. This is NOT
-        // authenticity — it proves nothing about *who* signed (an attacker can
-        // re-sign with their own key). Anchored authenticity
-        // (`verify_describe_with_key` against a trust-store / RootVerifier key)
-        // is the audit C1 follow-up; it needs a runtime trust store and the
-        // org-provisioned prod root key (both currently blocked).
+        // Step 1 — integrity: the describe is unmodified since signing. This is
+        // NOT authenticity: it proves nothing about *who* signed, because an
+        // attacker can re-sign their own describe with their own key and pass
+        // this check trivially. Steps 2 and 3 below supply authenticity.
         greentic_extension_sdk_contract::verify_describe_self_consistent(&describe).map_err(
             |e| RuntimeError::SignatureInvalid {
                 extension_id: describe.metadata.id.clone(),
                 reason: e.to_string(),
             },
         )?;
-        let pub_prefix = describe.signature.as_ref().map_or_else(
-            || "?".to_string(),
-            |s| s.public_key.chars().take(16).collect::<String>(),
-        );
+
+        let invalid = |reason: String| RuntimeError::SignatureInvalid {
+            extension_id: describe.metadata.id.clone(),
+            reason,
+        };
+        // `verify_describe_self_consistent` already rejects an unsigned
+        // describe, so this is belt-and-braces rather than a live path — but
+        // failing closed here keeps the invariant local and obvious.
+        let key_b64 = describe
+            .signature
+            .as_ref()
+            .map(|s| s.public_key.clone())
+            .ok_or_else(|| invalid("unsigned describe cannot be anchored".to_string()))?;
+
+        // Step 2 — authenticity: the signature really was made by the key the
+        // describe names.
+        let verifying_key = Self::parse_verifying_key(&describe.metadata.id, &key_b64)?;
+        greentic_extension_sdk_contract::verify_describe_with_key(&describe, &verifying_key)
+            .map_err(|e| invalid(e.to_string()))?;
+
+        // Step 3 — anchor (TOFU): that key must be the one pinned for this
+        // extension id on first load. Ordering matters: this runs strictly
+        // AFTER step 2 so a describe with a bad signature can never poison the
+        // pin (an attacker must not be able to pre-pin their own key for an id
+        // this runtime has not seen yet). Mirrors the same ordering rule
+        // documented at `greentic-extension-sdk-registry/src/verify.rs:52-56`.
+        let trust_root = self.config.resolve_trust_root()?;
+        greentic_extension_sdk_registry::trust_store::TrustStore::new(&trust_root)
+            .pin_or_verify(&describe.metadata.id, &key_b64)
+            .map_err(|e| invalid(e.to_string()))?;
+
+        let pub_prefix = key_b64.chars().take(16).collect::<String>();
         tracing::info!(
             extension_id = %describe.metadata.id,
             key_prefix = %pub_prefix,
-            "extension signature verified"
+            "extension signature verified and anchored to the pinned publisher key"
         );
         Self::verify_dir_manifest(dir, &describe)?;
         Ok(())
@@ -432,7 +564,13 @@ impl ExtensionRuntime {
         Ok(())
     }
 
-    fn handle_removal(&self, dir: &std::path::Path) {
+    /// Hot-reload entry point for a removed extension directory.
+    ///
+    /// `#[doc(hidden)] pub` rather than private so the watcher-path tests can
+    /// exercise it directly — driving a real filesystem watcher from a test
+    /// would be slow and racy. Not part of the supported API.
+    #[doc(hidden)]
+    pub fn handle_removal(&self, dir: &std::path::Path) {
         let current = self.loaded.load();
         let Some((id, _)) = current.iter().find(|(_, v)| v.source_dir == dir) else {
             return;
@@ -440,11 +578,42 @@ impl ExtensionRuntime {
         let id = id.clone();
         let mut new_map = (**current).clone();
         new_map.remove(&id);
-        self.loaded.store(Arc::new(new_map));
-        let _ = self.events.send(RuntimeEvent::ExtensionRemoved(id));
+        // Rebuilding drops the removed extension's offerings. Leaving them
+        // advertised is the false positive that lets a preflight check pass a
+        // policy the runtime then fails closed on.
+        match Self::rebuild_registry(&new_map) {
+            Ok(new_registry) => {
+                self.loaded.store(Arc::new(new_map));
+                self.capability_registry.store(Arc::new(new_registry));
+                let _ = self.events.send(RuntimeEvent::ExtensionRemoved(id));
+            }
+            // Unreachable in practice: an extension whose offered version does
+            // not parse never enters `loaded` (both insert paths rebuild before
+            // storing and bail on error), so a rebuild over a subset of
+            // `loaded` cannot fail. Removal returns no error, so rather than
+            // strand the runtime in a half-applied state we keep both the map
+            // and the registry as they were and make the anomaly auditable.
+            Err(e) => tracing::error!(
+                extension_id = %id.as_str(),
+                error = %e,
+                "capability registry rebuild failed on removal; extension left loaded"
+            ),
+        }
     }
 
-    fn handle_added_or_modified(&self, dir: &std::path::Path) -> Result<(), RuntimeError> {
+    /// Hot-reload entry point for an added or modified extension directory.
+    ///
+    /// `#[doc(hidden)] pub` rather than private so the watcher-path tests can
+    /// exercise the signature gate directly — driving a real filesystem
+    /// watcher from a test would be slow and racy. Not part of the supported
+    /// API: callers should use [`ExtensionRuntime::register_loaded_from_dir`].
+    #[doc(hidden)]
+    pub fn handle_added_or_modified(&self, dir: &std::path::Path) -> Result<(), RuntimeError> {
+        // The same gate as `register_loaded_from_dir`, no exceptions. Without
+        // this, anyone able to write to a watched extension directory got code
+        // execution with no signature check at all — and did not even need to
+        // re-sign, since this path previously verified nothing.
+        self.verify_dir_signature(dir)?;
         let loaded = crate::loaded::LoadedExtension::load_from_dir(&self.engine, dir)?;
         let id = loaded.id.clone();
         let mut new_map = (**self.loaded.load()).clone();
@@ -452,7 +621,9 @@ impl ExtensionRuntime {
             .get(&id)
             .map(|e| e.describe.metadata.version.clone());
         new_map.insert(id.clone(), Arc::new(loaded));
+        let new_registry = Self::rebuild_registry(&new_map)?;
         self.loaded.store(Arc::new(new_map));
+        self.capability_registry.store(Arc::new(new_registry));
         let event = match prev_version {
             Some(prev) => RuntimeEvent::ExtensionUpdated {
                 id,

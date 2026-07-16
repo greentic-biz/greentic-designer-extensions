@@ -61,9 +61,12 @@ async fn end_to_end_discovery_and_capability_resolution() {
     sign_fixture_dir(&offerer_dst);
     sign_fixture_dir(&consumer_dst);
 
-    let mut rt = ExtensionRuntime::new(RuntimeConfig::from_paths(DiscoveryPaths::new(
-        user_root.clone(),
-    )))
+    // Trust root inside the existing tempdir: the default root is the
+    // developer's real ~/.greentic, which tests must never pin into.
+    let mut rt = ExtensionRuntime::new(
+        RuntimeConfig::from_paths(DiscoveryPaths::new(user_root.clone()))
+            .with_trust_root(tmp.path().join("trust-root")),
+    )
     .unwrap();
 
     for kind in ["design", "bundle"] {

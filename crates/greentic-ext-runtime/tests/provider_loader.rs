@@ -30,9 +30,14 @@ use support::{
     signed_provider_fixture_with_placeholder_gtpack,
 };
 
-fn build_runtime() -> ExtensionRuntime {
-    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")));
-    ExtensionRuntime::new(config).unwrap()
+/// The returned `TempDir` is the trust root and must be held for the test's
+/// lifetime — see the note in `signature_gate.rs`. Without it these tests pin
+/// fixture keys into the developer's real `~/.greentic`.
+fn build_runtime() -> (ExtensionRuntime, tempfile::TempDir) {
+    let trust = tempfile::TempDir::new().expect("temp trust root");
+    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")))
+        .with_trust_root(trust.path().to_path_buf());
+    (ExtensionRuntime::new(config).unwrap(), trust)
 }
 
 /// Provider extensions must load the design-side `extension.wasm` at root,
@@ -57,7 +62,7 @@ fn provider_extension_prefers_extension_wasm_at_root() {
         "test precondition: extension.wasm must exist at root"
     );
 
-    let mut runtime = build_runtime();
+    let (mut runtime, _trust) = build_runtime();
     // The load must succeed — it picks up `extension.wasm`, not the
     // placeholder gtpack that would fail wasmtime parsing.
     runtime
@@ -99,7 +104,7 @@ fn design_extension_prefers_extension_wasm_at_root() {
         "test precondition: runtime/component.gtpack placeholder must exist"
     );
 
-    let mut runtime = build_runtime();
+    let (mut runtime, _trust) = build_runtime();
     // Load must succeed: loader picks extension.wasm, not the placeholder gtpack.
     runtime
         .register_loaded_from_dir(fixture.root())
@@ -143,7 +148,7 @@ fn extension_without_root_wasm_loads_from_describe_gtpack_file() {
         "test precondition: inner.wasm (fallback target) must exist"
     );
 
-    let mut runtime = build_runtime();
+    let (mut runtime, _trust) = build_runtime();
     runtime
         .register_loaded_from_dir(fixture.root())
         .expect("extension without root extension.wasm must load via describe.runtime.components");

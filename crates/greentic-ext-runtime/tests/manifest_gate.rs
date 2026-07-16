@@ -15,9 +15,16 @@ use greentic_extension_sdk_contract::ExtensionKind;
 
 use support::{EnvGuard, signed_fixture};
 
-fn new_runtime() -> ExtensionRuntime {
-    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")));
-    ExtensionRuntime::new(config).unwrap()
+/// The returned `TempDir` is the trust root and must be held for the test's
+/// lifetime. It is not optional: the default root is the developer's real
+/// `~/.greentic`, and `signed_fixture` mints a fresh key per call, so a
+/// default-rooted test pins junk on its first run and then fails every later
+/// run with `PublisherKeyChanged`.
+fn new_runtime() -> (ExtensionRuntime, tempfile::TempDir) {
+    let trust = tempfile::TempDir::new().expect("temp trust root");
+    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")))
+        .with_trust_root(trust.path().to_path_buf());
+    (ExtensionRuntime::new(config).unwrap(), trust)
 }
 
 fn manifest_path(dir: &std::path::Path) -> PathBuf {
@@ -32,7 +39,7 @@ fn pack_without_manifest_is_rejected() {
     let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.no-manifest", "0.1.0");
     std::fs::remove_file(manifest_path(fx.root())).unwrap();
 
-    let mut rt = new_runtime();
+    let (mut rt, _trust) = new_runtime();
     let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
     match err {
         RuntimeError::SignatureInvalid { reason, .. } => assert!(
@@ -47,7 +54,7 @@ fn pack_without_manifest_is_rejected() {
 fn pack_with_intact_manifest_loads() {
     let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
     let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.with-manifest", "0.1.0");
-    let mut rt = new_runtime();
+    let (mut rt, _trust) = new_runtime();
     rt.register_loaded_from_dir(fx.root())
         .expect("a bound, intact manifest must verify");
 }
@@ -63,7 +70,7 @@ fn pack_with_tampered_wasm_after_manifest_is_rejected() {
     bytes.push(0xff);
     std::fs::write(&wasm_path, bytes).unwrap();
 
-    let mut rt = new_runtime();
+    let (mut rt, _trust) = new_runtime();
     let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
     match err {
         RuntimeError::SignatureInvalid { reason, .. } => assert!(
@@ -82,7 +89,7 @@ fn pack_with_manifest_listing_missing_file_is_rejected() {
     let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.missing-file", "0.1.0");
     std::fs::remove_file(fx.root().join("extension.wasm")).unwrap();
 
-    let mut rt = new_runtime();
+    let (mut rt, _trust) = new_runtime();
     let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
     match err {
         RuntimeError::SignatureInvalid { reason, .. } => assert!(
@@ -112,7 +119,7 @@ fn tampered_manifest_breaks_binding() {
     )
     .unwrap();
 
-    let mut rt = new_runtime();
+    let (mut rt, _trust) = new_runtime();
     let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
     match err {
         RuntimeError::SignatureInvalid { reason, .. } => assert!(
