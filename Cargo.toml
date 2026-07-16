@@ -16,6 +16,8 @@ members = [
 # patch only when graduating to a published, non-research SDK version.
 [patch.crates-io]
 greentic-extension-sdk-contract = { path = "../greentic-designer-sdk/crates/greentic-extension-sdk-contract" }
+greentic-extension-sdk-registry = { path = "../greentic-designer-sdk/crates/greentic-extension-sdk-registry" }
+greentic-extension-sdk-state = { path = "../greentic-designer-sdk/crates/greentic-extension-sdk-state" }
 greentic-extension-sdk-testing = { path = "../greentic-designer-sdk/crates/greentic-extension-sdk-testing" }
 
 [workspace.package]
