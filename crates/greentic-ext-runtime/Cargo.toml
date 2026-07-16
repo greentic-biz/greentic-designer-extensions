@@ -25,6 +25,9 @@ greentic-extension-sdk-contract = "=1.3.0-research.1"
 greentic-extension-sdk-registry = "=1.3.0-research.1"
 greentic-types = { workspace = true }
 
+[dependencies.directories]
+workspace = true
+
 [dependencies.anyhow]
 workspace = true
 
@@ -105,4 +108,7 @@ workspace = true
 workspace = true
 
 [lints]
+workspace = true
+
+[dev-dependencies.directories]
 workspace = true

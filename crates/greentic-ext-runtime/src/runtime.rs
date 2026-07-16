@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -34,6 +35,10 @@ pub struct RuntimeConfig {
     /// Production callers replace this via [`RuntimeConfig::with_host_overrides`]
     /// or the ergonomic [`ExtensionRuntime::with_host_overrides`] builder.
     pub host_overrides: HostOverrides,
+    /// Root of the TOFU publisher-key store (`<root>/trust/publishers.json`).
+    /// `None` resolves as [`RuntimeConfig::resolve_trust_root`] describes —
+    /// `$GREENTIC_HOME`, else `~/.greentic`. Tests point this at a temp dir.
+    pub trust_root: Option<PathBuf>,
 }
 
 impl RuntimeConfig {
@@ -44,7 +49,59 @@ impl RuntimeConfig {
         Self {
             paths,
             host_overrides: HostOverrides::default(),
+            trust_root: None,
         }
+    }
+
+    /// Override the TOFU trust-store root. Returns `self` for builder-style
+    /// chaining. Mainly for tests — production should leave this `None` so the
+    /// root resolves to the same store `gtdx` writes.
+    #[must_use]
+    pub fn with_trust_root(mut self, root: PathBuf) -> Self {
+        self.trust_root = Some(root);
+        self
+    }
+
+    /// Resolve the root under which the TOFU publisher-key store lives.
+    ///
+    /// Resolution order, mirroring `gtdx` exactly
+    /// (`greentic-extension-sdk-cli/src/main.rs:116-124`):
+    /// 1. an explicit [`RuntimeConfig::with_trust_root`] override,
+    /// 2. `$GREENTIC_HOME` (gtdx's `--home` flag reads the same var),
+    /// 3. `~/.greentic`.
+    ///
+    /// This deliberately does **not** derive from [`DiscoveryPaths`]. The
+    /// trust store keys publisher keys by extension *id*; it has no
+    /// relationship to where an extension directory happens to live.
+    /// `DiscoveryPaths::home()` equals `~/.greentic` only by coincidence in
+    /// the default layout and diverges under either `$GREENTIC_HOME` or the
+    /// runner's `GREENTIC_EXTENSIONS_DIR` override — in which case a TOFU
+    /// check would silently re-pin into a *different* store instead of
+    /// matching the one gtdx populated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Io`] when no override or `$GREENTIC_HOME` is
+    /// set and the platform reports no home directory. Failing closed is
+    /// deliberate: any invented fallback root would pin somewhere gtdx never
+    /// reads, which is the silent-mismatch failure this resolution exists to
+    /// prevent.
+    pub fn resolve_trust_root(&self) -> Result<PathBuf, RuntimeError> {
+        if let Some(root) = &self.trust_root {
+            return Ok(root.clone());
+        }
+        if let Some(home) = std::env::var_os("GREENTIC_HOME").filter(|v| !v.is_empty()) {
+            return Ok(PathBuf::from(home));
+        }
+        directories::BaseDirs::new()
+            .map(|d| d.home_dir().join(".greentic"))
+            .ok_or_else(|| {
+                RuntimeError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "cannot resolve the extension trust root: no home directory on this platform \
+                     and GREENTIC_HOME is unset",
+                ))
+            })
     }
 
     /// Replace the [`HostOverrides`] bundle. Returns `self` for builder-style
