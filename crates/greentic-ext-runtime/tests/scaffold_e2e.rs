@@ -106,7 +106,10 @@ fn scaffolded_design_extension_loads_and_invoke_tool_returns_stub_error() {
 
     // 6. Register the extension directly (we don't rely on the watcher here —
     //    we want a deterministic load followed by a synchronous invoke).
-    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(user_root.clone()));
+    // Trust root inside the existing tempdir: the default root is the
+    // developer's real ~/.greentic, which tests must never pin into.
+    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(user_root.clone()))
+        .with_trust_root(tmp.path().join("trust-root"));
     let mut rt = ExtensionRuntime::new(config).unwrap();
     rt.register_loaded_from_dir(&ext_dir)
         .expect("register scaffolded ext");

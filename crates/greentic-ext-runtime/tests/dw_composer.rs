@@ -216,7 +216,11 @@ fn invoke_composer_compose_returns_not_found_when_no_extension_loaded() {
 fn invoke_composer_metadata_returns_descriptor_json() {
     let (fixture, _sk) = build_signed_composer_fixture("greentic.dw.composer.test", "0.1.0");
 
-    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")));
+    // Trust root must be a temp dir: the default is the developer's real
+    // ~/.greentic, and the fixture is signed with a fresh key per call.
+    let trust = tempfile::TempDir::new().expect("temp trust root");
+    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")))
+        .with_trust_root(trust.path().to_path_buf());
     let mut runtime = ExtensionRuntime::new(config).expect("new runtime");
     runtime
         .register_loaded_from_dir(fixture.root())
@@ -241,7 +245,11 @@ fn invoke_composer_compose_returns_ok_manifest_json() {
     let (fixture, _sk) =
         build_signed_composer_fixture("greentic.dw.composer.compose-test", "0.1.0");
 
-    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")));
+    // Trust root must be a temp dir: the default is the developer's real
+    // ~/.greentic, and the fixture is signed with a fresh key per call.
+    let trust = tempfile::TempDir::new().expect("temp trust root");
+    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")))
+        .with_trust_root(trust.path().to_path_buf());
     let mut runtime = ExtensionRuntime::new(config).expect("new runtime");
     runtime
         .register_loaded_from_dir(fixture.root())
