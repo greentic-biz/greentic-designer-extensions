@@ -266,32 +266,51 @@ impl ExtensionRuntime {
         let loaded = LoadedExtension::load_from_dir(&self.engine, dir)?;
         let id = loaded.id.clone();
 
-        // Build new registry: clone existing offerings, add new extension's offerings.
-        let mut new_registry = CapabilityRegistry::new();
-        for existing in self.capability_registry.load().offerings() {
-            new_registry.add_offering(existing.clone());
-        }
-        for cap in &loaded.describe.capabilities.offered {
-            let version: semver::Version = cap.version.parse().map_err(|e: semver::Error| {
-                RuntimeError::Wasmtime(anyhow::anyhow!("bad offered version: {e}"))
-            })?;
-            new_registry.add_offering(OfferedBinding {
-                extension_id: id.as_str().to_string(),
-                cap_id: cap.id.clone(),
-                version,
-                kind: loaded.kind,
-                export_path: String::new(),
-            });
-        }
-
-        // Atomically swap in new loaded map and registry.
         let mut new_map = (**self.loaded.load()).clone();
         new_map.insert(id.clone(), Arc::new(loaded));
+        let new_registry = Self::rebuild_registry(&new_map)?;
+
+        // Atomically swap in the new loaded map and its registry. Both stores
+        // happen only after the rebuild succeeds, so a bad offered version
+        // leaves the runtime exactly as it was.
         self.loaded.store(Arc::new(new_map));
         self.capability_registry.store(Arc::new(new_registry));
 
         let _ = self.events.send(RuntimeEvent::ExtensionInstalled(id));
         Ok(())
+    }
+
+    /// Derive the capability registry from the loaded set.
+    ///
+    /// The registry holds nothing that is not already derivable from the
+    /// loaded describes, so it is rebuilt wholesale rather than patched
+    /// incrementally at each call site. That is what makes eviction correct by
+    /// construction: a capability dropped from a describe, an extension that
+    /// was removed, and a re-registered dir all fall out of the new map
+    /// automatically instead of each needing its own fix. The previous
+    /// clone-forward-then-append approach got all three wrong.
+    fn rebuild_registry(
+        loaded: &HashMap<ExtensionId, LoadedExtensionRef>,
+    ) -> Result<CapabilityRegistry, RuntimeError> {
+        let mut registry = CapabilityRegistry::new();
+        for (id, ext) in loaded {
+            for cap in &ext.describe.capabilities.offered {
+                let version: semver::Version =
+                    cap.version.parse().map_err(|e: semver::Error| {
+                        RuntimeError::Wasmtime(anyhow::anyhow!("bad offered version: {e}"))
+                    })?;
+                registry.add_offering(OfferedBinding {
+                    extension_id: id.as_str().to_string(),
+                    cap_id: cap.id.clone(),
+                    version,
+                    kind: ext.kind,
+                    // Source-dir registration has no export path; preserved
+                    // from the original behaviour.
+                    export_path: String::new(),
+                });
+            }
+        }
+        Ok(registry)
     }
 
     /// Parse a base64 (optionally `ed25519:`-prefixed) ed25519 public key.
@@ -545,7 +564,13 @@ impl ExtensionRuntime {
         Ok(())
     }
 
-    fn handle_removal(&self, dir: &std::path::Path) {
+    /// Hot-reload entry point for a removed extension directory.
+    ///
+    /// `#[doc(hidden)] pub` rather than private so the watcher-path tests can
+    /// exercise it directly — driving a real filesystem watcher from a test
+    /// would be slow and racy. Not part of the supported API.
+    #[doc(hidden)]
+    pub fn handle_removal(&self, dir: &std::path::Path) {
         let current = self.loaded.load();
         let Some((id, _)) = current.iter().find(|(_, v)| v.source_dir == dir) else {
             return;
@@ -553,11 +578,42 @@ impl ExtensionRuntime {
         let id = id.clone();
         let mut new_map = (**current).clone();
         new_map.remove(&id);
-        self.loaded.store(Arc::new(new_map));
-        let _ = self.events.send(RuntimeEvent::ExtensionRemoved(id));
+        // Rebuilding drops the removed extension's offerings. Leaving them
+        // advertised is the false positive that lets a preflight check pass a
+        // policy the runtime then fails closed on.
+        match Self::rebuild_registry(&new_map) {
+            Ok(new_registry) => {
+                self.loaded.store(Arc::new(new_map));
+                self.capability_registry.store(Arc::new(new_registry));
+                let _ = self.events.send(RuntimeEvent::ExtensionRemoved(id));
+            }
+            // Unreachable in practice: an extension whose offered version does
+            // not parse never enters `loaded` (both insert paths rebuild before
+            // storing and bail on error), so a rebuild over a subset of
+            // `loaded` cannot fail. Removal returns no error, so rather than
+            // strand the runtime in a half-applied state we keep both the map
+            // and the registry as they were and make the anomaly auditable.
+            Err(e) => tracing::error!(
+                extension_id = %id.as_str(),
+                error = %e,
+                "capability registry rebuild failed on removal; extension left loaded"
+            ),
+        }
     }
 
-    fn handle_added_or_modified(&self, dir: &std::path::Path) -> Result<(), RuntimeError> {
+    /// Hot-reload entry point for an added or modified extension directory.
+    ///
+    /// `#[doc(hidden)] pub` rather than private so the watcher-path tests can
+    /// exercise the signature gate directly — driving a real filesystem
+    /// watcher from a test would be slow and racy. Not part of the supported
+    /// API: callers should use [`ExtensionRuntime::register_loaded_from_dir`].
+    #[doc(hidden)]
+    pub fn handle_added_or_modified(&self, dir: &std::path::Path) -> Result<(), RuntimeError> {
+        // The same gate as `register_loaded_from_dir`, no exceptions. Without
+        // this, anyone able to write to a watched extension directory got code
+        // execution with no signature check at all — and did not even need to
+        // re-sign, since this path previously verified nothing.
+        self.verify_dir_signature(dir)?;
         let loaded = crate::loaded::LoadedExtension::load_from_dir(&self.engine, dir)?;
         let id = loaded.id.clone();
         let mut new_map = (**self.loaded.load()).clone();
@@ -565,7 +621,9 @@ impl ExtensionRuntime {
             .get(&id)
             .map(|e| e.describe.metadata.version.clone());
         new_map.insert(id.clone(), Arc::new(loaded));
+        let new_registry = Self::rebuild_registry(&new_map)?;
         self.loaded.store(Arc::new(new_map));
+        self.capability_registry.store(Arc::new(new_registry));
         let event = match prev_version {
             Some(prev) => RuntimeEvent::ExtensionUpdated {
                 id,
