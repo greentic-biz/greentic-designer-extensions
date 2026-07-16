@@ -179,7 +179,9 @@ fn build_signed_composer_fixture(
 #[test]
 fn invoke_composer_metadata_returns_not_found_when_no_extension_loaded() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(dir.path().to_path_buf()));
+    let trust = tempfile::tempdir().expect("temp trust root");
+    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(dir.path().to_path_buf()))
+        .with_trust_root(trust.path().to_path_buf());
     let runtime = ExtensionRuntime::new(config).expect("new runtime");
 
     let error = runtime
@@ -195,7 +197,9 @@ fn invoke_composer_metadata_returns_not_found_when_no_extension_loaded() {
 #[test]
 fn invoke_composer_compose_returns_not_found_when_no_extension_loaded() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(dir.path().to_path_buf()));
+    let trust = tempfile::tempdir().expect("temp trust root");
+    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(dir.path().to_path_buf()))
+        .with_trust_root(trust.path().to_path_buf());
     let runtime = ExtensionRuntime::new(config).expect("new runtime");
 
     let error = runtime

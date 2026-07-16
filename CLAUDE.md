@@ -134,16 +134,29 @@ example to mirror.
 
 `verify_dir_signature` runs three steps, in this order:
 
-1. `verify_describe_self_consistent` — **integrity**. Any key passes;
-   this only proves the describe is unchanged since signing.
-2. `verify_describe_with_key` — **authenticity** against the key the
-   describe names.
-3. `TrustStore::pin_or_verify` — **the anchor**. Trust-on-first-use:
-   the publisher key is pinned per `extension.id` on first load, and
-   every later load of that id must present the same key.
+1. `verify_describe_self_consistent` — **describe integrity**. Any key
+   passes; this only proves the describe is unchanged since signing.
+2. `verify_dir_manifest` — **artifact integrity**: the describe is bound
+   to the whole-archive ledger and every listed file hash-matches.
+3. `TrustStore::pin_or_verify` — **the anchor**, and the only step that
+   supplies authenticity. Trust-on-first-use: the publisher key is
+   pinned per `extension.id` on first load, and every later load of that
+   id must present the same key. Step 1 proved the signature verifies
+   against that key, so pinning it is what makes the pair meaningful.
 
-Step 3 must stay strictly after step 2, or a describe with a bad
-signature could pre-poison the pin for an id this runtime has not seen.
+**The anchor must stay last.** Pinning is a *write*, into the store
+`gtdx` shares — so a pin from a load that later fails permanently blocks
+the genuine publisher for that id in both tools, recoverable only by
+hand-editing `publishers.json`. An attacker who cannot complete a load
+must not be able to squat an id that way. `gtdx` orders it the same, one
+level up: `sdk-registry/src/lifecycle.rs` runs `verify_integrity` then
+`verify_authenticity`.
+
+There is deliberately **no `verify_describe_with_key` step**. Handing it
+a key read out of the describe under verification compares that key
+against itself — a tautology that cannot fail where step 1 passed. The
+SDK's own doc says the key "must come from a trust anchor ... never from
+the artifact alone"; here the trust anchor is the pin.
 
 The store is `greentic-extension-sdk-registry`'s `TrustStore` — the
 same one `gtdx install` writes, reused rather than reimplemented. It
