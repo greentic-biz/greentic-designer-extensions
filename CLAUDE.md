@@ -51,6 +51,21 @@ Reference extension repos (`greentic-bundle-extensions`,
 in their own GitHub orgs and consume this runtime via crates.io
 (when the SDK pieces it depends on are published) or git tag.
 
+## Build & Test
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --all-features --locked
+cargo build --workspace --locked --release
+
+# Full local CI (runs the above in order)
+bash ci/local_check.sh
+```
+
+A second script `ci/build-ac-ext.sh` exists for adaptive-card
+extension builds (not part of the main CI gate).
+
 ## Public API surface
 
 `greentic-ext-runtime` exposes (see `crates/greentic-ext-runtime/src/lib.rs`):
@@ -93,13 +108,12 @@ broker + logging + i18n imports).
   tracing logs.
 - **No Claude co-authorship** on commits.
 - **No Husky hooks.** Run `bash ci/local_check.sh` manually before
-  pushing (fmt → clippy → test → release build, all `--locked`).
-  A second script `ci/build-ac-ext.sh` exists for adaptive-card
-  extension builds.
+  pushing (see Build & Test above).
 - **Feature branches + PRs** — never push directly to `main`.
-- **Tag releases** — `vX.Y.Z` workspace tags + `<crate>-vX.Y.Z` per-
-  crate tags. Designer pins to the workspace tag. Current dev
-  version: `1.1.0-dev.0`.
+- **Tag releases** — `v1.2.X` workspace tags, `extrt-v1.2.X` for
+  `greentic-ext-runtime`, `_wit-lint-vX.Y.Z` for the lint crate.
+  Designer pins to the workspace tag. Current workspace version:
+  `1.2.0`.
 
 ## Key dependencies (straggler status)
 
