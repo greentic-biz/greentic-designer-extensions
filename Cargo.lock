@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "_wit-lint"
-version = "1.2.24"
+version = "1.2.25"
 dependencies = [
  "wit-parser 0.221.3",
 ]
@@ -1191,7 +1191,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-ext-runtime"
-version = "1.2.24"
+version = "1.2.25"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -1224,7 +1224,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-extension-sdk-contract"
-version = "1.2.18-research"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cff8a9c8762e41a3887958640d1f47dcbdc6633c841d2e7d7ab0a72e067be62"
 dependencies = [
  "anyhow",
  "base64",
@@ -1243,7 +1245,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-extension-sdk-testing"
-version = "1.2.18-research"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81df817dea644519eceb346fa7b533a418a729dd729ab87476f2ca77b64b0454"
 dependencies = [
  "anyhow",
  "ciborium",
@@ -1258,9 +1262,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-types"
-version = "1.2.0-research.1"
+version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d2a079903dae4d40cff9b2627feea1b19c47343b1066b55d7335ddfb055f7ac"
+checksum = "2038742af85b1d3eb48cdb53095f8dee84d6ca9f858b6a5bfdaa832938d11585"
 dependencies = [
  "anyhow",
  "blake3",

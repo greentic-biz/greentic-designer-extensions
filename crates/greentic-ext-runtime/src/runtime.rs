@@ -248,7 +248,15 @@ impl ExtensionRuntime {
         }
         let path = dir.join("describe.json");
         let raw = std::fs::read_to_string(&path)?;
-        let describe: greentic_extension_sdk_contract::DescribeJson = serde_json::from_str(&raw)?;
+        // Migrate a v1 describe to the current shape before deserializing, the
+        // same way `LoadedExtension::load_from_dir` does — the bundled fallback
+        // extensions are all v1 and would otherwise fail here with a raw
+        // "expected struct Knowledge". Unsigned describes (all bundled ones)
+        // carry no signature, so the self-consistency check below is unaffected
+        // by the migration.
+        let describe_value: serde_json::Value = serde_json::from_str(&raw)?;
+        let describe = crate::loaded::describe_from_value(describe_value)
+            .map_err(|e| RuntimeError::Wasmtime(anyhow::anyhow!("read describe.json: {e}")))?;
         // Integrity: the describe is unmodified since signing. This is NOT
         // authenticity — it proves nothing about *who* signed (an attacker can
         // re-sign with their own key). Anchored authenticity

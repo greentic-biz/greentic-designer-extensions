@@ -46,6 +46,30 @@ pub struct LoadedExtension {
     pub health: ExtensionHealth,
 }
 
+/// Deserialize a validated describe `Value` into a typed [`DescribeJson`],
+/// migrating a `greentic.ai/v1` describe to the current (v2) shape first.
+///
+/// The bundled fallback extensions — and any extension authored before the
+/// contract 1.1 bump — are v1: `contributions.knowledge` is an array of path
+/// strings, `engine` stands in for `compat`, etc. Those do not deserialize
+/// into the typed 1.1 structs, so a straight `from_value` fails with a raw
+/// "expected struct Knowledge". The contract crate already knows how to lift a
+/// v0.4/v1 describe to v2 (`migrate_v0_4_x_value`); run it on read so old
+/// describes load instead of being rejected. A v2 describe passes through
+/// untouched.
+pub(crate) fn describe_from_value(value: serde_json::Value) -> anyhow::Result<DescribeJson> {
+    const V1_API_VERSION: &str = "greentic.ai/v1";
+    let is_v1 = value.get("apiVersion").and_then(serde_json::Value::as_str) == Some(V1_API_VERSION);
+    let value = if is_v1 {
+        let (migrated, _report) = greentic_extension_sdk_contract::migrate_v0_4_x_value(&value)
+            .map_err(|e| anyhow::anyhow!("migrate v1 describe.json to v2: {e}"))?;
+        migrated
+    } else {
+        value
+    };
+    Ok(serde_json::from_value(value)?)
+}
+
 impl LoadedExtension {
     pub fn load_from_dir(engine: &wasmtime::Engine, source_dir: &Path) -> anyhow::Result<Self> {
         let describe_path = source_dir.join("describe.json");
@@ -53,7 +77,7 @@ impl LoadedExtension {
         let describe_value: serde_json::Value = serde_json::from_slice(&describe_bytes)?;
         greentic_extension_sdk_contract::schema::validate_describe_json(&describe_value)
             .map_err(|e| anyhow::anyhow!("invalid describe.json: {e}"))?;
-        let describe: DescribeJson = serde_json::from_value(describe_value)?;
+        let describe = describe_from_value(describe_value)?;
         let id = ExtensionId::from_describe(&describe);
         let wasm_path = wasm_component_path(&describe, source_dir)?;
         let component = Component::from_file(engine, &wasm_path)?;
@@ -421,6 +445,31 @@ impl Default for HostOverrides {
 mod tests {
     use super::*;
     use crate::url_matcher::UrlMatcher;
+
+    /// The real bundled Adaptive Cards describe — `apiVersion: greentic.ai/v1`,
+    /// with `contributions.knowledge` as an array of path strings — which does
+    /// not deserialize into the contract 1.1 typed structs. Before this fix a
+    /// straight `from_value` failed with "expected struct Knowledge", so every
+    /// bundled fallback extension (all v1) was unloadable under the 1.1 runtime.
+    /// It must now migrate on read and load.
+    ///
+    /// Uses the actual bundled describe rather than a hand-built minimal one so
+    /// the test can't drift from the real v1 shape the runtime must accept.
+    const AC_V1_DESCRIBE: &str = include_str!("testdata/ac_v1_describe.json");
+
+    #[test]
+    fn describe_from_value_migrates_the_bundled_v1_describe() {
+        let value: serde_json::Value =
+            serde_json::from_str(AC_V1_DESCRIBE).expect("fixture is valid JSON");
+        assert_eq!(
+            value.get("apiVersion").and_then(|v| v.as_str()),
+            Some("greentic.ai/v1"),
+            "fixture must be a v1 describe for this test to mean anything"
+        );
+
+        let describe = describe_from_value(value).expect("bundled v1 describe must migrate + load");
+        assert_eq!(describe.metadata.id, "greentic.adaptive-cards");
+    }
 
     fn empty_override() -> UrlMatcher {
         UrlMatcher::default()
