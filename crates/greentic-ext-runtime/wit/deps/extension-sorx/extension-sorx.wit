@@ -27,7 +27,7 @@ interface observe {
 
 world sorx-runtime-extension {
   // Minimal host surface: control/observe need only logging. The host linker
-  // provides a superset (i18n/secrets/broker/http/llm); importing a subset is
+  // provides a superset (i18n/secrets/broker/http); importing a subset is
   // compatible and keeps the operator-runtime extension surface small.
   import greentic:extension-host/logging@0.1.0;
 
