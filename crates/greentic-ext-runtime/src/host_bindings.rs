@@ -40,3 +40,18 @@ pub mod bundle {
         world: "greentic:extension-bundle/bundle-extension",
     });
 }
+
+// ---------------------------------------------------------------------------
+// SoRX runtime-extension bindings
+//
+// Isolated submodule (same reason as deploy/bundle): the world shares
+// `greentic:extension-host/*` types, so binding at the root would conflict.
+// The world exports `control` and `observe` (the host calls them in
+// `runtime::{control,observe}`); it imports only `greentic:extension-host/logging`.
+// ---------------------------------------------------------------------------
+pub mod sorx {
+    wasmtime::component::bindgen!({
+        path: "wit",
+        world: "greentic:extension-sorx/sorx-runtime-extension",
+    });
+}
