@@ -27,6 +27,8 @@ kinds share a unified contract:
   `wit/extension-provider.wit` (worlds `messaging-only-provider`,
   `event-source-only-provider`, `event-sink-only-provider`).
   Discovery path: `~/.greentic/extensions/provider/`.
+- **SoRX runtime-extension** (world `greentic:extension-sorx`) —
+  runtime dispatch via `control` and `observe` interfaces.
 
 The runtime lives at `crates/greentic-ext-runtime`. The supporting
 SDK crates (`-contract`, `-state`, `-cli`, `-registry`, `-testing`)
@@ -91,6 +93,10 @@ extension builds (not part of the main CI gate).
   lookup pattern as the design / deploy methods above; runs the
   WIT call on a sync wasmtime store, so callers in async contexts
   should wrap in `spawn_blocking`.
+- `control(ext_id, hook, binding_json, request_json, response_json)` /
+  `observe(ext_id, subscription, binding_json, event_json)` — SoRX
+  runtime-extension dispatch (world `greentic:extension-sorx`); JSON
+  strings in/out; sync store, wrap in `spawn_blocking` from async.
 
 Wasmtime store + linker plumbing lives in `host_bindings.rs` (one
 `bindgen!` per world to keep the `extension-base` / `extension-host`
