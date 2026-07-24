@@ -562,6 +562,130 @@ impl ExtensionRuntime {
 }
 
 impl ExtensionRuntime {
+    /// Dispatch a `SoRX` control hook to a loaded `sorx-runtime-extension`.
+    ///
+    /// Returns the extension's `ControlDecision` JSON on Ok. Errors (missing
+    /// extension, WIT trap, extension-returned error string) surface as
+    /// `RuntimeError`; `SoRX`'s caller applies the binding's fail-mode.
+    pub fn control(
+        &self,
+        ext_id: &str,
+        hook: &str,
+        binding_json: &str,
+        request_json: &str,
+        response_json: Option<&str>,
+    ) -> Result<String, RuntimeError> {
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_idx = instance
+            .get_export_index(&mut store, None, "greentic:extension-sorx/control@0.1.0")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension '{ext_id}' does not export 'greentic:extension-sorx/control@0.1.0'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "control")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "sorx control interface does not export 'control'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(String, String, String, Option<String>), (Result<String, String>,)>(
+                &mut store, &func_idx,
+            )
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (result,) = func
+            .call(
+                &mut store,
+                (
+                    hook.to_string(),
+                    binding_json.to_string(),
+                    request_json.to_string(),
+                    response_json.map(str::to_string),
+                ),
+            )
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        result.map_err(|msg| {
+            RuntimeError::Wasmtime(anyhow::anyhow!(
+                "sorx extension '{ext_id}' control error: {msg}"
+            ))
+        })
+    }
+
+    /// Dispatch a `SoRX` observer event to a loaded `sorx-runtime-extension`.
+    pub fn observe(
+        &self,
+        ext_id: &str,
+        subscription: &str,
+        binding_json: &str,
+        event_json: &str,
+    ) -> Result<(), RuntimeError> {
+        let loaded = self
+            .loaded
+            .load()
+            .get(&crate::loaded::ExtensionId(ext_id.to_string()))
+            .cloned()
+            .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
+
+        let (mut store, instance) = loaded
+            .build_store_and_instance(&self.engine, self.host_overrides.clone())
+            .map_err(RuntimeError::Wasmtime)?;
+
+        let iface_idx = instance
+            .get_export_index(&mut store, None, "greentic:extension-sorx/observe@0.1.0")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension '{ext_id}' does not export 'greentic:extension-sorx/observe@0.1.0'"
+                ))
+            })?;
+        let func_idx = instance
+            .get_export_index(&mut store, Some(&iface_idx), "observe")
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "sorx observe interface does not export 'observe'"
+                ))
+            })?;
+
+        let func = instance
+            .get_typed_func::<(String, String, String), (Result<(), String>,)>(
+                &mut store, &func_idx,
+            )
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        let (result,) = func
+            .call(
+                &mut store,
+                (
+                    subscription.to_string(),
+                    binding_json.to_string(),
+                    event_json.to_string(),
+                ),
+            )
+            .map_err(|e| RuntimeError::Wasmtime(e.into()))?;
+
+        result.map_err(|msg| {
+            RuntimeError::Wasmtime(anyhow::anyhow!(
+                "sorx extension '{ext_id}' observe error: {msg}"
+            ))
+        })
+    }
+}
+
+impl ExtensionRuntime {
     /// Retrieve system prompt fragments from a loaded design extension.
     ///
     /// Calls `greentic:extension-design/prompting::system-prompt-fragments`
@@ -1131,5 +1255,34 @@ mod deploy_tests {
             )
             .unwrap_err();
         assert!(matches!(err, RuntimeError::NotFound(_)));
+    }
+}
+
+#[cfg(test)]
+mod sorx_tests {
+    use super::*;
+
+    #[test]
+    fn control_unknown_extension_is_not_found() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config =
+            RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
+        let runtime = ExtensionRuntime::new(config).unwrap();
+        let err = runtime
+            .control("does.not.exist", "pre_call", "{}", "{}", None)
+            .unwrap_err();
+        assert!(matches!(err, RuntimeError::NotFound(id) if id == "does.not.exist"));
+    }
+
+    #[test]
+    fn observe_unknown_extension_is_not_found() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config =
+            RuntimeConfig::from_paths(crate::DiscoveryPaths::new(tmp.path().to_path_buf()));
+        let runtime = ExtensionRuntime::new(config).unwrap();
+        let err = runtime
+            .observe("does.not.exist", "post_call", "{}", "{}")
+            .unwrap_err();
+        assert!(matches!(err, RuntimeError::NotFound(id) if id == "does.not.exist"));
     }
 }
