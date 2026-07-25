@@ -57,17 +57,37 @@ pub struct LoadedExtension {
 /// v0.4/v1 describe to v2 (`migrate_v0_4_x_value`); run it on read so old
 /// describes load instead of being rejected. A v2 describe passes through
 /// untouched.
-pub(crate) fn describe_from_value(value: serde_json::Value) -> anyhow::Result<DescribeJson> {
+/// Lift a `greentic.ai/v1` describe `Value` to the current (v2) shape; a v2
+/// value passes through untouched.
+///
+/// This is a **`Value`-level** step on purpose: it must run *before*
+/// `schema::validate_describe_json`, which only accepts v2 and rejects v1 with
+/// "expected greentic.ai/v2; run the v1->v2 migration first". Callers that
+/// validate (e.g. `load_from_dir`) migrate first, then validate, then
+/// deserialize.
+pub(crate) fn migrate_value_if_v1(value: serde_json::Value) -> anyhow::Result<serde_json::Value> {
     const V1_API_VERSION: &str = "greentic.ai/v1";
     let is_v1 = value.get("apiVersion").and_then(serde_json::Value::as_str) == Some(V1_API_VERSION);
-    let value = if is_v1 {
+    if is_v1 {
         let (migrated, _report) = greentic_extension_sdk_contract::migrate_v0_4_x_value(&value)
             .map_err(|e| anyhow::anyhow!("migrate v1 describe.json to v2: {e}"))?;
-        migrated
+        Ok(migrated)
     } else {
-        value
-    };
-    Ok(serde_json::from_value(value)?)
+        Ok(value)
+    }
+}
+
+/// Deserialize a describe `Value` into a typed [`DescribeJson`], migrating a
+/// `greentic.ai/v1` describe to the current (v2) shape first.
+///
+/// The bundled fallback extensions — and any extension authored before the
+/// contract 1.1 bump — are v1: `contributions.knowledge` is an array of path
+/// strings, `engine` stands in for `compat`, etc. Those do not deserialize into
+/// the typed 1.1 structs, so a straight `from_value` fails with a raw "expected
+/// struct Knowledge". Used where no schema validation is needed (e.g.
+/// `verify_dir_signature`).
+pub(crate) fn describe_from_value(value: serde_json::Value) -> anyhow::Result<DescribeJson> {
+    Ok(serde_json::from_value(migrate_value_if_v1(value)?)?)
 }
 
 impl LoadedExtension {
@@ -75,9 +95,13 @@ impl LoadedExtension {
         let describe_path = source_dir.join("describe.json");
         let describe_bytes = std::fs::read(&describe_path)?;
         let describe_value: serde_json::Value = serde_json::from_slice(&describe_bytes)?;
+        // Migrate a v1 describe to v2 BEFORE schema validation — the schema is
+        // v2-only and rejects v1 outright, so validating first would fail the
+        // very extensions this migration exists to load.
+        let describe_value = migrate_value_if_v1(describe_value)?;
         greentic_extension_sdk_contract::schema::validate_describe_json(&describe_value)
             .map_err(|e| anyhow::anyhow!("invalid describe.json: {e}"))?;
-        let describe = describe_from_value(describe_value)?;
+        let describe: DescribeJson = serde_json::from_value(describe_value)?;
         let id = ExtensionId::from_describe(&describe);
         let wasm_path = wasm_component_path(&describe, source_dir)?;
         let component = Component::from_file(engine, &wasm_path)?;
@@ -456,6 +480,24 @@ mod tests {
     /// Uses the actual bundled describe rather than a hand-built minimal one so
     /// the test can't drift from the real v1 shape the runtime must accept.
     const AC_V1_DESCRIBE: &str = include_str!("testdata/ac_v1_describe.json");
+
+    /// Reproduces the `load_from_dir` sequence exactly: migrate the v1 Value,
+    /// THEN run the v2-only schema validation, THEN deserialize. The previous
+    /// order (validate first) rejected v1 with "expected greentic.ai/v2" before
+    /// migration ever ran — a bug the direct-`describe_from_value` test missed
+    /// because it skips validation.
+    #[test]
+    fn v1_describe_survives_validate_after_migration() {
+        let value: serde_json::Value =
+            serde_json::from_str(AC_V1_DESCRIBE).expect("fixture is valid JSON");
+
+        let migrated = migrate_value_if_v1(value).expect("v1 migrates");
+        greentic_extension_sdk_contract::schema::validate_describe_json(&migrated)
+            .expect("migrated describe passes the v2 schema");
+        let describe: DescribeJson =
+            serde_json::from_value(migrated).expect("migrated describe deserializes");
+        assert_eq!(describe.metadata.id, "greentic.adaptive-cards");
+    }
 
     #[test]
     fn describe_from_value_migrates_the_bundled_v1_describe() {
