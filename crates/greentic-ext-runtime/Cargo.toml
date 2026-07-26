@@ -15,7 +15,7 @@ default = []
 dev-allow-unsigned = []
 
 [dependencies]
-greentic-extension-sdk-contract = "=1.1.2"
+greentic-extension-sdk-contract = "=1.1.4"
 greentic-types = { workspace = true }
 
 [dependencies.anyhow]

@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "_wit-lint"
-version = "1.2.26"
+version = "1.2.27"
 dependencies = [
  "wit-parser 0.221.3",
 ]
@@ -1191,7 +1191,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-ext-runtime"
-version = "1.2.26"
+version = "1.2.27"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -1224,9 +1224,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-extension-sdk-contract"
-version = "1.1.2"
+version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cff8a9c8762e41a3887958640d1f47dcbdc6633c841d2e7d7ab0a72e067be62"
+checksum = "6606e2ca18bceb260f7c45579157b3cc84a5914af1199c99bd606f4a33ae2bf7"
 dependencies = [
  "anyhow",
  "base64",
