@@ -17,6 +17,8 @@ fn v2_contribution_tool_maps_capabilities_and_secret_requirements() {
         secret_requirements: vec![req],
         description: Some("Search the web.".into()),
         input_schema: Some(r#"{"type":"object"}"#.into()),
+        output_schema: None,
+        agentic_worker_metadata: None,
     };
 
     let def = greentic_ext_runtime::contribution_tool_to_definition(&t);

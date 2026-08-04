@@ -872,22 +872,47 @@ impl ExtensionRuntime {
 
 /// Map a v2 describe `Tool` contribution to a host-side [`crate::types::ToolDefinition`].
 ///
-/// `description` and `input_schema_json` come from the declarative
-/// `describe.json` tool entry (`Tool.description` / `Tool.input_schema`, the
-/// latter a JSON-Schema string mirroring `NodeType.config_schema`). A tool that
-/// omits them surfaces empty values, so callers can still offer the tool — but
-/// an empty input schema means the LLM cannot infer the tool's arguments.
+/// Every field comes from the declarative `describe.json` tool entry — for a
+/// v2 extension this is the ONLY source, since [`ExtensionRuntime::list_tools`]
+/// never calls the wasm's `list-tools` export for that contract. A field the
+/// describe omits is therefore not "filled in from WIT later"; it is simply
+/// absent for the tool's whole life.
+///
+/// Omissions are not errors, so that a partially-declared tool is still
+/// offered rather than disappearing — but each one degrades the tool, and each
+/// one is logged at WARN with the tool name, because the symptom otherwise is
+/// silence: an LLM that cannot infer arguments, or a planner with no
+/// side-effect signal, and nothing anywhere saying why.
 #[must_use]
 pub fn contribution_tool_to_definition(
     t: &greentic_extension_sdk_contract::describe::contributions::Tool,
 ) -> crate::types::ToolDefinition {
+    if t.description.as_ref().is_none_or(|d| d.trim().is_empty()) {
+        tracing::warn!(
+            tool = %t.name,
+            "v2 tool contributes no description; the LLM sees an unnamed function"
+        );
+    }
+    if t.input_schema.as_ref().is_none_or(|s| s.trim().is_empty()) {
+        tracing::warn!(
+            tool = %t.name,
+            "v2 tool contributes no input_schema; the LLM cannot infer its arguments"
+        );
+    }
+    if t.capabilities.is_none() {
+        tracing::warn!(
+            tool = %t.name,
+            "v2 tool declares no capabilities; defaulting to [\"flow\"], so it will NOT be \
+             offered on the agentic-worker surface"
+        );
+    }
     crate::types::ToolDefinition {
         name: t.name.clone(),
         description: t.description.clone().unwrap_or_default(),
         input_schema_json: t.input_schema.clone().unwrap_or_default(),
-        output_schema_json: None,
+        output_schema_json: t.output_schema.clone(),
         capabilities: t.capabilities.clone(),
-        agentic_worker_metadata: None,
+        agentic_worker_metadata: t.agentic_worker_metadata.clone(),
         secret_requirements: t.secret_requirements.clone(),
     }
 }
@@ -900,9 +925,9 @@ impl ExtensionRuntime {
     /// extensions. **v2 contract** (`apiVersion == "greentic.ai/v2"`)
     /// reads the tools from `describe.contributions.tools[]` — the
     /// runtime WIT no longer exports `list-tools` in that contract.
-    /// The declarative v2 entries only carry `name` + `export`, so
-    /// `description` / `input_schema_json` come back empty; callers
-    /// that need full schemas must introspect the named WIT export.
+    /// Everything a v2 tool exposes — description, schemas, capabilities,
+    /// agentic-worker metadata — must therefore be declared in
+    /// `describe.json`; the WIT export is never consulted on that path.
     pub fn list_tools(
         &self,
         ext_id: &str,
