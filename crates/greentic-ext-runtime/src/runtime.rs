@@ -879,33 +879,18 @@ impl ExtensionRuntime {
 /// absent for the tool's whole life.
 ///
 /// Omissions are not errors, so that a partially-declared tool is still
-/// offered rather than disappearing — but each one degrades the tool, and each
-/// one is logged at WARN with the tool name, because the symptom otherwise is
-/// silence: an LLM that cannot infer arguments, or a planner with no
-/// side-effect signal, and nothing anywhere saying why.
+/// offered rather than disappearing — but each one degrades the tool, and the
+/// symptom is otherwise silence: an LLM that cannot infer arguments, or a
+/// planner with no side-effect signal, and nothing anywhere saying why. This
+/// mapper is a pure function and reports nothing; the omissions are reported
+/// once per extension when the artifact is loaded, by
+/// `tool_metadata_report::report_tool_metadata_gaps`. Reporting from here
+/// instead would repeat the whole burst on every `list_tools` call, which is a
+/// per-request path.
 #[must_use]
 pub fn contribution_tool_to_definition(
     t: &greentic_extension_sdk_contract::describe::contributions::Tool,
 ) -> crate::types::ToolDefinition {
-    if t.description.as_ref().is_none_or(|d| d.trim().is_empty()) {
-        tracing::warn!(
-            tool = %t.name,
-            "v2 tool contributes no description; the LLM sees an unnamed function"
-        );
-    }
-    if t.input_schema.as_ref().is_none_or(|s| s.trim().is_empty()) {
-        tracing::warn!(
-            tool = %t.name,
-            "v2 tool contributes no input_schema; the LLM cannot infer its arguments"
-        );
-    }
-    if t.capabilities.is_none() {
-        tracing::warn!(
-            tool = %t.name,
-            "v2 tool declares no capabilities; defaulting to [\"flow\"], so it will NOT be \
-             offered on the agentic-worker surface"
-        );
-    }
     crate::types::ToolDefinition {
         name: t.name.clone(),
         description: t.description.clone().unwrap_or_default(),

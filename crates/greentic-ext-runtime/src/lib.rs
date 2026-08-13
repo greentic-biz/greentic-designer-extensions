@@ -18,6 +18,7 @@ mod runtime;
 mod runtime_deploy;
 mod runtime_dw_composer;
 mod runtime_roles;
+mod tool_metadata_report;
 pub mod types;
 pub mod url_matcher;
 pub mod watcher;

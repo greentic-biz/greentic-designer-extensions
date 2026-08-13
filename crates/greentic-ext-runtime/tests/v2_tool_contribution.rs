@@ -64,7 +64,7 @@ fn forwarded_metadata_still_decodes_into_the_typed_contract() {
 }
 
 /// A half-declared tool must still be offered rather than vanishing — the
-/// degradation is logged, not fatal.
+/// degradation is reported once per extension at load time, not fatal here.
 #[test]
 fn a_minimal_tool_still_maps_without_panicking() {
     let minimal: Tool = serde_json::from_value(serde_json::json!({
