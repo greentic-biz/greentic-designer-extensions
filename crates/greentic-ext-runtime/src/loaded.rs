@@ -54,6 +54,9 @@ impl LoadedExtension {
         greentic_extension_sdk_contract::schema::validate_describe_json(&describe_value)
             .map_err(|e| anyhow::anyhow!("invalid describe.json: {e}"))?;
         let describe: DescribeJson = serde_json::from_value(describe_value)?;
+        // Every load path funnels through here, so the report fires once per
+        // load — boot and hot-reload — and never per `list_tools()` call.
+        crate::tool_metadata_report::report_tool_metadata_gaps(&describe);
         let id = ExtensionId::from_describe(&describe);
         let wasm_path = wasm_component_path(&describe, source_dir)?;
         let component = Component::from_file(engine, &wasm_path)?;
