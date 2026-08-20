@@ -6,7 +6,6 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Wasmtime-based runtime for Greentic Designer Extensions"
-publish = false
 
 [features]
 default = []
