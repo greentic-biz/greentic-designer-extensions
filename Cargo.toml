@@ -37,8 +37,8 @@ toml = "0.8"
 tracing = "0.1"
 walkdir = "2"
 which = "6"
-wasmtime-wasi = "43"
-wasmtime-wasi-http = "43"
+wasmtime-wasi = "45"
+wasmtime-wasi-http = "45"
 wit-bindgen = "0.41"
 wit-bindgen-rt = "0.41"
 wit-parser = "0.221"
@@ -134,7 +134,7 @@ features = [
 ]
 
 [workspace.dependencies.wasmtime]
-version = "43"
+version = "45"
 features = [
     "component-model",
     "async",
