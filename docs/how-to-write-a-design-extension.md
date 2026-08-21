@@ -97,7 +97,7 @@ my-extension/
 └── wit/deps/greentic/...   vendored WIT contract
 ```
 
-**The generated project does not build as-is.** Every kind but `mcp` renders a
+*(Fixed in greentic-designer-sdk#105; still applies to any released `gtdx`.)* **The generated project does not build as-is.** Every kind but `mcp` renders a
 `wit/world.wit` asking for `greentic:extension-host@0.2.0`, while the vendored
 package is `@0.1.0` (and `extension-design` is `@0.3.0`, not `@0.2.0`). Rewrite
 the versions before your first build:

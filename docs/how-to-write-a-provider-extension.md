@@ -61,7 +61,8 @@ degraded message with no error anywhere.
 gtdx new my-provider --kind provider --id greentic.my-provider
 ```
 
-**Two fixes are required before the first build**, and this kind needs both:
+**Two fixes are required before the first build** on any `gtdx` predating
+greentic-designer-sdk#105, and this kind needs both:
 
 ```bash
 # 1. The rendered world asks for a WIT package version that does not exist.

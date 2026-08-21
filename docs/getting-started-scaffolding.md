@@ -50,6 +50,14 @@ my-ext/
 
 ## Known issue — a fresh scaffold does not build
 
+> **Fixed upstream in greentic-designer-sdk#105** (merged to `research`,
+> 2026-08-21) — along with two stub bugs it was masking: `provider` used a
+> non-existent error type, and `--kind llm` emitted a `describe.json` that did
+> not parse at all. Everything below still applies to any `gtdx` predating that
+> commit, which includes every released build. Check with `gtdx new` and read
+> the rendered `wit/world.wit`: if it says `extension-host@0.1.0` you have the
+> fix and can skip this section.
+
 Verified 2026-08-21 against `gtdx 1.3.0-research.3`. **Every kind except `mcp`
 fails `cargo component build` (and therefore `gtdx dev`) on a completely
 untouched scaffold**, with:
@@ -86,7 +94,7 @@ it.
 | `bundle` | no | rewrite `extension-host@0.2.0` → `@0.1.0` in `wit/world.wit` |
 | `deploy` | no | same |
 | `design` | no | same, **plus** `extension-design@0.2.0` → `@0.3.0` |
-| `llm` | no | same as `design` |
+| `llm` | no | same as `design`, **plus** its `describe.json` carries an `id` key on the tool entry that `Tool` does not model — `deny_unknown_fields` fails the whole describe — and its stub targets the pre-0.3.0 design contract. Not worth patching by hand; take the fixed `gtdx` |
 | `provider` | no | host version, **plus** `provider_types::Error` → `types::ExtensionError` in `src/lib.rs` (the WIT declares `extension-error`, from `extension-base/types`) |
 | `wasm-component` | no | **not a one-line fix** — see below |
 

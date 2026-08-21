@@ -38,7 +38,8 @@ as a silent no-op.
 gtdx new my-deploy --kind deploy --id greentic.my-deploy
 ```
 
-**Fix the generated `wit/world.wit` before the first build** — the template
+**On any `gtdx` predating greentic-designer-sdk#105, fix the generated
+`wit/world.wit` before the first build** — the template
 renders `greentic:extension-host@0.2.0` while the vendored package is
 `@0.1.0`:
 

@@ -20,7 +20,7 @@ sed -i -e 's|\(greentic:extension-host/[a-z0-9-]*\)@0\.2\.0|\1@0.1.0|g' \
 gtdx dev
 ```
 
-Without that rewrite `gtdx dev` fails on its first build with
+*(Fixed in greentic-designer-sdk#105; still applies to any released `gtdx`.)* Without that rewrite `gtdx dev` fails on its first build with
 `package 'greentic:extension-host@0.2.0' not found` — see
 [getting-started-scaffolding.md](./getting-started-scaffolding.md#known-issue--a-fresh-scaffold-does-not-build)
 for the cause and the per-kind table.
