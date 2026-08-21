@@ -38,10 +38,7 @@ fn invoke_validate_card_on_ac_extension() {
     let ext_dir = tmp.path().join("ext");
     greentic_extension_sdk_testing::unpack_to_dir(&pack, &ext_dir).unwrap();
 
-    // Trust root inside the existing tempdir: the default root is the
-    // developer's real ~/.greentic, which tests must never pin into.
-    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(tmp.path().to_path_buf()))
-        .with_trust_root(tmp.path().join("trust-root"));
+    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(tmp.path().to_path_buf()));
     let mut rt = ExtensionRuntime::new(config).unwrap();
     rt.register_loaded_from_dir(&ext_dir).unwrap();
 

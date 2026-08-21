@@ -28,9 +28,7 @@ async fn watcher_emits_state_file_changed_on_state_file_create_or_modify() {
         std::fs::create_dir_all(user_root.join(kind)).unwrap();
     }
 
-    // Trust root inside the existing tempdir -- never the real ~/.greentic.
-    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(user_root.clone()))
-        .with_trust_root(home.join("trust-root"));
+    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(user_root.clone()));
     let runtime = Arc::new(ExtensionRuntime::new(config).unwrap());
     let mut rx = runtime.subscribe();
 

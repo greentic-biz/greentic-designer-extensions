@@ -9,22 +9,10 @@ chain.
 ## Quick start
 
 ```bash
-gtdx new my-ext --kind design --id greentic.my-ext
+gtdx new my-ext
 cd my-ext
-
-# Required today: the scaffold renders unresolvable WIT versions.
-sed -i -e 's|\(greentic:extension-host/[a-z0-9-]*\)@0\.2\.0|\1@0.1.0|g' \
-       -e 's|\(greentic:extension-design/[a-z0-9-]*\)@0\.2\.0|\1@0.3.0|g' \
-       wit/world.wit
-
 gtdx dev
 ```
-
-On `gtdx` 1.2.1 or newer this rewrite is unnecessary — skip it. On 1.2.0 or
-older, without it `gtdx dev` fails on its first build with
-`package 'greentic:extension-host@0.2.0' not found` — see
-[getting-started-scaffolding.md](./getting-started-scaffolding.md#if-you-are-on-gtdx-120-or-older)
-for the cause and the per-kind table.
 
 The first build may take ~30–60 s (cold cargo cache). Subsequent incremental
 rebuilds are typically below 5 seconds.
@@ -40,8 +28,6 @@ rebuilds are typically below 5 seconds.
 | `--debounce-ms <MS>`    | File-watch debounce window. Default 500 ms (1000 ms on Windows).|
 | `--format <FMT>`        | `human` (default) or `json` (one JSON line per lifecycle event).|
 | `--manifest <PATH>`     | Path to the project's `Cargo.toml`. Default `./Cargo.toml`.     |
-| `--force-rebuild`       | `cargo clean -p <crate>` first, then a full rebuild.             |
-| `--mount <PATH>`        | Build + pack + install the extension at `<PATH>` once, exactly as `gtdx install` would. Conflicts with `--watch` / `--once`. |
 
 ## JSON output
 
@@ -60,12 +46,8 @@ trivial for editors and CI tools to consume the stream.
 - **No hot reload in the designer.** `gtdx dev` installs into
   `~/.greentic/extensions/<kind>/<id>-<version>/`. The designer must be
   configured to watch that directory (see the designer's integration guide).
-- **Build fails with `package 'greentic:extension-host@0.2.0' not found`.**
-  The scaffold's `wit/world.wit` versions are wrong; apply the rewrite in
-  Quick start above. This is not a describe.json problem — the generated
-  `describe.json` is valid v2 and passes `gtdx validate` as-is.
-- **`gtdx lint` errors on an untouched scaffold.** Expected: it still emits a
-  deprecated `engine` block and a `com.example.*` id. Neither blocks
-  `gtdx publish`, which does not run lint.
-- **Verifying the build/pack loop without installing.** `gtdx dev --once
-  --no-install`.
+- **Install step fails with schema error.** The current Track A scaffold
+  templates emit a `describe.json` shape that does not yet match
+  `describe-v1.json`. Until those templates are updated, use
+  `gtdx dev --once --no-install` to verify the build-pack loop, or edit the
+  scaffolded `describe.json` manually to conform.

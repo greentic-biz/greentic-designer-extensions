@@ -1,57 +1,19 @@
-package greentic:extension-design@0.4.0;
+package greentic:extension-design@0.2.0;
 
 interface tools {
-  use greentic:extension-base/types@0.2.0.{extension-error};
+  use greentic:extension-base/types@0.1.0.{extension-error};
   record tool-definition {
     name: string,
     description: string,
     input-schema-json: string,
     output-schema-json: option<string>,
-
-    // Sub-project #1 additions (see greentic-designer spec
-    // 2026-05-24-extension-capability-flag-design.md). Both optional for
-    // backward compatibility. Legacy extensions return `none` for both;
-    // consumers default capabilities to `["flow"]`.
-    capabilities: option<list<string>>,
-    agentic-worker-metadata: option<string>,
   }
   list-tools: func() -> list<tool-definition>;
   invoke-tool: func(name: string, args-json: string) -> result<string, extension-error>;
 }
 
-interface guardrail {
-  enum direction {
-    inbound,
-    outbound,
-  }
-
-  record guardrail-input {
-    direction: direction,
-    content: string,
-    agent-id: string,
-    session-id: string,
-    tenant-id: string,
-    env-id: string,
-    context: option<string>,
-  }
-
-  record deny-info {
-    code: string,
-    message: string,
-    details: option<string>,
-  }
-
-  variant verdict {
-    accept,
-    update(string),
-    deny(deny-info),
-  }
-
-  evaluate: func(input: guardrail-input) -> verdict;
-}
-
 interface validation {
-  use greentic:extension-base/types@0.2.0.{diagnostic};
+  use greentic:extension-base/types@0.1.0.{diagnostic};
   record validate-result {
     valid: bool,
     diagnostics: list<diagnostic>,
@@ -69,7 +31,7 @@ interface prompting {
 }
 
 interface knowledge {
-  use greentic:extension-base/types@0.2.0.{extension-error};
+  use greentic:extension-base/types@0.1.0.{extension-error};
   record entry-summary {
     id: string,
     title: string,
@@ -89,7 +51,7 @@ interface knowledge {
 }
 
 interface roles {
-  use greentic:extension-base/types@0.2.0.{diagnostic, extension-error};
+  use greentic:extension-base/types@0.1.0.{diagnostic, extension-error};
 
   /// Output channel a compiled role targets. Closed enum on purpose:
   /// every channel here implies a downstream renderer the runner already
@@ -203,19 +165,16 @@ interface roles {
 }
 
 world design-extension {
-  import greentic:extension-base/types@0.2.0;
+  import greentic:extension-base/types@0.1.0;
   import greentic:extension-host/logging@0.1.0;
   import greentic:extension-host/i18n@0.1.0;
   import greentic:extension-host/secrets@0.1.0;
   import greentic:extension-host/broker@0.1.0;
   import greentic:extension-host/http@0.1.0;
-  import greentic:extension-host/llm@0.1.0;
-  import greentic:oauth-broker/broker-v1@1.0.0;
 
-  export greentic:extension-base/manifest@0.2.0;
-  export greentic:extension-base/lifecycle@0.2.0;
+  export greentic:extension-base/manifest@0.1.0;
+  export greentic:extension-base/lifecycle@0.1.0;
   export tools;
-  export guardrail;
   export validation;
   export prompting;
   export knowledge;
