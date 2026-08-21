@@ -10,7 +10,7 @@ info:
     `GreenticStoreRegistry` client in this workspace.
 
 servers:
-  - url: https://store.greentic.cloud
+  - url: https://store.greentic.ai
 
 paths:
   /api/v1/extensions:

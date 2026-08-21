@@ -49,7 +49,7 @@ limit.
 
 ```
                 ┌──────────────────────────────────────────────┐
-                │   Greentic Store  (store.greentic.cloud)      │
+                │   Greentic Store  (store.greentic.ai)         │
                 │   Developers upload · end-users discover      │
                 └────────────────────────┬──────────────────────┘
                                          │ HTTPS / OpenAPI
@@ -83,19 +83,10 @@ limit.
 workspace as the `greentic-extension-sdk-cli` crate.
 
 ```bash
-cargo install greentic-extension-sdk-cli --locked   # or: cargo binstall …
-gtdx --version
+cargo install greentic-extension-sdk-cli --locked
+gtdx version
 gtdx --help
 ```
-
-**Use 1.2.1 or newer.** It is the first release whose `gtdx new` scaffolds
-build: every earlier one, `1.2.0` included, generates a project that fails its
-first `cargo component build` for every kind except `mcp`. If you are pinned to
-an older toolchain, the workarounds are in
-[docs/getting-started-scaffolding.md](./docs/getting-started-scaffolding.md#if-you-are-on-gtdx-120-or-older).
-
-Do not opt into `-research` prereleases on crates.io to get "newer":
-`1.3.0-research.1` sorts above `1.2.1` by semver and is **older** in content.
 
 Source install (from the SDK repo) is also supported — see that repo's
 README for the full inner-loop dev guide.
@@ -318,24 +309,6 @@ cargo test -p greentic-ext-runtime --test ac_invoke -- --nocapture
 ```
 
 The test self-skips if the env var is unset.
-
-A second, v2-contract variant (`ac_invoke_v2`) exercises the same dispatch
-path against an extension built with extension-base@0.2.0 /
-extension-design@0.3.0 (the 6-variant `extension-error` ABI). It reads
-`GTDX_TEST_GTXPACK_V2` and covers both a success invoke and a typed
-`RuntimeError::Extension` error path. The v2 fixture (AC-MCP PR #74,
-`2.0.4-research`) ships unsigned, so it needs the dev escape hatch:
-
-```bash
-GREENTIC_EXT_ALLOW_UNSIGNED=1 \
-  GTDX_TEST_GTXPACK_V2=/path/to/ac-v2.gtxpack \
-  cargo test -p greentic-ext-runtime --features dev-allow-unsigned \
-    --test ac_invoke_v2 -- --nocapture
-```
-
-Both real-wasm tests self-skip when their env var is unset, so CI's
-`cargo test --workspace --all-features` run (which does not set them)
-passes them as no-ops — they are opt-in dev-local checks only.
 
 ---
 

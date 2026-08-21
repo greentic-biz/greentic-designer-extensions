@@ -11,22 +11,18 @@ use crate::types::{
     CompileContext, Diagnostic, HostExtensionError, RoleError, RoleSpec, Severity, TargetKind,
 };
 
-/// Base interface name without version suffix.
-const IFACE_BASE: &str = "greentic:extension-design/roles";
-/// Version resolution order — newest first.
-const ROLES_VERSIONS: &[&str] = &["0.3.0", "0.2.0"];
+const IFACE_NAME: &str = "greentic:extension-design/roles@0.2.0";
 
 impl ExtensionRuntime {
     /// List all roles exposed by a loaded design extension.
     ///
-    /// Calls `greentic:extension-design/roles::list-roles` (resolved against
-    /// `@0.3.0` first, then `@0.2.0`).
+    /// Calls `greentic:extension-design/roles@0.2.0::list-roles`.
     /// Returns an empty vec when the extension does not export the
     /// `roles` interface (older 0.1.0 extensions, for example) so
     /// callers can treat it as "no roles published" without reaching
     /// for `RuntimeError::Wasmtime`.
     pub fn list_roles(&self, ext_id: &str) -> Result<Vec<RoleSpec>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::RoleSpec as WitRoleSpec;
+        use crate::host_bindings::exports::greentic::extension_design::roles::RoleSpec as WitRoleSpec;
 
         let loaded = self
             .loaded()
@@ -35,35 +31,17 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(
-                self.engine(),
-                self.host_overrides().clone(),
-                &crate::host_ports::HostCallContext::default(),
-            )
+            .build_store_and_instance(self.engine(), self.host_overrides().clone())
             .map_err(RuntimeError::Wasmtime)?;
 
-        // Try newest first; fall back gracefully to empty if neither version
-        // is exported (older extensions that pre-date roles entirely).
-        let iface_idx = {
-            let mut found = None;
-            for &v in ROLES_VERSIONS {
-                let name = format!("{IFACE_BASE}@{v}");
-                if let Some(idx) = instance.get_export_index(&mut store, None, &name) {
-                    found = Some(idx);
-                    break;
-                }
-            }
-            match found {
-                Some(idx) => idx,
-                None => return Ok(Vec::new()),
-            }
+        let Some(iface_idx) = instance.get_export_index(&mut store, None, IFACE_NAME) else {
+            return Ok(Vec::new());
         };
-
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "list-roles")
             .ok_or_else(|| {
                 RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "interface '{IFACE_BASE}' does not export 'list-roles'"
+                    "interface '{IFACE_NAME}' does not export 'list-roles'"
                 ))
             })?;
 
@@ -80,8 +58,7 @@ impl ExtensionRuntime {
 
     /// Run the cheap-path validator for a role's DSL entry.
     ///
-    /// Calls `greentic:extension-design/roles::validate-role` (resolved
-    /// against `@0.3.0` first, then `@0.2.0`).
+    /// Calls `greentic:extension-design/roles@0.2.0::validate-role`.
     /// Returns the diagnostic list verbatim (empty = valid, mirrors the
     /// WIT contract). `RuntimeError` is reserved for host failures —
     /// missing extension, missing interface, wasmtime trap.
@@ -91,7 +68,7 @@ impl ExtensionRuntime {
         name: &str,
         entry_json: &str,
     ) -> Result<Vec<Diagnostic>, RuntimeError> {
-        use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::Diagnostic as WitDiagnostic;
+        use crate::host_bindings::exports::greentic::extension_design::roles::Diagnostic as WitDiagnostic;
 
         let loaded = self
             .loaded()
@@ -100,25 +77,21 @@ impl ExtensionRuntime {
             .ok_or_else(|| RuntimeError::NotFound(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(
-                self.engine(),
-                self.host_overrides().clone(),
-                &crate::host_ports::HostCallContext::default(),
-            )
+            .build_store_and_instance(self.engine(), self.host_overrides().clone())
             .map_err(RuntimeError::Wasmtime)?;
 
-        let (iface_idx, iface_name, _version) = crate::runtime::resolve_iface_versions(
-            &mut store,
-            &instance,
-            IFACE_BASE,
-            ROLES_VERSIONS,
-        )?;
-
+        let iface_idx = instance
+            .get_export_index(&mut store, None, IFACE_NAME)
+            .ok_or_else(|| {
+                RuntimeError::Wasmtime(anyhow::anyhow!(
+                    "extension does not export interface '{IFACE_NAME}'"
+                ))
+            })?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "validate-role")
             .ok_or_else(|| {
                 RuntimeError::Wasmtime(anyhow::anyhow!(
-                    "interface '{iface_name}' does not export 'validate-role'"
+                    "interface '{IFACE_NAME}' does not export 'validate-role'"
                 ))
             })?;
 
@@ -135,13 +108,13 @@ impl ExtensionRuntime {
 
     /// Compile a single DSL entry to its target representation.
     ///
-    /// Calls `greentic:extension-design/roles::compile-role` (resolved against
-    /// `@0.3.0` first, then `@0.2.0`). A missing extension surfaces as
-    /// `RoleError::UnknownRole(ext_id)` (the registry can't tell "no
-    /// extension" apart from "no role" from the LLM's perspective and both
-    /// should retry with a hint). Host failures (wasmtime trap, missing
-    /// interface) surface as `RoleError::Host(HostExtensionError::Internal(_))`
-    /// so the caller can match exhaustively without juggling two error types.
+    /// Calls `greentic:extension-design/roles@0.2.0::compile-role`. A
+    /// missing extension surfaces as `RoleError::UnknownRole(ext_id)`
+    /// (the registry can't tell "no extension" apart from "no role"
+    /// from the LLM's perspective and both should retry with a hint).
+    /// Host failures (wasmtime trap, missing interface) surface as
+    /// `RoleError::Host(HostExtensionError::Internal(_))` so the caller
+    /// can match exhaustively without juggling two error types.
     pub fn compile_role(
         &self,
         ext_id: &str,
@@ -150,6 +123,11 @@ impl ExtensionRuntime {
         entry_json: &str,
         ctx: Option<&CompileContext>,
     ) -> Result<String, RoleError> {
+        use crate::host_bindings::exports::greentic::extension_design::roles::{
+            CompileContext as WitCompileContext, RoleError as WitRoleError,
+            TargetKind as WitTargetKind,
+        };
+
         let loaded = self
             .loaded()
             .get(&ExtensionId(ext_id.to_string()))
@@ -157,107 +135,64 @@ impl ExtensionRuntime {
             .ok_or_else(|| RoleError::UnknownRole(ext_id.to_string()))?;
 
         let (mut store, instance) = loaded
-            .build_store_and_instance(
-                self.engine(),
-                self.host_overrides().clone(),
-                &crate::host_ports::HostCallContext::default(),
-            )
+            .build_store_and_instance(self.engine(), self.host_overrides().clone())
             .map_err(|e| {
                 RoleError::Host(HostExtensionError::Internal(format!(
                     "instantiate '{ext_id}': {e}"
                 )))
             })?;
 
-        let (iface_idx, iface_name, version) = crate::runtime::resolve_iface_versions(
-            &mut store,
-            &instance,
-            IFACE_BASE,
-            ROLES_VERSIONS,
-        )
-        .map_err(|e| {
-            RoleError::Host(HostExtensionError::Internal(format!(
-                "extension '{ext_id}' does not export '{IFACE_BASE}': {e}"
-            )))
-        })?;
-
+        let iface_idx = instance
+            .get_export_index(&mut store, None, IFACE_NAME)
+            .ok_or_else(|| {
+                RoleError::Host(HostExtensionError::Internal(format!(
+                    "extension '{ext_id}' does not export '{IFACE_NAME}'"
+                )))
+            })?;
         let func_idx = instance
             .get_export_index(&mut store, Some(&iface_idx), "compile-role")
             .ok_or_else(|| {
                 RoleError::Host(HostExtensionError::Internal(format!(
-                    "interface '{iface_name}' does not export 'compile-role'"
+                    "interface '{IFACE_NAME}' does not export 'compile-role'"
                 )))
             })?;
 
-        if version == "0.3.0" {
-            use crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::{
-                CompileContext as WitCompileContext, RoleError as WitRoleError,
-                TargetKind as WitTargetKind,
-            };
+        let func = instance
+            .get_typed_func::<
+                (
+                    String,
+                    WitTargetKind,
+                    String,
+                    Option<WitCompileContext>,
+                ),
+                (Result<String, WitRoleError>,),
+            >(&mut store, &func_idx)
+            .map_err(|e| RoleError::Host(HostExtensionError::Internal(e.to_string())))?;
 
-            let func = instance
-                .get_typed_func::<
-                    (String, WitTargetKind, String, Option<WitCompileContext>),
-                    (Result<String, WitRoleError>,),
-                >(&mut store, &func_idx)
-                .map_err(|e| RoleError::Host(HostExtensionError::Internal(e.to_string())))?;
+        let wit_ctx = ctx.cloned().map(|c| WitCompileContext {
+            flow_entries_json: c.flow_entries_json,
+            flow_id: c.flow_id,
+            locale: c.locale,
+        });
 
-            let wit_ctx = ctx.cloned().map(|c| WitCompileContext {
-                flow_entries_json: c.flow_entries_json,
-                flow_id: c.flow_id,
-                locale: c.locale,
-            });
+        let (result,) = func
+            .call(
+                &mut store,
+                (
+                    name.to_string(),
+                    target_to_wit(target),
+                    entry_json.to_string(),
+                    wit_ctx,
+                ),
+            )
+            .map_err(|e| RoleError::Host(HostExtensionError::Internal(e.to_string())))?;
 
-            let (result,) = func
-                .call(
-                    &mut store,
-                    (
-                        name.to_string(),
-                        target_to_wit_v03(target),
-                        entry_json.to_string(),
-                        wit_ctx,
-                    ),
-                )
-                .map_err(|e| RoleError::Host(HostExtensionError::Internal(e.to_string())))?;
-
-            result.map_err(wit_role_error_to_host_v03)
-        } else {
-            use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::{
-                CompileContext as WitCompileContext, RoleError as WitRoleError,
-                TargetKind as WitTargetKind,
-            };
-
-            let func = instance
-                .get_typed_func::<
-                    (String, WitTargetKind, String, Option<WitCompileContext>),
-                    (Result<String, WitRoleError>,),
-                >(&mut store, &func_idx)
-                .map_err(|e| RoleError::Host(HostExtensionError::Internal(e.to_string())))?;
-
-            let wit_ctx = ctx.cloned().map(|c| WitCompileContext {
-                flow_entries_json: c.flow_entries_json,
-                flow_id: c.flow_id,
-                locale: c.locale,
-            });
-
-            let (result,) = func
-                .call(
-                    &mut store,
-                    (
-                        name.to_string(),
-                        target_to_wit(target),
-                        entry_json.to_string(),
-                        wit_ctx,
-                    ),
-                )
-                .map_err(|e| RoleError::Host(HostExtensionError::Internal(e.to_string())))?;
-
-            result.map_err(wit_role_error_to_host)
-        }
+        result.map_err(wit_role_error_to_host)
     }
 }
 
 fn wit_role_spec_to_host(
-    s: crate::host_bindings::exports::greentic::extension_design0_2_0::roles::RoleSpec,
+    s: crate::host_bindings::exports::greentic::extension_design::roles::RoleSpec,
 ) -> RoleSpec {
     RoleSpec {
         name: s.name,
@@ -270,9 +205,9 @@ fn wit_role_spec_to_host(
 }
 
 fn wit_diagnostic_to_host(
-    d: crate::host_bindings::exports::greentic::extension_design0_2_0::roles::Diagnostic,
+    d: crate::host_bindings::exports::greentic::extension_design::roles::Diagnostic,
 ) -> Diagnostic {
-    use crate::host_bindings::greentic::extension_base0_1_0::types::Severity as WitSeverity;
+    use crate::host_bindings::greentic::extension_base::types::Severity as WitSeverity;
     Diagnostic {
         severity: match d.severity {
             WitSeverity::Error => Severity::Error,
@@ -286,14 +221,10 @@ fn wit_diagnostic_to_host(
     }
 }
 
-// ---------------------------------------------------------------------------
-// v0.2.0 error mapping helpers
-// ---------------------------------------------------------------------------
-
 fn wit_role_error_to_host(
-    e: crate::host_bindings::exports::greentic::extension_design0_2_0::roles::RoleError,
+    e: crate::host_bindings::exports::greentic::extension_design::roles::RoleError,
 ) -> RoleError {
-    use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::RoleError as WitRoleError;
+    use crate::host_bindings::exports::greentic::extension_design::roles::RoleError as WitRoleError;
     match e {
         WitRoleError::UnknownRole(s) => RoleError::UnknownRole(s),
         WitRoleError::InvalidInput(diags) => {
@@ -307,9 +238,9 @@ fn wit_role_error_to_host(
 }
 
 fn wit_extension_error_to_host(
-    e: crate::host_bindings::exports::greentic::extension_design0_2_0::roles::ExtensionError,
+    e: crate::host_bindings::exports::greentic::extension_design::roles::ExtensionError,
 ) -> HostExtensionError {
-    use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::ExtensionError as WitErr;
+    use crate::host_bindings::exports::greentic::extension_design::roles::ExtensionError as WitErr;
     match e {
         WitErr::InvalidInput(s) => HostExtensionError::InvalidInput(s),
         WitErr::MissingCapability(s) => HostExtensionError::MissingCapability(s),
@@ -320,8 +251,8 @@ fn wit_extension_error_to_host(
 
 fn target_to_wit(
     t: TargetKind,
-) -> crate::host_bindings::exports::greentic::extension_design0_2_0::roles::TargetKind {
-    use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::TargetKind as Wit;
+) -> crate::host_bindings::exports::greentic::extension_design::roles::TargetKind {
+    use crate::host_bindings::exports::greentic::extension_design::roles::TargetKind as Wit;
     match t {
         TargetKind::AdaptiveCard => Wit::AdaptiveCard,
         TargetKind::SlackBlockKit => Wit::SlackBlockKit,
@@ -331,91 +262,9 @@ fn target_to_wit(
 }
 
 fn target_from_wit(
-    t: crate::host_bindings::exports::greentic::extension_design0_2_0::roles::TargetKind,
+    t: crate::host_bindings::exports::greentic::extension_design::roles::TargetKind,
 ) -> TargetKind {
-    use crate::host_bindings::exports::greentic::extension_design0_2_0::roles::TargetKind as Wit;
-    match t {
-        Wit::AdaptiveCard => TargetKind::AdaptiveCard,
-        Wit::SlackBlockKit => TargetKind::SlackBlockKit,
-        Wit::TeamsCard => TargetKind::TeamsCard,
-        Wit::PlainText => TargetKind::PlainText,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// v0.3.0 error mapping helpers
-// ---------------------------------------------------------------------------
-
-fn wit_role_error_to_host_v03(
-    e: crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::RoleError,
-) -> RoleError {
-    use crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::RoleError as WitRoleError;
-    match e {
-        WitRoleError::UnknownRole(s) => RoleError::UnknownRole(s),
-        WitRoleError::InvalidInput(diags) => {
-            RoleError::InvalidInput(diags.into_iter().map(wit_diagnostic_to_host_v03).collect())
-        }
-        WitRoleError::CompileFailed(s) => RoleError::CompileFailed(s),
-        WitRoleError::TargetNotSupported(t) => {
-            RoleError::TargetNotSupported(target_from_wit_v03(t))
-        }
-        WitRoleError::VersionNotSupported(v) => RoleError::VersionNotSupported(v),
-        WitRoleError::Host(ee) => RoleError::Host(wit_extension_error_to_host_v03(ee)),
-    }
-}
-
-/// Map the 6-variant `extension-error` from the `design_v03` roles re-export.
-///
-/// This is structurally identical to `crate::ext_error::from_design_v03` but
-/// takes the distinct re-exported type generated under the roles interface
-/// path rather than the base-types path.
-fn wit_extension_error_to_host_v03(
-    e: crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::ExtensionError,
-) -> HostExtensionError {
-    use crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::ExtensionError as WitErr;
-    match e {
-        WitErr::InvalidInput(s) => HostExtensionError::InvalidInput(s),
-        WitErr::MissingCapability(s) => HostExtensionError::MissingCapability(s),
-        WitErr::PermissionDenied(s) => HostExtensionError::PermissionDenied(s),
-        WitErr::NotFound(s) => HostExtensionError::NotFound(s),
-        WitErr::SchemaInvalid(s) => HostExtensionError::SchemaInvalid(s),
-        WitErr::Internal(s) => HostExtensionError::Internal(s),
-    }
-}
-
-fn wit_diagnostic_to_host_v03(
-    d: crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::Diagnostic,
-) -> Diagnostic {
-    use crate::host_bindings::design_v03::greentic::extension_base0_2_0::types::Severity as WitSeverity;
-    Diagnostic {
-        severity: match d.severity {
-            WitSeverity::Error => Severity::Error,
-            WitSeverity::Warning => Severity::Warning,
-            WitSeverity::Info => Severity::Info,
-            WitSeverity::Hint => Severity::Hint,
-        },
-        code: d.code,
-        message: d.message,
-        path: d.path,
-    }
-}
-
-fn target_to_wit_v03(
-    t: TargetKind,
-) -> crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::TargetKind {
-    use crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::TargetKind as Wit;
-    match t {
-        TargetKind::AdaptiveCard => Wit::AdaptiveCard,
-        TargetKind::SlackBlockKit => Wit::SlackBlockKit,
-        TargetKind::TeamsCard => Wit::TeamsCard,
-        TargetKind::PlainText => Wit::PlainText,
-    }
-}
-
-fn target_from_wit_v03(
-    t: crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::TargetKind,
-) -> TargetKind {
-    use crate::host_bindings::design_v03::exports::greentic::extension_design0_3_0::roles::TargetKind as Wit;
+    use crate::host_bindings::exports::greentic::extension_design::roles::TargetKind as Wit;
     match t {
         Wit::AdaptiveCard => TargetKind::AdaptiveCard,
         Wit::SlackBlockKit => TargetKind::SlackBlockKit,

@@ -12,12 +12,7 @@ use support::signed_fixture;
 async fn loads_extension_and_registers_caps() {
     let (fixture, _sk) = signed_fixture(ExtensionKind::Design, "greentic.test-ext", "0.1.0");
 
-    // Trust root must be a temp dir: the default is the developer's real
-    // ~/.greentic, and signed_fixture mints a fresh key per call, so a
-    // default-rooted test pins junk then fails every later run.
-    let trust = tempfile::TempDir::new().expect("temp trust root");
-    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")))
-        .with_trust_root(trust.path().to_path_buf());
+    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")));
     let mut rt = ExtensionRuntime::new(config).unwrap();
     rt.register_loaded_from_dir(fixture.root()).unwrap();
 

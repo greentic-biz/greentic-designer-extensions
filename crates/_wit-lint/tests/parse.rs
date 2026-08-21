@@ -15,13 +15,10 @@ fn wit_dir() -> PathBuf {
 fn all_wit_files_parse() {
     // extension-base and extension-host have no cross-package dependencies and
     // must be loaded first. The three kind-specific packages depend on both.
-    // oauth-broker has no greentic deps and must be loaded before extension-design,
-    // which imports it. runtime-side.wit depends on extension-base, extension-host,
-    // and extension-design.
+    // runtime-side.wit depends on extension-base, extension-host, and extension-design.
     let ordered = [
         "extension-base.wit",
         "extension-host.wit",
-        "oauth-broker.wit",
         "extension-bundle.wit",
         "extension-deploy.wit",
         "extension-design.wit",
