@@ -123,5 +123,73 @@ example to mirror.
 - **`greentic-adaptive-card-mcp`** — ships the `adaptive-cards`
   design extension (built against this runtime's WIT).
 - **`greentic-store-server`** — distributes signed `.gtxpack`
-  artefacts; the runtime's `verify_describe` checks signatures
-  against the store's published key set.
+  artefacts. The runtime's verify chain (`verify_dir_signature`)
+  checks the describe signature for self-consistency, that the
+  describe is bound to the whole-archive `manifest.json`
+  (`manifestSha256`), and that every manifest entry hash-matches —
+  failing closed on a missing manifest (audit P5). It then anchors
+  the signature (see below).
+
+## Signature anchoring (TOFU)
+
+`verify_dir_signature` runs three steps, in this order:
+
+1. `verify_describe_self_consistent` — **describe integrity**. Any key
+   passes; this only proves the describe is unchanged since signing.
+2. `verify_dir_manifest` — **artifact integrity**: the describe is bound
+   to the whole-archive ledger and every listed file hash-matches.
+3. `TrustStore::pin_or_verify` — **the anchor**, and the only step that
+   supplies authenticity. Trust-on-first-use: the publisher key is
+   pinned per `extension.id` on first load, and every later load of that
+   id must present the same key. Step 1 proved the signature verifies
+   against that key, so pinning it is what makes the pair meaningful.
+
+**The anchor must stay last.** Pinning is a *write*, into the store
+`gtdx` shares — so a pin from a load that later fails permanently blocks
+the genuine publisher for that id in both tools, recoverable only by
+hand-editing `publishers.json`. An attacker who cannot complete a load
+must not be able to squat an id that way. `gtdx` orders it the same, one
+level up: `sdk-registry/src/lifecycle.rs` runs `verify_integrity` then
+`verify_authenticity`.
+
+There is deliberately **no `verify_describe_with_key` step**. Handing it
+a key read out of the describe under verification compares that key
+against itself — a tautology that cannot fail where step 1 passed. The
+SDK's own doc says the key "must come from a trust anchor ... never from
+the artifact alone"; here the trust anchor is the pin.
+
+The store is `greentic-extension-sdk-registry`'s `TrustStore` — the
+same one `gtdx install` writes, reused rather than reimplemented. It
+lives at `<root>/trust/publishers.json` where root is `$GREENTIC_HOME`,
+else `~/.greentic` (`RuntimeConfig::resolve_trust_root`, mirroring
+gtdx's own resolution). It is deliberately **not** derived from
+`DiscoveryPaths` — that diverges under `$GREENTIC_HOME` or the runner's
+`GREENTIC_EXTENSIONS_DIR`, and would silently pin into a store gtdx
+never reads.
+
+This gate applies to **both** load paths — `register_loaded_from_dir`
+and the watcher's `handle_added_or_modified`. The watcher path
+previously verified nothing at all.
+
+TOFU is what is available without a trust root. A **KMS-rooted cert
+chain (D.5) is still blocked** on key custody; until then a first load
+trusts whatever key it first sees. Consequence worth knowing: an update
+signed by a different key than the first load is **rejected**
+(`PublisherKeyChanged`, naming both keys) — intended, but it means two
+developers publishing one extension from their own local keys will
+collide.
+
+`GREENTIC_EXT_ALLOW_UNSIGNED=1` (only under the `dev-allow-unsigned`
+feature) still skips all three steps.
+
+## Capability registry
+
+`CapabilityRegistry` is derived wholesale from the loaded set by
+`ExtensionRuntime::rebuild_registry`, never patched incrementally.
+Every path that mutates `loaded` must store a registry rebuilt from
+the new map. This is what makes eviction correct by construction —
+a dropped capability, a removed extension, and a re-registered dir all
+fall out automatically. Do not reintroduce per-call-site registry
+mutation: the previous clone-forward-then-append got all three wrong,
+and a stale offering is a live false positive for anything that reads
+`offerings()` to decide what is resolvable.

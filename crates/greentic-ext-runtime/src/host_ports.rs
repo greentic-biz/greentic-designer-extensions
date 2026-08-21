@@ -86,6 +86,83 @@ impl SecretsBackend for InMemorySecrets {
     }
 }
 
+/// Chat-completion request forwarded to the host. Credential-free by design:
+/// the host resolves provider/model/key from the resolved `role`.
+#[derive(Debug, Clone)]
+pub struct LlmPortRequest {
+    pub system_prompt: String,
+    /// (role, content) pairs; role is "system" | "user" | "assistant".
+    pub messages: Vec<(String, String)>,
+    pub response_format: LlmPortResponseFormat,
+}
+
+/// Desired shape of the completion output. `Text` is the default; `Json`
+/// requests a free-form JSON object; `JsonSchema` carries a serialized JSON
+/// Schema the host should constrain the model to.
+#[derive(Debug, Clone, Default)]
+pub enum LlmPortResponseFormat {
+    #[default]
+    Text,
+    Json,
+    JsonSchema(String),
+}
+
+/// Successful completion result returned by the host.
+#[derive(Debug, Clone)]
+pub struct LlmPortResponse {
+    pub content: String,
+    pub total_tokens: Option<u32>,
+}
+
+/// Errors the runtime surfaces when an LLM completion fails. Mirrors
+/// [`SecretsError`]'s plain-enum + `thiserror` style so `host_state` can
+/// stringify the failure for the WIT `result<_, string>` boundary.
+#[derive(Debug, Error)]
+pub enum LlmPortError {
+    /// The resolved role is not assigned to the extension (or the host has
+    /// no mapping for it). Carries the offending role name.
+    #[error("llm role unassigned: {0}")]
+    RoleUnassigned(String),
+    /// The host LLM backend failed (network, provider, quota, etc.).
+    #[error("backend error: {0}")]
+    Backend(String),
+}
+
+/// Host port for LLM completions, implemented by the embedding host
+/// (designer maps it onto its per-tenant `llm_for(role, identity)` seam).
+/// Synchronous on purpose: wasmtime host fns are wired with the sync linker.
+pub trait LlmPort: Send + Sync {
+    /// Resolve and run a completion for `extension_id` against `role`.
+    ///
+    /// `ctx` is the per-call [`HostCallContext`] threaded from the embedding
+    /// host: it carries the caller's tenant slug and the authenticated end
+    /// user's email. The designer uses `ctx.tenant` to resolve the role
+    /// per-tenant (`llm_for(role, identity)`, strict, no fallback) and
+    /// `ctx.user_email` to satisfy the admin's per-user identity check
+    /// (`X-Greentic-User`) — without it the admin's service-key auth rejects
+    /// the call with 403.
+    fn complete(
+        &self,
+        extension_id: &str,
+        ctx: &HostCallContext,
+        role: &str,
+        request: LlmPortRequest,
+    ) -> Result<LlmPortResponse, LlmPortError>;
+}
+
+/// Per-invocation caller context threaded from the embedding host into
+/// host-port calls. Extend cautiously: every field is visible to all ports.
+#[derive(Debug, Clone, Default)]
+pub struct HostCallContext {
+    /// Tenant slug of the end caller (multi-tenant hosts); None for
+    /// single-tenant/dev.
+    pub tenant: Option<String>,
+    /// Email of the authenticated end user on whose behalf the call runs.
+    /// Hosts that validate per-user identity (e.g. the designer-admin) require
+    /// it.
+    pub user_email: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -33,6 +33,15 @@ pub enum RuntimeError {
     #[error("watcher: {0}")]
     Watcher(String),
 
+    #[error("deploy extension error: {0}")]
+    Deploy(crate::types::DeployExtensionError),
+
     #[error("permission denied: {0}")]
     PermissionDenied(String),
+
+    /// A WIT-level `extension-error` returned by the extension itself.
+    /// Carries the variant intact so hosts can surface a stable `code`
+    /// in the response envelope — do NOT collapse into `Wasmtime`.
+    #[error("extension error ({code}): {msg}", code = .0.code(), msg = .0)]
+    Extension(crate::types::HostExtensionError),
 }
