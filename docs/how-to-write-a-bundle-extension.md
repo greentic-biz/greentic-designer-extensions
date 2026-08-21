@@ -42,7 +42,8 @@ out-of-band `greentic-bundle ext render` path was retired in ext-runtime
 gtdx new my-bundle --kind bundle --id greentic.my-bundle
 ```
 
-**Then fix the generated `wit/world.wit` before your first build.** The
+**On any `gtdx` predating greentic-designer-sdk#105, fix the generated
+`wit/world.wit` before your first build.** The
 template renders `greentic:extension-host@0.2.0`, but the vendored package is
 `@0.1.0`:
 

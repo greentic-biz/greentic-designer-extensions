@@ -1,7 +1,12 @@
 # How to Surface a WASM Component as a Canvas Node
 
 > **Status: `gtdx new --kind wasm-component` does not produce a buildable
-> project.** Verified 2026-08-21 against `gtdx 1.3.0-research.3`. Use
+> project.** Verified 2026-08-21 against `gtdx 1.3.0-research.3`, and still
+> true after greentic-designer-sdk#105 — that fix repaired every *other* kind,
+> and deliberately left this one, because its `nodeTypes` entry points
+> `runtime_ref` at the design component, which the runner cannot execute at
+> all. `gtdx new` now warns about this kind rather than letting the first
+> build deliver the news. Use
 > `--kind design` and add the node component as a separate crate — the shape
 > shipped extensions such as `greentic.calendly` actually use. Details in
 > [What is broken](#what-is-broken-in---kind-wasm-component) below.
