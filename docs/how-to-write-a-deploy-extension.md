@@ -38,8 +38,8 @@ as a silent no-op.
 gtdx new my-deploy --kind deploy --id greentic.my-deploy
 ```
 
-**On any `gtdx` predating greentic-designer-sdk#105, fix the generated
-`wit/world.wit` before the first build** — the template
+**On `gtdx` 1.2.0 or older, fix the generated `wit/world.wit` before the
+first build** (1.2.1 renders it correctly) — the template
 renders `greentic:extension-host@0.2.0` while the vendored package is
 `@0.1.0`:
 
@@ -48,7 +48,7 @@ sed -i -e 's|\(greentic:extension-host/[a-z0-9-]*\)@0\.2\.0|\1@0.1.0|g' wit/worl
 ```
 
 Background:
-[getting-started-scaffolding.md](./getting-started-scaffolding.md#known-issue--a-fresh-scaffold-does-not-build).
+[getting-started-scaffolding.md](./getting-started-scaffolding.md#if-you-are-on-gtdx-120-or-older).
 
 Also delete the deprecated `engine` block and set a real `metadata.id`.
 

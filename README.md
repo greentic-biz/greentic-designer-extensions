@@ -83,10 +83,19 @@ limit.
 workspace as the `greentic-extension-sdk-cli` crate.
 
 ```bash
-cargo install greentic-extension-sdk-cli --locked
-gtdx version
+cargo install greentic-extension-sdk-cli --locked   # or: cargo binstall …
+gtdx --version
 gtdx --help
 ```
+
+**Use 1.2.1 or newer.** It is the first release whose `gtdx new` scaffolds
+build: every earlier one, `1.2.0` included, generates a project that fails its
+first `cargo component build` for every kind except `mcp`. If you are pinned to
+an older toolchain, the workarounds are in
+[docs/getting-started-scaffolding.md](./docs/getting-started-scaffolding.md#if-you-are-on-gtdx-120-or-older).
+
+Do not opt into `-research` prereleases on crates.io to get "newer":
+`1.3.0-research.1` sorts above `1.2.1` by semver and is **older** in content.
 
 Source install (from the SDK repo) is also supported — see that repo's
 README for the full inner-loop dev guide.

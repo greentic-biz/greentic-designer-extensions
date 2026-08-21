@@ -20,9 +20,10 @@ sed -i -e 's|\(greentic:extension-host/[a-z0-9-]*\)@0\.2\.0|\1@0.1.0|g' \
 gtdx dev
 ```
 
-*(Fixed in greentic-designer-sdk#105; still applies to any released `gtdx`.)* Without that rewrite `gtdx dev` fails on its first build with
+On `gtdx` 1.2.1 or newer this rewrite is unnecessary — skip it. On 1.2.0 or
+older, without it `gtdx dev` fails on its first build with
 `package 'greentic:extension-host@0.2.0' not found` — see
-[getting-started-scaffolding.md](./getting-started-scaffolding.md#known-issue--a-fresh-scaffold-does-not-build)
+[getting-started-scaffolding.md](./getting-started-scaffolding.md#if-you-are-on-gtdx-120-or-older)
 for the cause and the per-kind table.
 
 The first build may take ~30–60 s (cold cargo cache). Subsequent incremental

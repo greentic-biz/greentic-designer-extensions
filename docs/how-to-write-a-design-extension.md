@@ -97,7 +97,9 @@ my-extension/
 └── wit/deps/greentic/...   vendored WIT contract
 ```
 
-*(Fixed in greentic-designer-sdk#105; still applies to any released `gtdx`.)* **The generated project does not build as-is.** Every kind but `mcp` renders a
+**On `gtdx` 1.2.0 or older, the generated project does not build as-is.**
+Upgrade to 1.2.1 and skip to the next step; the rewrite below is only for a
+pinned older toolchain. Every kind but `mcp` renders a
 `wit/world.wit` asking for `greentic:extension-host@0.2.0`, while the vendored
 package is `@0.1.0` (and `extension-design` is `@0.3.0`, not `@0.2.0`). Rewrite
 the versions before your first build:
@@ -109,14 +111,14 @@ sed -i -e 's|\(greentic:extension-host/[a-z0-9-]*\)@0\.2\.0|\1@0.1.0|g' \
 ```
 
 Full analysis and the per-kind table:
-[getting-started-scaffolding.md](./getting-started-scaffolding.md#known-issue--a-fresh-scaffold-does-not-build).
+[getting-started-scaffolding.md](./getting-started-scaffolding.md#if-you-are-on-gtdx-120-or-older).
 
 Two things to fix in the generated `describe.json` immediately:
 
-- **Delete the `engine` block** — on a `gtdx` predating
-  greentic-designer-sdk#106; templates no longer emit it. It is deprecated,
-  `compat` is the sole source of version constraints, and `gtdx lint` errors
-  on its presence (`E_ENGINE_DEPRECATED`).
+- **Delete the `engine` block** — only on `gtdx` 1.2.0 or older; 1.2.1
+  templates no longer emit it. It is deprecated, `compat` is the sole source
+  of version constraints, and `gtdx lint` errors on its presence
+  (`E_ENGINE_DEPRECATED`).
 - **Set a real `metadata.id`.** The default is `com.example.<name>`, which
   `gtdx lint` rejects (`E_ID_PATTERN` requires
   `^greentic\.[a-z0-9][a-z0-9-]*$`).
