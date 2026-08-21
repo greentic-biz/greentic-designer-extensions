@@ -39,7 +39,7 @@ Step-by-step guides for building each extension kind from scratch.
 | [how-to-write-a-bundle-extension.md](./how-to-write-a-bundle-extension.md) | Build a `BundleExtension` — recipes and bundling interfaces, the `render` contract, and the v2 `contributions.recipes` shape. |
 | [how-to-write-a-deploy-extension.md](./how-to-write-a-deploy-extension.md) | Build a `DeployExtension` — targets and deployment interfaces, the async deploy/poll/rollback contract, and why `contributions.targets` no longer exists. |
 | [how-to-write-a-provider-extension.md](./how-to-write-a-provider-extension.md) | Build a `ProviderExtension` — choosing among the six provider worlds, channel profiles and card tiers, and the separate runtime component. |
-| [how-to-write-a-wasm-component-extension.md](./how-to-write-a-wasm-component-extension.md) | Surface a WASM component as a canvas node. **`gtdx new --kind wasm-component` is currently unusable** — this documents the working two-component shape instead. |
+| [how-to-write-a-wasm-component-extension.md](./how-to-write-a-wasm-component-extension.md) | Surface an already-published WASM component as a canvas node — the two-component describe, why the node must be reachable by `oci_ref`, and the four things about it that fail late. |
 
 ---
 
