@@ -5,14 +5,20 @@ pub mod broker;
 pub mod capability;
 pub mod discovery;
 mod error;
+mod ext_error;
+pub mod guardrail_map;
 mod health;
-mod host_bindings;
+pub mod host_bindings;
 pub mod host_ports;
 mod host_state;
 mod loaded;
+pub mod oauth;
 mod pool;
 mod runtime;
+mod runtime_deploy;
+mod runtime_dw_composer;
 mod runtime_roles;
+mod tool_metadata_report;
 pub mod types;
 pub mod url_matcher;
 pub mod watcher;
@@ -21,17 +27,21 @@ pub use self::broker::{Broker, BrokerError, BrokerResult};
 pub use self::capability::{CapabilityRegistry, OfferedBinding, ResolutionPlan};
 pub use self::discovery::DiscoveryPaths;
 pub use self::error::RuntimeError;
+pub use self::guardrail_map::GuardrailVerdictWire;
 pub use self::health::{ExtensionHealth, HealthReason};
 pub use self::host_ports::{
     InMemorySecrets, KeyTranslator, SecretsBackend, SecretsError, Translator,
 };
 pub use self::host_state::HostState;
 pub use self::loaded::{ExtensionId, HostOverrides, LoadedExtension, LoadedExtensionRef};
-pub use self::runtime::{ExtensionRuntime, RuntimeConfig, RuntimeEvent, WatcherGuard};
+pub use self::runtime::{
+    ExtensionRuntime, RuntimeConfig, RuntimeEvent, WatcherGuard, contribution_tool_to_definition,
+};
 pub use self::types::{
-    BundleArtifact, BundleSession, CompileContext, Diagnostic, HostExtensionError, KnowledgeEntry,
-    KnowledgeEntrySummary, PromptFragment, RoleError, RoleSpec, Severity, TargetKind,
-    TargetSummary, ToolDefinition, ValidateResult,
+    BundleArtifact, BundleSession, CompileContext, DeployExtensionError, DeployJob, DeployRequest,
+    DeployStatus, Diagnostic, HostExtensionError, KnowledgeEntry, KnowledgeEntrySummary,
+    PromptFragment, RoleError, RoleSpec, Severity, TargetKind, TargetSummary, ToolDefinition,
+    ValidateResult,
 };
 pub use self::url_matcher::UrlMatcher;
 

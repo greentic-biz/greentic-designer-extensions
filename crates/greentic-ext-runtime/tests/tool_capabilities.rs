@@ -1,0 +1,87 @@
+use greentic_ext_runtime::ToolDefinition;
+
+#[test]
+fn v2_contribution_tool_maps_capabilities_and_secret_requirements() {
+    use greentic_extension_sdk_contract::describe::contributions::Tool;
+    use greentic_types::secrets::{SecretKey, SecretRequirement};
+
+    let mut req = SecretRequirement::default();
+    req.key = SecretKey::new("tavily/api_key").unwrap();
+    req.required = true;
+
+    let t = Tool {
+        name: "search".into(),
+        export: "greentic:extension-design/tools.invoke-tool".into(),
+        runtime_ref: None,
+        capabilities: Some(vec!["agentic_worker".into()]),
+        secret_requirements: vec![req],
+        description: Some("Search the web.".into()),
+        input_schema: Some(r#"{"type":"object"}"#.into()),
+        output_schema: None,
+        agentic_worker_metadata: None,
+    };
+
+    let def = greentic_ext_runtime::contribution_tool_to_definition(&t);
+
+    assert_eq!(def.capabilities, Some(vec!["agentic_worker".to_string()]));
+    assert_eq!(def.secret_requirements.len(), 1);
+    assert_eq!(def.secret_requirements[0].key.as_str(), "tavily/api_key");
+    // v2 input_schema/description surface through to the tool definition the
+    // LLM sees (designer-sdk #57 + ext-runtime #93).
+    assert_eq!(def.description, "Search the web.");
+    assert_eq!(def.input_schema_json, r#"{"type":"object"}"#);
+}
+
+#[test]
+fn legacy_shape_deserializes_without_new_fields() {
+    // Simulates what a JSON serialization of a legacy ToolDefinition
+    // (pre-capability-flag) looks like. Both new fields absent.
+    let json = r#"{
+        "name": "validate_card",
+        "description": "Validate an Adaptive Card.",
+        "input_schema_json": "{}"
+    }"#;
+    let td: ToolDefinition = serde_json::from_str(json).expect("legacy decode");
+    assert_eq!(td.name, "validate_card");
+    assert!(td.capabilities.is_none());
+    assert!(td.agentic_worker_metadata.is_none());
+}
+
+#[test]
+fn new_shape_round_trip() {
+    let td = ToolDefinition {
+        name: "validate_card".into(),
+        description: "Validate an Adaptive Card.".into(),
+        input_schema_json: "{}".into(),
+        output_schema_json: None,
+        capabilities: Some(vec!["flow".into(), "agentic_worker".into()]),
+        agentic_worker_metadata: Some(r#"{"usage_hint":"x"}"#.into()),
+        secret_requirements: vec![],
+    };
+    let json = serde_json::to_string(&td).unwrap();
+    let back: ToolDefinition = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.name, td.name);
+    assert_eq!(back.capabilities, td.capabilities);
+    assert_eq!(back.agentic_worker_metadata, td.agentic_worker_metadata);
+}
+
+#[test]
+fn legacy_default_capability_per_spec() {
+    // Per spec section "Default semantics": when `capabilities` is None,
+    // consumers MUST treat it as ["flow"]. This test asserts the policy
+    // by simulating the consumer-side decision.
+    let td = ToolDefinition {
+        name: "legacy".into(),
+        description: String::new(),
+        input_schema_json: "{}".into(),
+        output_schema_json: None,
+        capabilities: None,
+        agentic_worker_metadata: None,
+        secret_requirements: vec![],
+    };
+    let effective: Vec<String> = td
+        .capabilities
+        .clone()
+        .unwrap_or_else(|| vec!["flow".into()]);
+    assert_eq!(effective, vec!["flow".to_string()]);
+}
