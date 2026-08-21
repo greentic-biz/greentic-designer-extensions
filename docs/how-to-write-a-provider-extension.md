@@ -61,8 +61,8 @@ degraded message with no error anywhere.
 gtdx new my-provider --kind provider --id greentic.my-provider
 ```
 
-**Two fixes are required before the first build** on any `gtdx` predating
-greentic-designer-sdk#105, and this kind needs both:
+**On `gtdx` 1.2.0 or older, two fixes are required before the first build**
+— this kind needs both. 1.2.1 needs neither:
 
 ```bash
 # 1. The rendered world asks for a WIT package version that does not exist.
@@ -75,11 +75,12 @@ sed -i 's/provider_types::Error/types::ExtensionError/g' src/lib.rs
 
 Without (1), `cargo component build` fails with
 `package 'greentic:extension-host@0.2.0' not found`. Without (2) it fails with
-eight `cannot find type 'Error' in module 'provider_types'` errors. Verified
-2026-08-21 against `gtdx 1.3.0-research.3`; background in
-[getting-started-scaffolding.md](./getting-started-scaffolding.md#known-issue--a-fresh-scaffold-does-not-build).
+eight `cannot find type 'Error' in module 'provider_types'` errors. Both are
+fixed in `gtdx` 1.2.1; background in
+[getting-started-scaffolding.md](./getting-started-scaffolding.md#if-you-are-on-gtdx-120-or-older).
 
-Also delete the deprecated `engine` block from `describe.json` and set a real
+On those versions, also delete the deprecated `engine` block from
+`describe.json`, and (on any version) set a real
 `metadata.id`.
 
 ---

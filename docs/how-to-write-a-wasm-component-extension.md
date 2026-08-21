@@ -10,10 +10,10 @@ gtdx new my-node --kind wasm-component --id greentic.my-node \
     --component-ref oci://ghcr.io/greenticai/component/component-my-node@sha256:461c6a68…
 ```
 
-> **Requires a `gtdx` carrying greentic-designer-sdk#106.** Before that commit
-> this kind produced a project that did not build, and whose node pointed at a
-> component that could not execute it. See
-> [What #106 changed](#what-106-changed) if you are on an older build.
+> **Requires `gtdx` 1.2.1 or newer.** On 1.2.0 and older this kind produced a
+> project that did not build, and whose node pointed at a component that could
+> not execute it — with no workaround short of upgrading. See
+> [What 1.2.1 changed](#what-121-changed).
 
 ---
 
@@ -145,10 +145,11 @@ authoring affordances.
 
 ---
 
-## What #106 changed
+## What 1.2.1 changed
 
-Before greentic-designer-sdk#106 this kind was unusable, and worth recording
-because the failure was invisible at every layer that could have caught it:
+Before 1.2.1 (greentic-designer-sdk#106) this kind was unusable, and worth
+recording because the failure was invisible at every layer that could have
+caught it:
 
 | Problem | Detail |
 |---|---|

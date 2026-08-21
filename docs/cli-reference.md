@@ -111,7 +111,7 @@ Scaffolded design extension at my-ext (19 files, contract 0.2.0).
 > **The generated project does not build as-is** (every kind but `mcp`): the
 > rendered `wit/world.wit` asks for `greentic:extension-host@0.2.0` while the
 > vendored package is `@0.1.0`. See
-> [getting-started-scaffolding.md](./getting-started-scaffolding.md#known-issue--a-fresh-scaffold-does-not-build)
+> [getting-started-scaffolding.md](./getting-started-scaffolding.md#if-you-are-on-gtdx-120-or-older)
 > for the one-line fix and the per-kind table.
 
 **Example — wasm-component flavor:**
@@ -131,9 +131,9 @@ plus a `describe.json` declaring two components: this crate's design-time
 `extension.wasm`, and the `oci_ref` of the component that executes the node,
 which `contributions.nodeTypes[0].runtime_ref` points at.
 
-(Before greentic-designer-sdk#106 this kind emitted a two-crate workspace with
-an `extension/` and a `runtime/` directory. That shape never built, and its
-node pointed at a component the runner cannot execute.)
+(On `gtdx` 1.2.0 and older this kind emitted a two-crate workspace with an
+`extension/` and a `runtime/` directory. That shape never built, and its node
+pointed at a component the runner cannot execute.)
 
 ---
 
@@ -697,7 +697,7 @@ gtdx version
 
 ```
 $ gtdx version
-gtdx 1.3.0-research.3
+gtdx 1.2.1
 ```
 
 ---

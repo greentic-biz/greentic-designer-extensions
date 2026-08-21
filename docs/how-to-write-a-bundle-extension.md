@@ -42,8 +42,8 @@ out-of-band `greentic-bundle ext render` path was retired in ext-runtime
 gtdx new my-bundle --kind bundle --id greentic.my-bundle
 ```
 
-**On any `gtdx` predating greentic-designer-sdk#105, fix the generated
-`wit/world.wit` before your first build.** The
+**On `gtdx` 1.2.0 or older, fix the generated `wit/world.wit` before your
+first build.** 1.2.1 renders it correctly; skip this. The
 template renders `greentic:extension-host@0.2.0`, but the vendored package is
 `@0.1.0`:
 
@@ -54,7 +54,7 @@ sed -i -e 's|\(greentic:extension-host/[a-z0-9-]*\)@0\.2\.0|\1@0.1.0|g' wit/worl
 Without it, `cargo component build` and `gtdx dev` fail with
 `package 'greentic:extension-host@0.2.0' not found`. Background and the
 per-kind table:
-[getting-started-scaffolding.md](./getting-started-scaffolding.md#known-issue--a-fresh-scaffold-does-not-build).
+[getting-started-scaffolding.md](./getting-started-scaffolding.md#if-you-are-on-gtdx-120-or-older).
 
 Also delete the deprecated `engine` block from `describe.json` and set a real
 `metadata.id` — both are `gtdx lint` errors on an untouched scaffold.
