@@ -115,28 +115,49 @@ Every extension ships a `describe.json` declaring identity, version, the
 capabilities it offers, the capabilities it requires, and permissions it
 needs (network, secrets, cross-extension calls).
 
+*Abridged — `metadata.name` / `summary` / `author` / `license` and
+`contributions` are all required. Complete, validated examples:
+[describe-json-spec.md](./describe-json-spec.md#complete-examples).*
+
 ```json
 {
-  "apiVersion": "greentic.ai/v1",
+  "apiVersion": "greentic.ai/v2",
   "kind": "DesignExtension",
+  "compat": {
+    "min_designer_version": ">=1.2.0",
+    "min_runner_version": "^1.3.0-research.1",
+    "contract_version": "1.3.0-research.1"
+  },
   "metadata": {
     "id": "greentic.adaptive-cards",
-    "version": "1.6.0"
+    "version": "2.1.6-research"
   },
   "capabilities": {
     "offered":  [ { "id": "greentic:adaptive-cards/validate", "version": "1.0.0" } ],
     "required": [ { "id": "greentic:host/logging", "version": "^1.0.0" } ]
   },
   "runtime": {
-    "component": "extension.wasm",
-    "permissions": { "network": [], "secrets": [], "callExtensionKinds": [] }
+    "permissions": { "network": [], "secrets": [], "callExtensionKinds": [] },
+    "components": {
+      "adaptive-cards": {
+        "gtpack": { "file": "extension.wasm", "sha256": "…", "pack_id": "greentic.adaptive-cards", "component_version": "2.1.6-research" },
+        "sha256": "…",
+        "world": "greentic:adaptive-cards/design-extension@1.0.0"
+      }
+    }
   }
 }
 ```
 
-One schema, three `kind` values (DesignExtension / BundleExtension /
-DeployExtension), kind-specific `contributions` section (schemas, prompts,
-knowledge, tools, recipes, targets).
+One schema, five `kind` values (DesignExtension / BundleExtension /
+DeployExtension / ProviderExtension / `wasix:mcp/router`), kind-specific
+`contributions` section (node types, tools, schemas, prompts, knowledge,
+recipes, DW providers, guardrails).
+
+**`contributions.tools[]` is the whole tool definition, not just a pointer.**
+For a v2 extension the runtime never calls the WASM `list-tools` export — a
+tool's description, input schema and capabilities all come from the manifest.
+Full field reference: [describe-json-spec.md](./describe-json-spec.md).
 
 ### 2. Capability Registry + matching engine
 

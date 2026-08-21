@@ -1,248 +1,117 @@
-# How to Write a WASM Component Extension
+# How to Surface a WASM Component as a Canvas Node
 
-A `wasm-component` extension is a node-providing flavor of `DesignExtension`
-that wraps a **pre-built WASM runtime component** (`.gtpack`) and surfaces it
-as a single node in the designer canvas palette.
+> **Status: `gtdx new --kind wasm-component` does not produce a buildable
+> project.** Verified 2026-08-21 against `gtdx 1.3.0-research.3`. Use
+> `--kind design` and add the node component as a separate crate — the shape
+> shipped extensions such as `greentic.calendly` actually use. Details in
+> [What is broken](#what-is-broken-in---kind-wasm-component) below.
 
-Use this scaffold when you already have a working WASM component shipped as
-a `.gtpack` and just want to expose it to designer authors — without writing
-the full `DesignExtension` tutorial code by hand.
-
-The general design extension tutorial
-([how-to-write-a-design-extension.md](./how-to-write-a-design-extension.md))
-covers the full surface (validation, prompting, knowledge, multi-tool). This
-document focuses on the narrower wasm-component case.
+The goal this document describes is still real and still supported: you have
+a WASM component implementing `greentic:component/component-v0-v6-v0@0.6.0`,
+and you want it to appear as a node in the designer's canvas palette. Only
+the convenience scaffold for it is unusable.
 
 ---
 
-## When to use this
+## The shape that works
 
-Use `--kind wasm-component` when **all** of the following are true:
+A node in the palette needs **two** things in one `describe.json`:
 
-- You already have (or will produce separately) a runtime `.gtpack` that
-  implements `greentic:component@0.6.0`.
-- You want that runtime to appear as **one** node in the designer palette.
-- You do not need to teach the designer a new content type, prompt fragments,
-  or knowledge entries.
-
-If you need richer authoring affordances (validate-as-you-type, system
-prompt fragments, multi-tool LLM integration), use `--kind design` instead
-and embed your `.gtpack` via `runtime.gtpack` as documented in
-[how-to-write-a-design-extension.md](./how-to-write-a-design-extension.md)
-(Step 4a).
-
----
-
-## Difference from a full design extension
-
-| Aspect | `--kind design` | `--kind wasm-component` |
-|--------|-----------------|-------------------------|
-| Primary purpose | Teach a new content type to the designer | Add a single node to the canvas palette |
-| Tools / prompting / knowledge | Implements rich exports | Stub only |
-| `contributions.nodeTypes` | Optional | **Required** (one entry) |
-| `runtime.gtpack` | Optional | **Required** |
-| Scaffold layout | Single crate | Workspace with `extension/` + `runtime/` |
-| Time to first node in designer | Hours | Minutes |
-
-The wasm-component scaffold is essentially a curated subset of the design
-extension scaffold, pre-wired for the "I have a `.gtpack`, give me a node"
-use case.
-
----
-
-## Prerequisites
-
-- **Rust 1.95 or later** (`rustup update stable`)
-- **`cargo-component`** — WIT-aware build tool for WASM components:
-  ```
-  cargo install --locked cargo-component
-  ```
-- **`wasm32-wasip2` target:**
-  ```
-  rustup target add wasm32-wasip2
-  ```
-- **`gtdx`** — the Greentic Designer Extensions CLI:
-  ```
-  cargo install greentic-extension-sdk-cli --locked
-  ```
-- **A pre-built runtime `.gtpack`** — produced separately via
-  `greentic-pack` (or whatever build pipeline ships your component). The
-  scaffold does **not** build the runtime for you; it only wraps it.
-
----
-
-## Step 1 — Scaffold
-
-```
-gtdx new myco.my-tool \
-  --kind wasm-component \
-  --author "My Org" \
-  --node-type-id my-tool \
-  --label "My Tool" \
-  --dir ./my-tool \
-  -y \
-  --no-git
-```
-
-Flags specific to this kind:
-
-- `--node-type-id <id>` — the `contributions.nodeTypes[0].type_id` value.
-  Defaults to the last `.`-separated segment of `<name>` (so
-  `myco.my-tool` → `my-tool`).
-- `--label <text>` — the palette label shown to authors. Defaults to a
-  humanized form of the derived `node_type_id` (so `my-tool` → `My Tool`).
-
-All other flags (`--id`, `--version`, `--license`, `--author`, `--dir`,
-`-y`, `--no-git`, `--force`) behave exactly as for the other kinds — see
-the [CLI reference](./cli-reference.md).
-
----
-
-## Step 2 — Inspect what you got
-
-```
-my-tool/
-├── Cargo.toml                # workspace root, members = ["extension"]
-├── README.md                 # quickstart for the new project
-├── describe.json             # extension manifest, pre-wired with one nodeType
-├── rust-toolchain.toml
-├── .gitignore
-├── .gtdx-contract.lock
-├── extension/
-│   ├── Cargo.toml            # extension crate (cdylib, wit-bindgen)
-│   ├── src/lib.rs            # WASM guest exports
-│   └── wit/world.wit         # imports + exports
-├── runtime/
-│   └── README.md             # placeholder; drop your .gtpack here
-└── wit/deps/greentic/...     # vendored WIT contract
-```
-
-Two notable differences from the `design` scaffold:
-
-- The project is a **Cargo workspace** with the WASM crate under
-  `extension/`, leaving room for sibling crates (e.g., a host-side test
-  harness) without restructuring later.
-- A **`runtime/`** subdirectory is created up front for the pre-built
-  `.gtpack`.
-
----
-
-## Step 3 — Configure `describe.json`
-
-The generated `describe.json` ships with sensible defaults, but you almost
-certainly want to edit:
-
-```json
-"contributions": {
-  "nodeTypes": [
-    {
-      "type_id": "my-tool",
-      "label": "My Tool",
-      "category": "tools",
-      "icon": "puzzle",
-      "color": "#0d9488",
-      "complexity": "simple",
-      "config_schema": "{}",
-      "output_ports": [
-        { "name": "success", "label": "Success" },
-        { "name": "error", "label": "Error" }
-      ]
-    }
-  ]
-}
-```
-
-Things to fill in:
-
-- **`category`** — designer palette grouping (`tools`, `integration`,
-  `transform`, etc.).
-- **`icon`** — palette icon name. The default `puzzle` is fine for a
-  generic node.
-- **`config_schema`** — a stringified JSON Schema describing the node's
-  configuration form. The default `"{}"` accepts anything; replace it with
-  the real schema your runtime expects.
-- **`output_ports`** — adjust to match your runtime's actual output ports.
-- **`runtime.permissions`** — declare any `network`, `secrets`, or
-  `callExtensionKinds` your runtime needs. These are surfaced to the user
-  on install.
-
----
-
-## Step 4 — Drop in the runtime `.gtpack`
-
-Copy your pre-built artifact into `runtime/`:
-
-```
-cp /path/to/my-tool-0.1.0.gtpack ./runtime/my-tool.gtpack
-```
-
-Update `describe.json` to point at it:
+1. a `runtime.components` entry for the component that will execute the node —
+   built as its own crate against the `component-v0-v6-v0@0.6.0` world and
+   published to OCI, or shipped in-pack;
+2. a `contributions.nodeTypes` entry pointing at it by `runtime_ref`, carrying
+   the palette metadata and the `operation` to invoke.
 
 ```json
 "runtime": {
-  "component": "extension.wasm",
-  "gtpack": {
-    "file": "runtime/my-tool.gtpack",
-    "sha256": "REPLACE_AT_BUILD",
-    "pack_id": "myco.my-tool",
-    "component_version": "0.1.0"
+  "components": {
+    "my-ext-tool": {
+      "gtpack": { "file": "extension.wasm", "sha256": "…", "pack_id": "greentic.my-ext", "component_version": "0.1.0" },
+      "sha256": "…",
+      "world": "greentic:my-ext/design-extension@1.0.0"
+    },
+    "my-ext-node": {
+      "oci_ref": "oci://ghcr.io/greenticai/component/component-my-ext@sha256:461c6a68…",
+      "sha256": "…",
+      "world": "greentic:component/component-v0-v6-v0@0.6.0"
+    }
   }
+},
+"contributions": {
+  "nodeTypes": [{
+    "type_id": "my_op",
+    "label": "My Operation",
+    "category": "integration",
+    "icon": "bolt",
+    "color": "#6366f1",
+    "complexity": "simple",
+    "config_schema": "{\"type\":\"object\", …}",
+    "output_ports": [{ "name": "default", "label": "Next" }],
+    "runtime_ref": "my-ext-node",
+    "operation": "my_op"
+  }]
 }
 ```
 
-The `sha256` is filled in at build time by `gtdx publish` (it computes the
-hash, rewrites the manifest, and seals the `.gtxpack`). You do not need to
-compute it manually for local development.
+Start it with `gtdx new --kind design`, delete the tool contributions you do
+not need, and add the node component as a second `runtime.components` entry.
+The full walk-through, including the four things about a node that fail
+silently, is
+[how-to-write-a-design-extension.md § Step 10](./how-to-write-a-design-extension.md#step-10--optional-add-a-flow-editor-node).
 
 ---
 
-## Step 5 — Build, install, iterate
+## Why a design extension cannot execute the node itself
 
-`gtdx dev` watches the project, rebuilds the design-time `extension.wasm`,
-re-signs locally, and reinstalls into your local `~/.greentic/extensions/`.
-The designer hot-reloads the new node into the palette:
+`greentic-runner-host` accepts a component only if it exports `node@0.5`,
+`node@0.4`, or `component-runtime@0.6`. A design extension exports
+`greentic:extension-design/tools@0.3.0`, which the runner has no path to. So
+the node component is genuinely a **separate artifact** — the two-component
+describe above is not boilerplate, it is the contract.
+
+The node crate also may not import `greentic:extension-host/http` or
+`extension-host/secrets`; those are design-world imports. Use
+`greentic-interfaces-guest` with features
+`["component-v0-6", "http-client-v1-1", "secrets"]`. A correct build shows
+both in its world:
 
 ```
-cd my-tool
-gtdx dev
+wasm-tools component wit <wasm>
+# import greentic:http/http-client@1.1.0
+# import greentic:secrets-store/secrets-store@1.0.0
 ```
-
-Open the designer in another terminal — the new node should appear in the
-palette under the category you configured. Drag it onto the canvas, fill in
-the config form (driven by your `config_schema`), and connect it to other
-nodes.
 
 ---
 
-## Step 6 — Publish
+## What is broken in `--kind wasm-component`
 
-When the node behaves correctly end-to-end:
+The generated project is written against an older contract and does not build
+even after the WIT version rewrite that fixes the other kinds:
 
-```
-gtdx publish
-```
+| Problem | Detail |
+|---|---|
+| WIT version | `extension/wit/world.wit` exports `greentic:extension-design/tools@0.1.0`; the vendored package is `@0.3.0` |
+| WIT layout | the vendored `wit/deps/` sits at the project root, while `extension/Cargo.toml` targets `extension/wit` and declares no `target.dependencies`, so the packages never resolve |
+| Inline table | `[package.metadata.component.target]` is written as an inline table, so a `target.dependencies` section cannot be appended without rewriting it (`cannot extend value of type inline table with a dotted key`) |
+| Stub signature | `extension/src/lib.rs` uses `wit_bindgen::generate!` with `invoke_tool -> Result<String, String>`, whereas `@0.3.0` returns `result<string, extension-error>` |
+| v1 instructions | `runtime/README.md` tells you to set `runtime.gtpack.file` — a v1 path. In v2 it is `runtime.components.<id>.gtpack.file` |
+| Wrong runtime | `contributions.nodeTypes[0].runtime_ref` points at the **design** component, which cannot execute a node at all |
 
-This signs the artifact (filling in the `sha256` for the embedded `.gtpack`)
-and uploads it to your default registry. Other users can then install it
-with:
+The last row is the one that matters most: even if the build were fixed, the
+generated wiring points the node at a component the runner will refuse.
 
-```
-gtdx install myco.my-tool --version 0.1.0
-```
-
-See [getting-started-publish.md](./getting-started-publish.md) for the
-full publish flow, signing-key management, and registry configuration.
+Fixing the scaffold means regenerating its template against the current
+contract, not patching a generated project. Until then, `--kind design`
+is the supported route.
 
 ---
 
 ## What to do next
 
-- Add a real `config_schema` so authors get a typed configuration form
-  instead of free-form JSON.
-- Add multiple `output_ports` if your runtime branches (e.g., `match`,
-  `no_match`).
-- If you find yourself needing validation, prompt fragments, or knowledge
-  entries, graduate to `--kind design` — the directory layouts are close
-  enough that porting takes minutes.
-- For trust policies and signing details, see
-  [permissions-and-trust.md](./permissions-and-trust.md).
+- [how-to-write-a-design-extension.md](./how-to-write-a-design-extension.md) —
+  the working path, including the node section.
+- [describe-json-spec.md](./describe-json-spec.md#tools-and-node-types-are-different-surfaces)
+  — why tools and node types are different surfaces.
+- [getting-started-scaffolding.md](./getting-started-scaffolding.md#known-issue--a-fresh-scaffold-does-not-build)
+  — per-kind scaffold status.

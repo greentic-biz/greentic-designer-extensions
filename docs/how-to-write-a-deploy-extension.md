@@ -1,91 +1,80 @@
 # How to Write a Deploy Extension
 
-A `DeployExtension` teaches the Greentic Designer how to ship an Application
-Pack to a deployment target. It appears as a set of selectable **targets** in
-the designer's deploy wizard step.
+A `DeployExtension` ships an Application Pack to a deployment target. It
+contributes **targets** — the destinations the deploy wizard offers — and
+implements the deploy / poll / rollback lifecycle against them.
 
-This tutorial builds a minimal desktop deploy extension that writes a
-marker file to a local directory. Real cloud targets (AWS EKS, GCP GKE,
-Cisco on-prem) are planned for a future cycle.
+Against the v2 describe contract. Field reference:
+[describe-json-spec.md](./describe-json-spec.md).
 
-The design extension tutorial covers prerequisites and the common steps.
-Read [how-to-write-a-design-extension.md](./how-to-write-a-design-extension.md)
-first if you are new to extension authoring.
+---
+
+## What a deploy extension is responsible for
+
+| Interface | Exports | Purpose |
+|---|---|---|
+| `extension-deploy/targets` | `list-targets`, `credential-schema`, `config-schema`, `validate-credentials` | Advertise destinations and what they need from the operator |
+| `extension-deploy/deployment` | `deploy`, `poll`, `rollback` | Run the deployment and report on it |
+
+`deploy` is **asynchronous by contract**: it returns a `deploy-job` handle
+immediately and the designer polls. A target that cannot roll back declares
+`supports_rollback: false` in its summary rather than implementing `rollback`
+as a silent no-op.
 
 ---
 
 ## Prerequisites
 
-Same as the design extension tutorial:
-
-- Rust 1.95+
-- `cargo-component`
-- `wasm32-wasip2` target
-- `gtdx`
+- Rust 1.95+, `rustup target add wasm32-wasip2`
+- `cargo install --locked cargo-component`
+- A `gtdx` matching the current contract — see
+  [how-to-write-a-design-extension.md](./how-to-write-a-design-extension.md#check-your-gtdx-before-you-start)
 
 ---
 
-## Step 1 — Crate setup
+## Step 1 — Scaffold
 
 ```
-cargo new --lib my-deploy-ext
-cd my-deploy-ext
+gtdx new my-deploy --kind deploy --id greentic.my-deploy
 ```
 
-`Cargo.toml`:
+**Fix the generated `wit/world.wit` before the first build** — the template
+renders `greentic:extension-host@0.2.0` while the vendored package is
+`@0.1.0`:
 
-```toml
-[package]
-name    = "my-deploy-ext"
-version = "0.1.0"
-edition = "2024"
-license = "MIT"
-
-[lib]
-crate-type = ["cdylib", "rlib"]
-
-[dependencies]
-wit-bindgen    = "0.35"
-wit-bindgen-rt = "0.35"
-serde_json     = "1"
-
-[package.metadata.component]
-package = "myco:my-deploy-ext"
-
-[package.metadata.component.target]
-path  = "wit"
-world = "deploy-extension"
-
-[package.metadata.component.target.dependencies]
-"greentic:extension-base"   = { path = "../path/to/wit/extension-base.wit" }
-"greentic:extension-host"   = { path = "../path/to/wit/extension-host.wit" }
-"greentic:extension-deploy" = { path = "../path/to/wit/extension-deploy.wit" }
+```bash
+sed -i -e 's|\(greentic:extension-host/[a-z0-9-]*\)@0\.2\.0|\1@0.1.0|g' wit/world.wit
 ```
+
+Background:
+[getting-started-scaffolding.md](./getting-started-scaffolding.md#known-issue--a-fresh-scaffold-does-not-build).
+
+Also delete the deprecated `engine` block and set a real `metadata.id`.
 
 ---
 
-## Step 2 — `wit/world.wit`
+## Step 2 — The WIT world
 
 ```wit
-package myco:my-deploy-ext;
+package greentic:my-deploy;
 
-world deploy-extension {
-  import greentic:extension-base/types@0.1.0;
+world extension {
+  import greentic:extension-base/types@0.2.0;
   import greentic:extension-host/logging@0.1.0;
   import greentic:extension-host/i18n@0.1.0;
   import greentic:extension-host/secrets@0.1.0;
   import greentic:extension-host/http@0.1.0;
 
-  export greentic:extension-base/manifest@0.1.0;
-  export greentic:extension-base/lifecycle@0.1.0;
-  export greentic:extension-deploy/targets@0.1.0;
-  export greentic:extension-deploy/deployment@0.1.0;
+  export greentic:extension-base/manifest@0.2.0;
+  export greentic:extension-base/lifecycle@0.2.0;
+  export greentic:extension-deploy/targets@0.2.0;
+  export greentic:extension-deploy/deployment@0.2.0;
 }
 ```
 
-Deploy extensions typically import `secrets` (for cloud credentials) and
-`http` (for cloud API calls). This stub does not use them but declares the
-imports to match the canonical deploy-extension world.
+A deploy extension is the kind most likely to need `http` and `secrets`, and
+both are **default-deny**: importing them here grants nothing until
+`runtime.permissions` lists the origins and secret URIs.
 
 ---
 
@@ -93,265 +82,175 @@ imports to match the canonical deploy-extension world.
 
 ```json
 {
-  "$schema": "https://store.greentic.cloud/schemas/describe-v1.json",
-  "apiVersion": "greentic.ai/v1",
+  "$schema": "https://store.greentic.cloud/schemas/describe-v2.json",
+  "apiVersion": "greentic.ai/v2",
   "kind": "DeployExtension",
-  "metadata": {
-    "id": "myco.desktop-deploy",
-    "name": "Desktop Deploy",
-    "version": "0.1.0",
-    "summary": "Deploy an Application Pack to a local directory for testing",
-    "author": { "name": "My Name", "email": "me@example.com" },
-    "license": "MIT"
+  "compat": {
+    "min_designer_version": ">=1.2.0",
+    "min_runner_version": "^1.3.0-research.1",
+    "contract_version": "1.3.0-research.1"
   },
-  "engine": {
-    "greenticDesigner": ">=0.6.0",
-    "extRuntime": "^0.1.0"
+  "metadata": {
+    "id": "greentic.my-deploy",
+    "name": "My Deploy",
+    "version": "0.1.0",
+    "summary": "Deploy an Application Pack to my platform",
+    "author": { "name": "My Name" },
+    "license": "Apache-2.0"
   },
   "capabilities": {
-    "offered": [
-      { "id": "myco:deploy/desktop", "version": "0.1.0" }
-    ],
+    "offered": [{ "id": "greentic:deploy/my-platform", "version": "1.0.0" }],
     "required": []
   },
   "runtime": {
-    "component": "extension.wasm",
-    "memoryLimitMB": 32,
+    "memoryLimitMB": 64,
     "permissions": {
-      "network": [],
-      "secrets": [],
+      "network": ["https://api.my-platform.com/*"],
+      "secrets": ["secret://my-platform/api_token"],
       "callExtensionKinds": []
-    }
-  },
-  "contributions": {
-    "targets": [
-      {
-        "id": "local-dir",
-        "displayName": "Local Directory",
-        "credentialSchema": null,
-        "configSchema": "schemas/local-dir-config.json"
+    },
+    "components": {
+      "my-deploy": {
+        "gtpack": {
+          "file": "extension.wasm",
+          "sha256": "<64 lowercase hex>",
+          "pack_id": "greentic.my-deploy",
+          "component_version": "0.1.0"
+        },
+        "sha256": "<64 lowercase hex>",
+        "world": "greentic:my-deploy/deploy-extension@1.0.0"
       }
-    ]
-  }
-}
-```
-
-Create `schemas/local-dir-config.json`:
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "output_path": {
-      "type": "string",
-      "description": "Absolute path to the directory where the pack will be written"
     }
   },
-  "required": ["output_path"]
+  "contributions": {}
 }
 ```
+
+**Targets are not a `contributions` field.** Unlike a bundle extension's
+recipes, the v2 `contributions` block has no `targets` list — the designer
+discovers targets by calling `list-targets` on the component. `contributions`
+stays empty for a plain deploy extension.
+
+This is a real v1→v2 break: a v1 describe carrying `contributions.targets`
+is refused outright, since `contributions` is `additionalProperties: false`
+in the schema and `deny_unknown_fields` in the Rust contract.
+
+```
+$ gtdx validate ./my-deploy
+Error: describe.json schema validation failed:
+  /contributions: Additional properties are not allowed ('targets' was unexpected)
+```
+
+Mind the permission matchers, which are **different for the two lists**:
+
+- `network` is pattern-based — exact host or `*.suffix`, with a trailing `/*`
+  stripped for the path prefix. `https://api.my-platform.com/*` is idiomatic.
+- `secrets` is **not** a glob. An entry permits a URI only when the URI equals
+  it, or starts with the entry followed by `/`. `secret://my-platform/*`
+  permits nothing, and a trailing slash breaks the prefix. See
+  [permissions-and-trust.md](./permissions-and-trust.md#secrets).
 
 ---
 
-## Step 4 — `src/lib.rs` — Implement the WIT exports
+## Step 4 — Implement the exports
 
 ```rust
-#![allow(clippy::used_underscore_items)]
-
-#[allow(warnings)]
-mod bindings;
-
-use bindings::exports::greentic::extension_base::{lifecycle, manifest};
-use bindings::exports::greentic::extension_deploy::{deployment, targets};
-use bindings::greentic::extension_base::types;
-
-struct Component;
-
-// ---- base::manifest ----
-
-impl manifest::Guest for Component {
-    fn get_identity() -> types::ExtensionIdentity {
-        types::ExtensionIdentity {
-            id: "myco.desktop-deploy".into(),
-            version: "0.1.0".into(),
-            kind: types::Kind::Deploy,
-        }
-    }
-    fn get_offered() -> Vec<types::CapabilityRef> {
-        vec![types::CapabilityRef {
-            id: "myco:deploy/desktop".into(),
-            version: "0.1.0".into(),
-        }]
-    }
-    fn get_required() -> Vec<types::CapabilityRef> {
-        vec![]
-    }
-}
-
-// ---- base::lifecycle ----
-
-impl lifecycle::Guest for Component {
-    fn init(_config_json: String) -> Result<(), types::ExtensionError> {
-        Ok(())
-    }
-    fn shutdown() {}
-}
-
-// ---- deploy::targets ----
-
 impl targets::Guest for Component {
     fn list_targets() -> Vec<targets::TargetSummary> {
         vec![targets::TargetSummary {
-            id: "local-dir".into(),
-            display_name: "Local Directory".into(),
-            description: "Write the pack to a local directory for testing".into(),
+            id: "my-platform-prod".into(),
+            display_name: "My Platform (Production)".into(),
+            description: "Deploy to the production cluster".into(),
             icon_path: None,
-            supports_rollback: false,
+            supports_rollback: true,
         }]
     }
 
-    fn credential_schema(target_id: String)
-        -> Result<String, types::ExtensionError>
-    {
+    fn credential_schema(target_id: String) -> Result<String, types::ExtensionError> {
         match target_id.as_str() {
-            "local-dir" => Ok(r#"{"type":"object","properties":{}}"#.into()),
-            other => Err(types::ExtensionError::InvalidInput(
-                format!("unknown target: {other}")
-            )),
+            "my-platform-prod" => Ok(CREDENTIAL_SCHEMA.to_string()),
+            other => Err(types::ExtensionError::InvalidInput(format!(
+                "unknown target: {other}"
+            ))),
         }
     }
 
-    fn config_schema(target_id: String)
-        -> Result<String, types::ExtensionError>
-    {
-        match target_id.as_str() {
-            "local-dir" => Ok(r#"{
-                "type": "object",
-                "properties": {
-                    "output_path": {
-                        "type": "string",
-                        "description": "Absolute path to the output directory"
-                    }
-                },
-                "required": ["output_path"]
-            }"#.into()),
-            other => Err(types::ExtensionError::InvalidInput(
-                format!("unknown target: {other}")
-            )),
-        }
-    }
+    fn config_schema(target_id: String) -> Result<String, types::ExtensionError> { /* … */ }
 
     fn validate_credentials(
         _target_id: String,
-        _credentials_json: String,
+        credentials_json: String,
     ) -> Vec<types::Diagnostic> {
-        // Desktop target needs no credentials.
-        vec![]
+        // Shape-check only. Do NOT call the platform here, and never echo the
+        // credential into a diagnostic — these strings reach the operator's UI.
+        match serde_json::from_str::<Creds>(&credentials_json) {
+            Ok(_) => Vec::new(),
+            Err(e) => vec![types::Diagnostic {
+                severity: types::Severity::Error,
+                code: "credentials-shape".into(),
+                message: e.to_string(),
+                path: None,
+            }],
+        }
     }
 }
 
-// ---- deploy::deployment ----
-
 impl deployment::Guest for Component {
-    fn deploy(req: deployment::DeployRequest)
-        -> Result<deployment::DeployJob, types::ExtensionError>
-    {
-        if req.target_id != "local-dir" {
-            return Err(types::ExtensionError::InvalidInput(
-                format!("unknown target: {}", req.target_id)
-            ));
-        }
-        let cfg: serde_json::Value = serde_json::from_str(&req.config_json)
-            .map_err(|e| types::ExtensionError::InvalidInput(e.to_string()))?;
-        let output_path = cfg["output_path"]
-            .as_str()
-            .ok_or_else(|| types::ExtensionError::InvalidInput(
-                "output_path required".into()
-            ))?;
-
-        // Stub: write a marker file to the configured path.
-        // A real implementation would write req.artifact_bytes as a .gtpack file.
-        let marker = format!(
-            "deployment: {}\nname: {}\nbytes: {}\n",
-            req.target_id,
-            req.deployment_name,
-            req.artifact_bytes.len()
-        );
-        let job_id = format!("local-{}", req.deployment_name);
-        let marker_path = format!("{output_path}/{}.deployed", req.deployment_name);
-
-        // Note: WASM components cannot access the filesystem directly.
-        // In a real deployment the host would write the file on behalf of the
-        // extension. This stub stores the marker in the job message for
-        // demonstration purposes.
+    fn deploy(req: deployment::DeployRequest) -> Result<deployment::DeployJob, types::ExtensionError> {
+        let job_id = start_remote_deploy(&req)?;
         Ok(deployment::DeployJob {
             id: job_id,
-            status: deployment::DeployStatus::Running,
-            message: format!("would write to {marker_path}: {marker}"),
-            endpoints: vec![format!("file://{output_path}")],
+            status: deployment::DeployStatus::Pending,
+            message: "submitted".into(),
+            endpoints: Vec::new(),
         })
     }
 
     fn poll(job_id: String) -> Result<deployment::DeployJob, types::ExtensionError> {
-        Ok(deployment::DeployJob {
-            id: job_id.clone(),
-            status: deployment::DeployStatus::Running,
-            message: "desktop deploy is synchronous".into(),
-            endpoints: vec![],
-        })
+        // Report progress through the enum: pending → provisioning →
+        // configuring → starting → running, or failed / rolled-back.
+        fetch_status(&job_id)
     }
 
     fn rollback(job_id: String) -> Result<(), types::ExtensionError> {
-        Err(types::ExtensionError::InvalidInput(format!(
-            "desktop target {job_id} does not support rollback"
-        )))
+        revert(&job_id)
     }
 }
-
-bindings::export!(Component with_types_in bindings);
 ```
+
+Three contract details that are easy to get wrong:
+
+- **`deploy` must return quickly.** It gets a job handle back to the designer;
+  the actual work is observed through `poll`. A `deploy` that blocks until the
+  platform is live will look like a hung designer.
+- **`endpoints` is how the operator reaches the thing.** Fill it in on `poll`
+  once the deployment reports `running`; an empty list leaves the wizard with
+  nothing to link to.
+- **`validate_credentials` returns diagnostics, not a `Result`.** It runs while
+  the operator is still filling the form.
+
+`deploy-request.artifact_bytes` carries the pack itself. The credential and
+config JSON arrive as strings validated against the schemas you published
+above.
 
 ---
 
-## Step 5 — Build, package, and install
+## Step 5 — Build, validate, publish
 
-```bash
-# Build
-cargo component build --release
-
-# Package
-STAGE=$(mktemp -d)
-cp target/wasm32-wasip2/release/my_deploy_ext.wasm "${STAGE}/extension.wasm"
-cp describe.json "${STAGE}/"
-cp -r schemas/ "${STAGE}/"
-(cd "${STAGE}" && zip -r - .) > myco.desktop-deploy-0.1.0.gtxpack
-rm -rf "${STAGE}"
-
-# Validate and install
+```
+gtdx dev --once        # installs into ~/.greentic/extensions/deploy/
 gtdx validate ./
-gtdx install ./myco.desktop-deploy-0.1.0.gtxpack --trust loose
-
-# Verify
-gtdx list
+gtdx lint --dir ./
+gtdx publish --dry-run
 ```
 
 ---
 
-## Notes on Real Cloud Deploy Extensions
+## Notes on real cloud deploy extensions
 
-The stub above calls `deploy` synchronously and returns `Running` immediately.
-A real cloud deploy extension would:
-
-1. Parse `req.credentials_json` and `req.config_json`.
-2. Retrieve API keys from the host `secrets` interface (not from the config
-   JSON directly — see [permissions-and-trust.md](./permissions-and-trust.md)).
-3. Make an HTTP call via `greentic:extension-host/http` to start a cloud
-   provisioning job. The URL must be listed in `runtime.permissions.network`.
-4. Return a `DeployJob` in `pending` or `provisioning` state with a job ID.
-5. Implement `poll` to call the cloud API and return the current status.
-6. Implement `rollback` if the target supports it.
-
-For examples of what real cloud deploy parameters look like, refer to
-existing cloud provider SDKs. The extension contract imposes no opinion on
-the shape of `credentials_json` or `config_json` beyond what your
-`credentialSchema` / `configSchema` declare.
+The shipped `greentic.deploy-aws` / `-azure` / `-gcp` / `-single-vm` /
+`-desktop` extensions all implement exactly the two interfaces above. What
+differs between them is entirely inside `deploy`/`poll` — the contract does
+not model cloud specifics, and there is no separate credential store: an
+extension resolves what it needs through `extension-host/secrets`, gated by
+its own declared `permissions.secrets`.
