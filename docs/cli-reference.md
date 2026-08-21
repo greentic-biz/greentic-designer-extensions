@@ -79,6 +79,7 @@ gtdx new <NAME> [--kind KIND] [--id ID] [--version VERSION] [--author NAME]
 | `-y`, `--yes` | No | false | Skip the wizard; resolve everything from flags and defaults. |
 | `-w`, `--wizard` | No | false | Force the interactive wizard even when a name/flags are given. Omitting `NAME` on a terminal also launches it. |
 | `--from-openapi SPEC` | No | — | **`mcp` only.** Seed the router from an OpenAPI/Swagger spec instead of the echo skeleton. |
+| `--component-ref OCI_REF` | No | an `example.invalid` placeholder | **`wasm-component` only.** OCI reference of the already-published component that executes the node, ideally digest-pinned. Written to `runtime.components.<key>-node.oci_ref`. A node's component must be reachable by `oci_ref`: the designer's flow compiler skips a `gtpack`-only component, and the install path relocates a nested `.gtpack` for `ProviderExtension` only. |
 | `--icon PATH` | No | — | Icon (svg/png/jpg/webp, ≤ 1 MiB) copied into `assets/` and set as `metadata.icon`. |
 
 **Kinds:**
@@ -92,9 +93,9 @@ gtdx new <NAME> [--kind KIND] [--id ID] [--version VERSION] [--author NAME]
   [how-to-write-a-deploy-extension.md](./how-to-write-a-deploy-extension.md).
 - **`provider`** — messaging / event provider. See
   [how-to-write-a-provider-extension.md](./how-to-write-a-provider-extension.md).
-- **`wasm-component`** — convenience flavor for wrapping a pre-built WASM
-  runtime `.gtpack` as a single designer canvas node. **Does not currently
-  produce a buildable project** — see
+- **`wasm-component`** — a design extension that surfaces an
+  already-published component as a single canvas node. Pass the component's
+  OCI reference with `--component-ref`. See
   [how-to-write-a-wasm-component-extension.md](./how-to-write-a-wasm-component-extension.md).
 - **`mcp`** — a `wasix:mcp/router` artifact. It imports no greentic WIT
   package, and is the one kind that builds straight out of `gtdx new`.
@@ -122,12 +123,17 @@ $ gtdx new myco.my-tool \
     --label "My Tool" \
     --dir ./my-tool \
     -y --no-git
-Scaffolded wasm-component extension at ./my-tool (17 files, contract 0.2.0).
+Scaffolded wasm-component extension at ./my-tool (20 files, contract 0.2.0).
 ```
 
-The output directory contains a Cargo workspace, the extension WASM crate
-under `extension/`, a `runtime/` subdirectory ready for your pre-built
-`.gtpack`, and a pre-wired `describe.json` with one `nodeTypes` entry.
+The output directory is a single crate — the same layout as `--kind design` —
+plus a `describe.json` declaring two components: this crate's design-time
+`extension.wasm`, and the `oci_ref` of the component that executes the node,
+which `contributions.nodeTypes[0].runtime_ref` points at.
+
+(Before greentic-designer-sdk#106 this kind emitted a two-crate workspace with
+an `extension/` and a `runtime/` directory. That shape never built, and its
+node pointed at a component the runner cannot execute.)
 
 ---
 

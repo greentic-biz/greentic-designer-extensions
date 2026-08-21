@@ -113,9 +113,10 @@ Full analysis and the per-kind table:
 
 Two things to fix in the generated `describe.json` immediately:
 
-- **Delete the `engine` block.** It is deprecated — `compat` is the sole
-  source of version constraints — and `gtdx lint` errors on its presence
-  (`E_ENGINE_DEPRECATED`).
+- **Delete the `engine` block** — on a `gtdx` predating
+  greentic-designer-sdk#106; templates no longer emit it. It is deprecated,
+  `compat` is the sole source of version constraints, and `gtdx lint` errors
+  on its presence (`E_ENGINE_DEPRECATED`).
 - **Set a real `metadata.id`.** The default is `com.example.<name>`, which
   `gtdx lint` rejects (`E_ID_PATTERN` requires
   `^greentic\.[a-z0-9][a-z0-9-]*$`).

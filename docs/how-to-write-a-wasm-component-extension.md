@@ -1,43 +1,42 @@
 # How to Surface a WASM Component as a Canvas Node
 
-> **Status: `gtdx new --kind wasm-component` does not produce a buildable
-> project.** Verified 2026-08-21 against `gtdx 1.3.0-research.3`, and still
-> true after greentic-designer-sdk#105 — that fix repaired every *other* kind,
-> and deliberately left this one, because its `nodeTypes` entry points
-> `runtime_ref` at the design component, which the runner cannot execute at
-> all. `gtdx new` now warns about this kind rather than letting the first
-> build deliver the news. Use
-> `--kind design` and add the node component as a separate crate — the shape
-> shipped extensions such as `greentic.calendly` actually use. Details in
-> [What is broken](#what-is-broken-in---kind-wasm-component) below.
+You have a WASM component implementing
+`greentic:component/component-v0-v6-v0@0.6.0`, and you want it to appear as a
+node in the designer's flow-editor palette. `--kind wasm-component` scaffolds
+exactly that.
 
-The goal this document describes is still real and still supported: you have
-a WASM component implementing `greentic:component/component-v0-v6-v0@0.6.0`,
-and you want it to appear as a node in the designer's canvas palette. Only
-the convenience scaffold for it is unusable.
+```
+gtdx new my-node --kind wasm-component --id greentic.my-node \
+    --component-ref oci://ghcr.io/greenticai/component/component-my-node@sha256:461c6a68…
+```
+
+> **Requires a `gtdx` carrying greentic-designer-sdk#106.** Before that commit
+> this kind produced a project that did not build, and whose node pointed at a
+> component that could not execute it. See
+> [What #106 changed](#what-106-changed) if you are on an older build.
 
 ---
 
-## The shape that works
+## What the scaffold produces
 
-A node in the palette needs **two** things in one `describe.json`:
+A single crate — the same layout as `--kind design` — plus a `describe.json`
+declaring **two** components:
 
-1. a `runtime.components` entry for the component that will execute the node —
-   built as its own crate against the `component-v0-v6-v0@0.6.0` world and
-   published to OCI, or shipped in-pack;
-2. a `contributions.nodeTypes` entry pointing at it by `runtime_ref`, carrying
-   the palette metadata and the `operation` to invoke.
+| component | what it is |
+|---|---|
+| `<key>` | this crate's design-time `extension.wasm`, shipped inside the `.gtxpack` |
+| `<key>-node` | the component that **executes** the node, referenced by `oci_ref` |
 
 ```json
 "runtime": {
   "components": {
-    "my-ext-tool": {
-      "gtpack": { "file": "extension.wasm", "sha256": "…", "pack_id": "greentic.my-ext", "component_version": "0.1.0" },
+    "my-node": {
+      "gtpack": { "file": "extension.wasm", "sha256": "…", "pack_id": "greentic.my-node", "component_version": "0.1.0" },
       "sha256": "…",
-      "world": "greentic:my-ext/design-extension@1.0.0"
+      "world": "greentic:my-node/extension@1.0.0"
     },
-    "my-ext-node": {
-      "oci_ref": "oci://ghcr.io/greenticai/component/component-my-ext@sha256:461c6a68…",
+    "my-node-node": {
+      "oci_ref": "oci://ghcr.io/greenticai/component/component-my-node@sha256:461c6a68…",
       "sha256": "…",
       "world": "greentic:component/component-v0-v6-v0@0.6.0"
     }
@@ -45,39 +44,80 @@ A node in the palette needs **two** things in one `describe.json`:
 },
 "contributions": {
   "nodeTypes": [{
-    "type_id": "my_op",
-    "label": "My Operation",
-    "category": "integration",
-    "icon": "bolt",
-    "color": "#6366f1",
+    "type_id": "my_node",
+    "label": "My Node",
+    "category": "tools",
+    "icon": "puzzle",
+    "color": "#0d9488",
     "complexity": "simple",
-    "config_schema": "{\"type\":\"object\", …}",
-    "output_ports": [{ "name": "default", "label": "Next" }],
-    "runtime_ref": "my-ext-node",
-    "operation": "my_op"
+    "config_schema": "{}",
+    "output_ports": [
+      { "name": "on_success", "label": "Success" },
+      { "name": "on_error", "label": "Error" }
+    ],
+    "runtime_ref": "my-node-node",
+    "operation": "my_node"
   }]
 }
 ```
 
-Start it with `gtdx new --kind design`, delete the tool contributions you do
-not need, and add the node component as a second `runtime.components` entry.
-The full walk-through, including the four things about a node that fail
-silently, is
-[how-to-write-a-design-extension.md § Step 10](./how-to-write-a-design-extension.md#step-10--optional-add-a-flow-editor-node).
+`contributions.nodeTypes[0].runtime_ref` points at the **node** component, not
+at the extension's own wasm.
 
 ---
 
-## Why a design extension cannot execute the node itself
+## The node component must be reachable by `oci_ref`
 
-`greentic-runner-host` accepts a component only if it exports `node@0.5`,
-`node@0.4`, or `component-runtime@0.6`. A design extension exports
-`greentic:extension-design/tools@0.3.0`, which the runner has no path to. So
-the node component is genuinely a **separate artifact** — the two-component
-describe above is not boilerplate, it is the contract.
+Not by a local `.gtpack`, and this is not a style preference — two layers
+disagree with the local shape, both silently:
 
-The node crate also may not import `greentic:extension-host/http` or
-`extension-host/secrets`; those are design-world imports. Use
-`greentic-interfaces-guest` with features
+- the designer's flow compiler resolves a node through
+  `runtime.components.<runtime_ref>.oci_ref` and **skips a `gtpack`-only
+  component**, falling through to the catalog pin. Its own comment says so:
+  *"If there is no oci_ref (gtpack-only), fall through to catalog pin."*
+- `post_install_provider` relocates a nested `.gtpack` into the runner's pack
+  directory **only when `kind == ExtensionKind::Provider`**.
+
+So a node backed by an in-pack `.gtpack` builds, packs, installs — and runs
+nothing.
+
+Nor can the design extension execute the node itself: `greentic-runner-host`
+accepts a component only if it exports `node@0.5`, `node@0.4`, or
+`component-runtime@0.6`, and a design extension exports
+`greentic:extension-design/tools@0.3.0`.
+
+---
+
+## Four things that fail late
+
+- **Pin `oci_ref` by digest.** A built pack embeds the ref permanently, and
+  these registries publish tags out of chronological order — the highest
+  semver is frequently the oldest artifact.
+- **`operation` is required** whenever the component exposes more than one.
+  Without it the runner refuses the node with "expected
+  node.component.operation to be set", while the palette, the flow builder and
+  the pack build all report success first. The scaffold defaults it to the
+  node's `type_id`; change it if your component names the operation
+  differently.
+- **One component backs many node types.** Ship one component and one
+  `NodeType` per operation, differing only in `operation` and `config_schema`.
+  Add the extra entries by hand — the scaffold writes one.
+- **An extension node cannot be the first node of a flow.** Entry selection
+  only picks a renderable node, so a non-render node at the head is stepped
+  over. Lead with a card.
+
+Omitting `--component-ref` is allowed: the scaffold writes an
+`example.invalid` placeholder with a zero digest. It builds, and
+`gtdx lint --publish` refuses it (`E_SHA256_ZERO`), so you cannot publish it
+by accident.
+
+---
+
+## Building the node component itself
+
+That is a separate crate, and `gtdx` does not build it. It may **not** import
+`greentic:extension-host/http` or `extension-host/secrets` — those are
+design-world imports. Use `greentic-interfaces-guest` with features
 `["component-v0-6", "http-client-v1-1", "secrets"]`. A correct build shows
 both in its world:
 
@@ -87,36 +127,47 @@ wasm-tools component wit <wasm>
 # import greentic:secrets-store/secrets-store@1.0.0
 ```
 
+Porting a tool to a flow node is also a **security** decision, not a
+mechanical one: a worker tool sits behind that worker's guardrails and
+credential gates, whereas a flow step is reachable from any flow against
+whatever endpoint the node config names. A `confirm: true` argument
+authorises nothing in a flow — it is a constant the flow author typed, with no
+human present.
+
 ---
 
-## What is broken in `--kind wasm-component`
+## What this crate's own wasm is for
 
-The generated project is written against an older contract and does not build
-even after the WIT version rewrite that fixes the other kinds:
+Design-time only: validation, prompt fragments, knowledge entries, and any
+design-time tools you declare in `contributions.tools`. It never executes the
+node. A fresh scaffold stubs all of it — leave it as-is if the node needs no
+authoring affordances.
+
+---
+
+## What #106 changed
+
+Before greentic-designer-sdk#106 this kind was unusable, and worth recording
+because the failure was invisible at every layer that could have caught it:
 
 | Problem | Detail |
 |---|---|
-| WIT version | `extension/wit/world.wit` exports `greentic:extension-design/tools@0.1.0`; the vendored package is `@0.3.0` |
-| WIT layout | the vendored `wit/deps/` sits at the project root, while `extension/Cargo.toml` targets `extension/wit` and declares no `target.dependencies`, so the packages never resolve |
-| Inline table | `[package.metadata.component.target]` is written as an inline table, so a `target.dependencies` section cannot be appended without rewriting it (`cannot extend value of type inline table with a dotted key`) |
-| Stub signature | `extension/src/lib.rs` uses `wit_bindgen::generate!` with `invoke_tool -> Result<String, String>`, whereas `@0.3.0` returns `result<string, extension-error>` |
-| v1 instructions | `runtime/README.md` tells you to set `runtime.gtpack.file` — a v1 path. In v2 it is `runtime.components.<id>.gtpack.file` |
-| Wrong runtime | `contributions.nodeTypes[0].runtime_ref` points at the **design** component, which cannot execute a node at all |
+| Wrong runtime | `nodeTypes[0].runtime_ref` pointed at the **design** component, which the runner cannot execute |
+| Unreachable premise | the generated `runtime/README.md` told you to drop a local `.gtpack` in — a shape neither the compiler nor the installer supports for a DesignExtension |
+| WIT version | `extension/wit/world.wit` exported `tools@0.1.0` against a `@0.3.0` package |
+| WIT layout | vendored deps sat at the project root while `extension/Cargo.toml` targeted `extension/wit` |
+| Inline table | `[package.metadata.component.target]` was an inline table, so `target.dependencies` could not be appended |
+| Stub signature | `invoke_tool -> Result<String, String>` where the contract returns `result<string, extension-error>` |
 
-The last row is the one that matters most: even if the build were fixed, the
-generated wiring points the node at a component the runner will refuse.
-
-Fixing the scaffold means regenerating its template against the current
-contract, not patching a generated project. Until then, `--kind design`
-is the supported route.
+The two-crate workspace (`extension/` + `runtime/`) is gone; the kind now
+overlays the design templates and overrides only `describe.json` and
+`README.md`.
 
 ---
 
-## What to do next
+## See also
 
 - [how-to-write-a-design-extension.md](./how-to-write-a-design-extension.md) —
-  the working path, including the node section.
+  the full design-extension surface, including tools.
 - [describe-json-spec.md](./describe-json-spec.md#tools-and-node-types-are-different-surfaces)
   — why tools and node types are different surfaces.
-- [getting-started-scaffolding.md](./getting-started-scaffolding.md#known-issue--a-fresh-scaffold-does-not-build)
-  — per-kind scaffold status.

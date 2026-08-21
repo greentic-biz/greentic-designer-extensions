@@ -50,13 +50,18 @@ my-ext/
 
 ## Known issue — a fresh scaffold does not build
 
-> **Fixed upstream in greentic-designer-sdk#105** (merged to `research`,
-> 2026-08-21) — along with two stub bugs it was masking: `provider` used a
-> non-existent error type, and `--kind llm` emitted a `describe.json` that did
-> not parse at all. Everything below still applies to any `gtdx` predating that
-> commit, which includes every released build. Check with `gtdx new` and read
-> the rendered `wit/world.wit`: if it says `extension-host@0.1.0` you have the
-> fix and can skip this section.
+> **Fixed upstream in greentic-designer-sdk#105 and #106** (merged to
+> `research`, 2026-08-21). #105 fixed the WIT versions plus two stub bugs it
+> was masking — `provider` used a non-existent error type, and `--kind llm`
+> emitted a `describe.json` that did not parse at all. #106 fixed
+> `--kind wasm-component`, and removed the deprecated `engine` block from
+> every template. **All seven kinds now pass `gtdx validate`, `gtdx lint` and
+> `cargo component build` as generated.**
+>
+> Everything below still applies to any `gtdx` predating those commits, which
+> includes every released build. Check with `gtdx new` and read the rendered
+> `wit/world.wit`: if it says `extension-host@0.1.0` you have the fix and can
+> skip this section.
 
 Verified 2026-08-21 against `gtdx 1.3.0-research.3`. **Every kind except `mcp`
 fails `cargo component build` (and therefore `gtdx dev`) on a completely
@@ -96,7 +101,7 @@ it.
 | `design` | no | same, **plus** `extension-design@0.2.0` → `@0.3.0` |
 | `llm` | no | same as `design`, **plus** its `describe.json` carries an `id` key on the tool entry that `Tool` does not model — `deny_unknown_fields` fails the whole describe — and its stub targets the pre-0.3.0 design contract. Not worth patching by hand; take the fixed `gtdx` |
 | `provider` | no | host version, **plus** `provider_types::Error` → `types::ExtensionError` in `src/lib.rs` (the WIT declares `extension-error`, from `extension-base/types`) |
-| `wasm-component` | no | **not a one-line fix** — see below |
+| `wasm-component` | no | **not a one-line fix** — take the fixed `gtdx`; what was wrong is recorded in [how-to-write-a-wasm-component-extension.md](./how-to-write-a-wasm-component-extension.md#what-106-changed) |
 
 For every kind but `provider` and `wasm-component`:
 
@@ -109,39 +114,17 @@ sed -i -e 's|\(greentic:extension-host/[a-z0-9-]*\)@0\.2\.0|\1@0.1.0|g' \
 Then `cargo component build` succeeds. Confirmed for `design`, `bundle`,
 `deploy`, and (with the extra `src/lib.rs` edit) `provider`.
 
-### `--kind wasm-component` is not usable today
+## Set a real `metadata.id`
 
-Its generated project is written against an older contract and does not
-build even after the version rewrite:
+The default is `com.example.<name>`, which `gtdx lint` rejects
+(`E_ID_PATTERN` requires `^greentic\.[a-z0-9][a-z0-9-]*$`). It does not block
+`gtdx publish`, which never runs lint — but the rule means only
+`greentic.*` ids lint clean.
 
-- `extension/wit/world.wit` exports `greentic:extension-design/tools@0.1.0`,
-  while the vendored package is `@0.3.0`;
-- the vendored `wit/deps/` sits at the project root, but
-  `extension/Cargo.toml` points its target at `extension/wit` and declares no
-  `target.dependencies`, so the packages never resolve;
-- `extension/src/lib.rs` uses `wit_bindgen::generate!` with
-  `invoke_tool -> Result<String, String>`, whereas `@0.3.0` returns
-  `result<string, extension-error>`;
-- `runtime/README.md` tells you to set `runtime.gtpack.file`, a **v1** path
-  that does not exist in a v2 describe (it is
-  `runtime.components.<id>.gtpack.file`).
-
-Use `--kind design` and add the flow component as a separate crate instead —
-that is what shipped extensions such as `greentic.calendly` actually do. See
-[how-to-write-a-design-extension.md](./how-to-write-a-design-extension.md#step-10--optional-add-a-flow-editor-node).
-
----
-
-## Fix two things before you build
-
-The generated `describe.json` fails `gtdx lint` out of the box:
-
-- **Delete the `engine` block** — it is deprecated, and `compat` is the sole
-  source of version constraints (`E_ENGINE_DEPRECATED`).
-- **Set a real `metadata.id`** — the default `com.example.<name>` is rejected
-  by `E_ID_PATTERN`, which requires `^greentic\.[a-z0-9][a-z0-9-]*$`.
-
-Neither blocks `gtdx publish`, which does not run lint.
+On a `gtdx` predating #106 you must also **delete the `engine` block**: it is
+deprecated, `compat` is the sole source of version constraints, and
+`gtdx lint` errors on its presence (`E_ENGINE_DEPRECATED`). Templates no
+longer emit it.
 
 ## Then: declare your tools
 
