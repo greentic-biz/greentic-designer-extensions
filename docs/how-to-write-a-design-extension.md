@@ -1,516 +1,528 @@
 # How to Write a Design Extension
 
-This tutorial walks you through building a `DesignExtension` from scratch
-using `greentic.adaptive-cards` as the running example. By the end you will
-have a signed `.gtxpack` installed and visible in the designer.
+This tutorial builds a `DesignExtension` from an empty directory to a
+published `.gtxpack`. It uses `greentic.calendly` as the running example,
+because it exercises both surfaces a design extension can contribute: tools
+for the agentic worker, and a palette node for the flow editor.
 
-The canonical source for everything shown here lives in
-`reference-extensions/adaptive-cards/`.
+Everything below is against the **v2 describe contract**
+(`apiVersion: "greentic.ai/v2"`). For the full field reference see
+[describe-json-spec.md](./describe-json-spec.md).
+
+---
+
+## The one thing to read before anything else
+
+**A design extension's tools are declared in `describe.json`, not in Rust.**
+
+For a v2 extension, `ExtensionRuntime::list_tools` short-circuits on the
+contract version and never calls the WASM `list-tools` export.
+`contributions.tools[]` is the only source of a tool's name, description,
+input schema and capabilities.
+
+You still implement `invoke-tool` in Rust — dispatch is a real call into the
+component. Only discovery moved into the manifest.
+
+If you implement `list_tools()` in Rust and leave `contributions.tools`
+empty, the extension builds, packs, installs and loads — and exposes **zero
+tools**, with no error at any layer. This is the single most common way to
+lose an afternoon here.
 
 ---
 
 ## Prerequisites
 
 - **Rust 1.95 or later** (`rustup update stable`)
-- **`cargo-component`** — the WIT-aware build tool for WASM components:
-  ```
-  cargo install cargo-component --locked
-  ```
 - **`wasm32-wasip2` target:**
   ```
   rustup target add wasm32-wasip2
   ```
-- **`gtdx`** — the Greentic Extensions CLI:
+- **`cargo-component`:**
   ```
-  cargo install greentic-extension-sdk-cli --locked
+  cargo install cargo-component --locked
   ```
+- **`gtdx`** — the Greentic Extensions CLI.
 
----
+### Check your `gtdx` before you start
 
-## Step 1 — Create the crate
-
-```
-cargo new --lib my-extension
-cd my-extension
-```
-
-Open `Cargo.toml` and set the crate type to expose a C-ABI entrypoint (for
-the WASM component) while also providing an `rlib` for tests:
-
-```toml
-[lib]
-crate-type = ["cdylib", "rlib"]
-```
-
----
-
-## Step 2 — Dependencies in `Cargo.toml`
-
-```toml
-[package]
-name    = "my-extension"
-version = "0.1.0"
-edition = "2024"
-license = "MIT"
-
-[lib]
-crate-type = ["cdylib", "rlib"]
-
-[dependencies]
-wit-bindgen    = "0.35"
-wit-bindgen-rt = "0.35"
-serde          = { version = "1", features = ["derive"] }
-serde_json     = "1"
-
-# Tell cargo-component which WIT world to bind.
-[package.metadata.component]
-package = "myco:my-extension"
-
-[package.metadata.component.target]
-path  = "wit"
-world = "design-extension"
-
-# Paths to the shared WIT packages from the extensions repo.
-[package.metadata.component.target.dependencies]
-"greentic:extension-base"   = { path = "../path/to/wit/extension-base.wit" }
-"greentic:extension-host"   = { path = "../path/to/wit/extension-host.wit" }
-"greentic:extension-design" = { path = "../path/to/wit/extension-design.wit" }
-```
-
-Adjust the paths to `wit/*.wit` to match your directory layout relative to
-the extension crate.
-
----
-
-## Step 3 — WIT world in `wit/world.wit`
-
-Create `wit/world.wit` declaring what the component imports from the host
-and exports to the host:
-
-```wit
-package myco:my-extension;
-
-world design-extension {
-  // Host services the extension may call.
-  import greentic:extension-base/types@0.1.0;
-  import greentic:extension-host/logging@0.1.0;
-  import greentic:extension-host/i18n@0.1.0;
-  import greentic:extension-host/secrets@0.1.0;
-  import greentic:extension-host/broker@0.1.0;
-  import greentic:extension-host/http@0.1.0;
-
-  // Interfaces the extension must implement.
-  export greentic:extension-base/manifest@0.1.0;
-  export greentic:extension-base/lifecycle@0.1.0;
-  export greentic:extension-design/tools@0.1.0;
-  export greentic:extension-design/validation@0.1.0;
-  export greentic:extension-design/prompting@0.1.0;
-  export greentic:extension-design/knowledge@0.1.0;
-}
-```
-
-This is identical to the AC extension's `wit/world.wit`. Only the package
-name differs.
-
----
-
-## Step 4 — `describe.json`
-
-Create `describe.json` in the crate root:
-
-```json
-{
-  "$schema": "https://store.greentic.ai/schemas/describe-v1.json",
-  "apiVersion": "greentic.ai/v1",
-  "kind": "DesignExtension",
-  "metadata": {
-    "id": "myco.my-extension",
-    "name": "My Extension",
-    "version": "0.1.0",
-    "summary": "Teaches the designer about my content type",
-    "author": { "name": "My Name", "email": "me@example.com" },
-    "license": "MIT"
-  },
-  "engine": {
-    "greenticDesigner": ">=0.6.0",
-    "extRuntime": "^0.1.0"
-  },
-  "capabilities": {
-    "offered": [
-      { "id": "myco:my-content/validate", "version": "0.1.0" }
-    ],
-    "required": []
-  },
-  "runtime": {
-    "component": "extension.wasm",
-    "memoryLimitMB": 64,
-    "permissions": {
-      "network": [],
-      "secrets": [],
-      "callExtensionKinds": []
-    }
-  },
-  "contributions": {
-    "schemas": ["schemas/my-content.json"],
-    "prompts": ["prompts/rules.md"],
-    "knowledge": [],
-    "tools": [
-      {
-        "name": "validate_my_content",
-        "export": "greentic:extension-design/validation.validate-content"
-      },
-      {
-        "name": "analyze_my_content",
-        "export": "greentic:extension-design/tools.invoke-tool"
-      }
-    ]
-  }
-}
-```
-
-Adjust `metadata.id`, capabilities, and contributions to match your
-extension. The `component` path (`extension.wasm`) is where the WASM binary
-will land inside the `.gtxpack`.
-
----
-
-## Step 4a — (Optional) Node-providing design extensions
-
-If your extension teaches the designer a new node type that is *executed at runtime* by a WASM component, you can embed the runtime `.gtpack` inside your `.gtxpack` so both install atomically.
-
-Requirements:
-- `kind` is still `DesignExtension`.
-- `contributions.nodeTypes` must be a non-empty array describing the palette entry (type_id, label, category, color, complexity, config_schema, output_ports).
-- `runtime.gtpack` must be set to the embedded pack (file path + sha256 + pack_id + component_version).
-
-Skeleton:
-
-```json
-{
-  "kind": "DesignExtension",
-  "runtime": {
-    "component": "extension.wasm",
-    "memoryLimitMB": 32,
-    "permissions": { "network": [], "secrets": ["*"], "callExtensionKinds": [] },
-    "gtpack": {
-      "file": "runtime/my-component.gtpack",
-      "sha256": "<computed at build>",
-      "pack_id": "myco.my-node",
-      "component_version": "0.6.0"
-    }
-  },
-  "contributions": {
-    "nodeTypes": [{
-      "type_id": "my-node",
-      "label": "My Node",
-      "category": "integration",
-      "color": "#6366f1",
-      "complexity": "simple",
-      "config_schema": "<stringified JSON Schema>",
-      "output_ports": [{"name": "default", "label": "Next"}]
-    }]
-  }
-}
-```
-
-`gtdx install` extracts the embedded `.gtpack` to the runner pack directory; the runner picks it up via its existing pack-index poll. Your extension's WASM handles design-time tools (validate, test, etc.); the embedded runtime handles flow execution.
-
----
-
-## Step 5 — `src/lib.rs` — Implement the WIT exports
-
-Run `cargo component build` once to generate the WIT bindings into
-`src/bindings.rs`, then implement the traits:
-
-```rust
-#![allow(clippy::used_underscore_items)]
-
-#[allow(warnings)]
-mod bindings;
-
-use bindings::exports::greentic::extension_base::{lifecycle, manifest};
-use bindings::exports::greentic::extension_design::{knowledge, prompting, tools, validation};
-use bindings::greentic::extension_base::types;
-
-const RULES_PROMPT: &str = include_str!("../prompts/rules.md");
-
-struct Component;
-
-// ---- base::manifest ----
-
-impl manifest::Guest for Component {
-    fn get_identity() -> types::ExtensionIdentity {
-        types::ExtensionIdentity {
-            id: "myco.my-extension".into(),
-            version: "0.1.0".into(),
-            kind: types::Kind::Design,
-        }
-    }
-    fn get_offered() -> Vec<types::CapabilityRef> {
-        vec![types::CapabilityRef {
-            id: "myco:my-content/validate".into(),
-            version: "0.1.0".into(),
-        }]
-    }
-    fn get_required() -> Vec<types::CapabilityRef> {
-        vec![]
-    }
-}
-
-// ---- base::lifecycle ----
-
-impl lifecycle::Guest for Component {
-    fn init(_config_json: String) -> Result<(), types::ExtensionError> {
-        Ok(())
-    }
-    fn shutdown() {}
-}
-
-// ---- design::tools ----
-
-impl tools::Guest for Component {
-    fn list_tools() -> Vec<tools::ToolDefinition> {
-        vec![tools::ToolDefinition {
-            name: "analyze_my_content".into(),
-            description: "Analyze my content type and return metadata".into(),
-            input_schema_json: r#"{"type":"object","properties":{"content":{"type":"object"}},"required":["content"]}"#.into(),
-            output_schema_json: None,
-        }]
-    }
-    fn invoke_tool(name: String, args_json: String)
-        -> Result<String, types::ExtensionError>
-    {
-        let args: serde_json::Value = serde_json::from_str(&args_json)
-            .map_err(|e| types::ExtensionError::InvalidInput(e.to_string()))?;
-        match name.as_str() {
-            "analyze_my_content" => {
-                let content = &args["content"];
-                Ok(serde_json::json!({ "field_count": content.as_object().map_or(0, |o| o.len()) }).to_string())
-            }
-            other => Err(types::ExtensionError::InvalidInput(
-                format!("unknown tool: {other}")
-            )),
-        }
-    }
-}
-
-// ---- design::validation ----
-
-impl validation::Guest for Component {
-    fn validate_content(content_type: String, content_json: String)
-        -> validation::ValidateResult
-    {
-        if content_type != "my-content" {
-            return validation::ValidateResult {
-                valid: false,
-                diagnostics: vec![types::Diagnostic {
-                    severity: types::Severity::Error,
-                    code: "unsupported-content-type".into(),
-                    message: format!("expected 'my-content', got '{content_type}'"),
-                    path: None,
-                }],
-            };
-        }
-        match serde_json::from_str::<serde_json::Value>(&content_json) {
-            Err(e) => validation::ValidateResult {
-                valid: false,
-                diagnostics: vec![types::Diagnostic {
-                    severity: types::Severity::Error,
-                    code: "json-parse".into(),
-                    message: e.to_string(),
-                    path: None,
-                }],
-            },
-            Ok(_v) => {
-                // Add your validation logic here.
-                validation::ValidateResult { valid: true, diagnostics: vec![] }
-            }
-        }
-    }
-}
-
-// ---- design::prompting ----
-
-impl prompting::Guest for Component {
-    fn system_prompt_fragments() -> Vec<prompting::PromptFragment> {
-        vec![prompting::PromptFragment {
-            section: "rules".into(),
-            content_markdown: RULES_PROMPT.into(),
-            priority: 100,
-        }]
-    }
-}
-
-// ---- design::knowledge ----
-
-impl knowledge::Guest for Component {
-    fn list_entries(_filter: Option<String>) -> Vec<knowledge::EntrySummary> {
-        vec![]
-    }
-    fn get_entry(id: String) -> Result<knowledge::Entry, types::ExtensionError> {
-        Err(types::ExtensionError::InvalidInput(format!("no entry: {id}")))
-    }
-    fn suggest_entries(_query: String, _limit: u32) -> Vec<knowledge::EntrySummary> {
-        vec![]
-    }
-}
-
-bindings::export!(Component with_types_in bindings);
-```
-
-Create `prompts/rules.md` with any rules you want injected into the LLM
-system prompt, and `schemas/my-content.json` with a JSON Schema for your
-content type.
-
----
-
-## Step 6 — Build the WASM component
+`gtdx` embeds the describe contract, and every contract struct is
+`deny_unknown_fields`. A `gtdx` older than the contract you are working
+against rejects valid files with a field-level error that reads like your
+mistake:
 
 ```
-cargo component build --release
+Error: unknown field `operation`, expected one of `type_id`, `label`, …
 ```
 
-The output WASM binary is at:
+That message means the CLI is stale, not that the field is wrong. Verify
+against a describe you know is current:
 
 ```
-target/wasm32-wasip2/release/my_extension.wasm
+gtdx validate ~/.greentic/extensions/design/<any-installed-extension>/
+```
+
+Beware the version ordering: the `1.3.0-research.*` prerelease line branched
+before several contract fields landed, so `1.3.0-research.1` sorts **above**
+`1.2.0` by semver while being **older** in content. Build from a checkout you
+can see rather than trusting the number:
+
+```
+cd greentic-designer-sdk && cargo install --path crates/greentic-extension-sdk-cli --force
 ```
 
 ---
 
-## Step 7 — Package as `.gtxpack`
-
-A `.gtxpack` is a ZIP archive. The required layout:
+## Step 1 — Scaffold
 
 ```
-my-extension-0.1.0.gtxpack
-├── describe.json
-├── extension.wasm          ← the compiled WASM binary (renamed)
-├── schemas/
-│   └── my-content.json
-└── prompts/
-    └── rules.md
+gtdx new my-extension --kind design --id greentic.my-extension
 ```
 
-Build script (`build.sh`):
+Omit the name (on a terminal) for an interactive wizard. Supported kinds:
+`design`, `bundle`, `deploy`, `provider`, `wasm-component`, `mcp`, `llm`.
+
+You get:
+
+```
+my-extension/
+├── .gtdx-contract.lock     WIT contract version + file hashes
+├── Cargo.toml
+├── build.sh
+├── ci/local_check.sh
+├── describe.json           v2, contributions empty
+├── i18n/en.json
+├── prompts/system.md
+├── src/lib.rs              every required export, stubbed
+├── wit/world.wit
+└── wit/deps/greentic/...   vendored WIT contract
+```
+
+**On `gtdx` 1.2.0 or older, the generated project does not build as-is.**
+Upgrade to 1.2.1 and skip to the next step; the rewrite below is only for a
+pinned older toolchain. Every kind but `mcp` renders a
+`wit/world.wit` asking for `greentic:extension-host@0.2.0`, while the vendored
+package is `@0.1.0` (and `extension-design` is `@0.3.0`, not `@0.2.0`). Rewrite
+the versions before your first build:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-NAME="myco.my-extension"
-VERSION="0.1.0"
-PACK="${NAME}-${VERSION}.gtxpack"
-
-cargo component build --release
-
-mkdir -p dist
-rm -f "dist/${PACK}"
-
-# Assemble staging directory
-STAGE=$(mktemp -d)
-cp target/wasm32-wasip2/release/my_extension.wasm "${STAGE}/extension.wasm"
-cp describe.json "${STAGE}/"
-cp -r schemas/ "${STAGE}/"
-cp -r prompts/ "${STAGE}/"
-
-# Create the zip
-(cd "${STAGE}" && zip -r - .) > "dist/${PACK}"
-rm -rf "${STAGE}"
-echo "Built dist/${PACK}"
+sed -i -e 's|\(greentic:extension-host/[a-z0-9-]*\)@0\.2\.0|\1@0.1.0|g' \
+       -e 's|\(greentic:extension-design/[a-z0-9-]*\)@0\.2\.0|\1@0.3.0|g' \
+       wit/world.wit
 ```
 
+Full analysis and the per-kind table:
+[getting-started-scaffolding.md](./getting-started-scaffolding.md#if-you-are-on-gtdx-120-or-older).
+
+Two things to fix in the generated `describe.json` immediately:
+
+- **Delete the `engine` block** — only on `gtdx` 1.2.0 or older; 1.2.1
+  templates no longer emit it. It is deprecated, `compat` is the sole source
+  of version constraints, and `gtdx lint` errors on its presence
+  (`E_ENGINE_DEPRECATED`).
+- **Set a real `metadata.id`.** The default is `com.example.<name>`, which
+  `gtdx lint` rejects (`E_ID_PATTERN` requires
+  `^greentic\.[a-z0-9][a-z0-9-]*$`).
+
+Neither blocks `gtdx publish`, which does not run lint — but both are real,
+and the first one applies to every publisher, first-party or not.
+
+### Seeding from an OpenAPI spec
+
+For a REST integration, skip the hand-written dispatch entirely:
+
 ```
-chmod +x build.sh
-./build.sh
-```
-
----
-
-## Step 8 — Validate locally
-
-```
-# Validate describe.json in the source directory.
-gtdx validate ./
-
-# Expected output:
-✓ ./describe.json valid
-```
-
-You can also unpack the `.gtxpack` to a temp directory and validate there:
-
-```
-unzip dist/myco.my-extension-0.1.0.gtxpack -d /tmp/ext-check
-gtdx validate /tmp/ext-check/
+gtdx openapi ./calendly-openapi.yaml --name calendly
+gtdx new my-mcp --kind mcp --from-openapi ./spec.yaml
 ```
 
 ---
 
-## Step 9 — Install locally for testing
+## Step 2 — Know which surface you are building for
+
+A design extension can contribute to two different runtimes, and they are
+**not** interchangeable:
+
+| You want | You declare | Executed by |
+|---|---|---|
+| A tool an Agentic Worker / playbook can call | `contributions.tools[]` | The design extension's own WASM, via `invoke-tool` |
+| A node in the flow-editor palette | `contributions.nodeTypes[]` | A **separate** flow component, pinned by OCI digest |
+
+`greentic-runner-host` accepts a component only if it exports `node@0.5`,
+`node@0.4`, or `component-runtime@0.6`. A design extension exports
+`greentic:extension-design/tools@0.2.0`, which the runner has no path to. So
+`contributions.tools` alone can **never** produce a flow step, no matter how
+it is declared.
+
+Most of this tutorial covers the tool surface. Step 9 covers adding a node.
+
+---
+
+## Step 3 — Declare your tools in `describe.json`
+
+Add entries under `contributions.tools`:
+
+```json
+"contributions": {
+  "tools": [
+    {
+      "name": "calendly_me",
+      "export": "greentic:extension-design/tools.invoke-tool",
+      "runtime_ref": "my-extension",
+      "description": "Look up the current Calendly user. The auth token is injected by the host and never returned.",
+      "input_schema": "{\"type\":\"object\",\"required\":[\"operation\"],\"properties\":{\"operation\":{\"type\":\"string\",\"enum\":[\"get\"],\"description\":\"Which action to perform.\"}}}",
+      "capabilities": ["agentic_worker"],
+      "secret_requirements": [
+        {
+          "key": "calendly/token",
+          "format": "text",
+          "required": false,
+          "description": "Personal Access Token. Resolved by the host from secret://calendly/token and never returned to the model."
+        }
+      ]
+    }
+  ]
+}
+```
+
+Four fields decide whether the tool actually works:
+
+- **`description`** — absent means the LLM sees a function with no
+  explanation and cannot decide to call it.
+- **`input_schema`** — a JSON Schema **serialized as a string**, not a JSON
+  object. It becomes the function's `parameters`. Absent means the model
+  cannot infer any arguments.
+- **`capabilities`** — absent defaults to `["flow"]`, which **withholds the
+  tool from the agentic-worker surface**: it will not appear in the DW
+  Composer tool picker or in playbooks. If the tool is for a worker, say
+  `["agentic_worker"]` explicitly.
+- **`export`** — must be the fully-qualified
+  `greentic:extension-design/<interface>.<member>`, never a bare
+  `invoke-tool` (`E_EXPORT_FORM`).
+
+`runtime_ref` names a key in `runtime.components`. With exactly one component
+declared you may omit it; with more than one it is required, and a value that
+does not match a declared component fails the parse.
+
+Tool names must be `snake_case`, and `gtdx lint` also rejects near-duplicate
+names where one is a prefix of another on a `_` boundary (`E_TOOL_NAMING`) —
+`generate_pack` and `generate_pack_from_yaml` cannot coexist.
+
+Optionally add planner hints:
+
+```json
+"agentic_worker_metadata": "{\"side_effects\":\"read\",\"cost\":\"low\",\"usage_hint\":\"Call before scheduling to resolve the acting user.\"}"
+```
+
+That field is a **string** too, holding a serialized object with
+`usage_hint`, `examples`, `side_effects` (`none|read|write|external`), `cost`
+(`low|medium|high`), and `confirmation_required`.
+
+### Watch for the load-time warning
+
+The runtime reports metadata gaps once per extension at load, at WARN,
+naming the tools missing `description`, `input_schema` or `capabilities`.
+Blank strings count as missing. Those lines are truthful defect reports — an
+extension in that state installs cleanly and behaves as if the tools were not
+there.
+
+---
+
+## Step 4 — Implement `invoke-tool`
+
+The scaffold stubs every export. Only `invoke_tool` needs real logic for a
+tool-only extension. Add `serde` / `serde_json` to `Cargo.toml` first — the
+scaffold ships neither:
+
+```toml
+[dependencies]
+wit-bindgen-rt = { version = "0.41", features = ["bitflags"] }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+```
+
+```rust
+impl tools::Guest for Component {
+    // v2: never called by the runtime. contributions.tools[] is the source
+    // of truth. Kept because the WIT world requires the export.
+    fn list_tools() -> Vec<tools::ToolDefinition> {
+        Vec::new()
+    }
+
+    fn invoke_tool(name: String, args_json: String) -> Result<String, types::ExtensionError> {
+        let args: serde_json::Value = serde_json::from_str(&args_json)
+            .map_err(|e| types::ExtensionError::InvalidInput(e.to_string()))?;
+
+        match name.as_str() {
+            "calendly_me" => {
+                // The host takes the full URI, and it must be permitted by
+                // runtime.permissions.secrets. The error is a plain String.
+                let token = bindings::greentic::extension_host::secrets::get(
+                    "secret://calendly/token",
+                )
+                .map_err(|e| types::ExtensionError::Internal(format!("secret: {e}")))?;
+                let body = fetch_me(&token, &args)?;
+                Ok(serde_json::to_string(&body).unwrap_or_else(|_| "{}".into()))
+            }
+            other => Err(types::ExtensionError::InvalidInput(format!(
+                "unknown tool: {other}"
+            ))),
+        }
+    }
+}
+```
+
+Keep the `name` strings in exact agreement with `contributions.tools[].name`.
+Nothing checks that agreement: a mismatch surfaces as an `unknown tool` error
+at call time, after the model has already chosen to call it.
+
+**Never return secret material** from a tool. `message` and `detail` are
+surfaced verbatim to operators, and tool output goes to the LLM.
+
+---
+
+## Step 5 — Permissions
+
+Importing a host interface in `wit/world.wit` grants nothing. The permission
+lists in `describe.json` are what grant it, and every one defaults to empty:
+
+```json
+"runtime": {
+  "permissions": {
+    "network": ["https://api.calendly.com/*"],
+    "secrets": ["secret://calendly/token", "secret://calendly/auth_mode"],
+    "callExtensionKinds": [],
+    "llmRoles": [],
+    "oauthProviders": []
+  }
+}
+```
+
+- `network` — HTTPS origin allowlist. Empty means no outbound HTTP even
+  though the scaffold's world imports `greentic:extension-host/http`.
+- `secrets` — must be **URIs**, not bare key names
+  (`E_PERMS_SECRETS_PLAIN_KEY`), and the scheme is `secret://`, singular.
+  **This list is not a glob**, unlike `network`: an entry permits a URI only
+  when the URI equals it, or starts with the entry followed by `/`. A `*` is
+  a literal asterisk and matches nothing, and a trailing slash breaks the
+  prefix — `"secret://notion/"` permits `secret://notion//token`, not
+  `secret://notion/token`. List the full URIs, or a prefix with no trailing
+  slash (`"secret://notion"`).
+- `llmRoles` — role wire names for `greentic:extension-host/llm`. With
+  exactly one declared role, callers may omit `role-hint`; with several it is
+  required.
+- `oauthProviders` — provider ids for `greentic:oauth-broker/broker-v1`.
+
+---
+
+## Step 6 — Prompts, schemas, knowledge
+
+These are `{ path }` objects in v2, not bare strings:
+
+```json
+"contributions": {
+  "prompts":   [{ "path": "prompts/system.md" }],
+  "schemas":   [{ "path": "schemas/my-content.json" }],
+  "knowledge": [{ "path": "knowledge/" }]
+}
+```
+
+Paths are relative to the `.gtxpack` root. Prompt fragments are also
+returned from the WASM `prompting.system-prompt-fragments` export, which
+**is** still called; the `contributions.prompts` list ships the files.
+
+Locale catalogs go in the top-level `localization` block — v1's
+`contributions.i18n` no longer exists.
+
+---
+
+## Step 7 — Build, install, iterate
 
 ```
-gtdx install ./dist/myco.my-extension-0.1.0.gtxpack --trust loose
+gtdx dev
 ```
 
-`--trust loose` accepts unsigned extensions. This is appropriate for local
-development. For production installs use `normal` or `strict`.
+(If you have not applied the `wit/world.wit` version fix from Step 1, this is
+where it fails — `gtdx dev` shells out to `cargo component build`.)
 
-Verify installation:
+Watches the source, rebuilds, packs, and installs into
+`~/.greentic/extensions/design/`. The designer's filesystem watcher picks the
+new directory up and rebuilds its node-type registry in under a second — no
+restart.
 
-```
-$ gtdx list
-[design]
-  myco.my-extension@0.1.0  Teaches the designer about my content type
-```
-
-Run diagnostics:
+Useful variants:
 
 ```
-$ gtdx doctor
-✓ ~/.greentic/extensions/design/myco.my-extension-0.1.0/describe.json
-1 total, 0 bad
+gtdx dev --once            # build + install once (CI-friendly)
+gtdx dev --no-install      # build and pack only
+gtdx dev --force-rebuild   # cargo clean -p <crate> first
+```
+
+To install a one-off artifact by hand:
+
+```
+gtdx install ./dist/greentic.my-extension-0.1.0.gtxpack --trust loose
+gtdx list
+gtdx doctor
+```
+
+`--trust loose` accepts unsigned artifacts and is appropriate for local
+development only.
+
+---
+
+## Step 8 — Validate and lint
+
+Run both. They check different things.
+
+```
+gtdx validate ./          # JSON Schema + deserialize into the Rust contract
+gtdx lint --dir ./        # cross-field governance rules
+gtdx lint --dir ./ --publish   # + publish-only rules (rejects placeholder hashes)
+```
+
+`gtdx validate` is the one that catches real structural errors, because the
+v2 JSON Schema types `contributions.tools` as `items: {}` — it checks that
+`tools` is an array and nothing about what is in it. Only deserialization
+into the Rust type validates a tool entry, and because every struct is
+`deny_unknown_fields`, one misspelled key fails the **whole** describe and
+takes the extension down.
+
+`gtdx lint` is **not** wired into `gtdx publish`, nor into the scaffold's
+`ci/local_check.sh`. Add it to your own CI if you want it enforced. Rule
+table: [describe-json-spec.md](./describe-json-spec.md#gtdx-lint).
+
+---
+
+## Step 9 — Publish
+
+```
+gtdx publish --dry-run                       # build + pack + validate, no registry write
+gtdx publish --registry local                # $GREENTIC_HOME/registries/local
+gtdx publish --registry oci://ghcr.io/... --sign --key-id release-2026
+```
+
+`gtdx publish` builds the component itself, assembles the `.gtxpack`, and
+writes it to `--dist` (default `./dist`). You do not hand it a path to a
+pre-built pack. Signing keys come from `--key`, `--key-id`
+(`~/.greentic/keys/<id>.key`), or `--key-env`
+(`GREENTIC_EXT_SIGNING_KEY_PEM`) for CI.
+
+For an externally produced component (e.g. one generated by the MCP path),
+skip the build step and pack the given wasm:
+
+```
+gtdx publish --wasm ./target/wasm32-wasip2/release/my_component.wasm
+```
+
+Other users then install with:
+
+```
+gtdx install greentic.my-extension --version 0.1.0
 ```
 
 ---
 
-## Step 10 — Publish to the Greentic Store
+## Step 10 — (Optional) Add a flow-editor node
 
-Log in first:
+A palette node needs a **second component**, built against
+`greentic:component/component-v0-v6-v0@0.6.0` and published to OCI
+independently. `gtdx publish` does not produce it.
+
+Declare both components, then point each contribution at the right one:
+
+```json
+"runtime": {
+  "components": {
+    "my-ext-tool": {
+      "gtpack": { "file": "extension.wasm", "sha256": "…", "pack_id": "greentic.my-extension", "component_version": "0.1.0" },
+      "sha256": "…",
+      "world": "greentic:my-extension/design-extension@1.0.0"
+    },
+    "my-ext-node": {
+      "oci_ref": "oci://ghcr.io/greenticai/component/component-my-ext@sha256:461c6a68…",
+      "sha256": "…",
+      "world": "greentic:component/component-v0-v6-v0@0.6.0"
+    }
+  }
+},
+"contributions": {
+  "tools": [{ "name": "my_op", "runtime_ref": "my-ext-tool", "export": "greentic:extension-design/tools.invoke-tool", "…": "…" }],
+  "nodeTypes": [{
+    "type_id": "my_op",
+    "label": "My Operation",
+    "category": "integration",
+    "icon": "bolt",
+    "color": "#6366f1",
+    "complexity": "simple",
+    "config_schema": "{\"type\":\"object\", …}",
+    "output_ports": [{ "name": "default", "label": "Next" }],
+    "runtime_ref": "my-ext-node",
+    "operation": "my_op"
+  }]
+}
+```
+
+Four things about that node, each of which fails silently or late:
+
+- **Pin `oci_ref` by digest.** A built pack embeds the ref permanently, and
+  these registries do not publish tags in chronological order — the highest
+  semver is frequently the oldest artifact.
+- **`operation` is required by the runner** whenever the component exposes
+  more than one. Without it the node is refused at execution time with
+  "expected node.component.operation to be set", while the palette, the flow
+  builder and the pack build all report success first.
+- **One component backs many node types.** Ship one component and one
+  `NodeType` per operation, differing only in `operation` and
+  `config_schema`.
+- **An extension node cannot be the first node of a flow.** Entry selection
+  only picks a renderable node, so a non-render node at the head is stepped
+  over. Lead with a card.
+
+The node component may **not** import `greentic:extension-host/http` or
+`extension-host/secrets` — those are design-world imports. Use
+`greentic-interfaces-guest` with features
+`["component-v0-6", "http-client-v1-1", "secrets"]` instead. A correct build
+shows both in its world:
 
 ```
-gtdx login
+wasm-tools component wit <wasm>
+# import greentic:http/http-client@1.1.0
+# import greentic:secrets-store/secrets-store@1.0.0
 ```
 
-Then publish:
+Porting a tool to a flow node is also a **security** decision, not a
+mechanical one: a worker tool sits behind that worker's guardrails and
+credential gates, whereas a flow step is reachable from any flow against
+whatever endpoint the node config names. A `confirm: true` argument
+authorises nothing in a flow — it is a constant the flow author typed, with
+no human present.
 
-```
-gtdx publish ./dist/myco.my-extension-0.1.0.gtxpack
-```
+---
 
-`gtdx publish` signs the artifact with your stored key and uploads it to
-the default registry. On success:
+## Troubleshooting
 
-```
-✓ published myco.my-extension@0.1.0
-```
-
-Other users can then install it with:
-
-```
-gtdx install myco.my-extension --version 0.1.0
-```
+| Symptom | Cause |
+|---|---|
+| Extension installs, exposes no tools | `contributions.tools` is empty; the WASM `list_tools()` is not read in v2 |
+| Tool missing from the DW Composer picker | `capabilities` absent ⇒ defaults to `["flow"]`; declare `["agentic_worker"]` |
+| LLM never calls the tool | `description` and/or `input_schema` absent — check the load-time WARN |
+| `unknown field 'X'` from `gtdx validate` | Your `gtdx` is older than the contract; rebuild it from the SDK checkout |
+| Whole extension fails to load after adding one field | `deny_unknown_fields` — one typo kills the entire describe |
+| `unknown tool: X` at call time | `contributions.tools[].name` disagrees with the `match` arm in `invoke_tool` |
+| Node runs nowhere / "expected node.component.operation to be set" | `operation` missing on a multi-operation component |
+| No outbound HTTP despite importing the host `http` interface | `runtime.permissions.network` is empty (default-deny) |
+| `permission denied for secret: …` at call time | `permissions.secrets` uses a `*` glob or a trailing slash; it is a verbatim / `/`-boundary prefix match |
+| `gtdx lint` fails on a freshly scaffolded project | The scaffold still emits `engine` and `com.example.*` — delete the block, set a real id |
+| `package 'greentic:extension-host@0.2.0' not found` | The scaffold's rendered `wit/world.wit` versions are wrong — see Step 1 |
 
 ---
 
 ## What to do next
 
-- Add more tools in `invoke_tool` with real logic.
-- Populate the knowledge base: implement `list_entries`, `get_entry`, and
-  `suggest_entries` with meaningful data.
-- Add i18n support: create `i18n/en.json` and reference it in
-  `contributions.i18n`.
-- Add integration tests using `greentic-extension-sdk-testing` (see
-  `reference-extensions/adaptive-cards/tests/`).
-
-For publishing with a permanent key and countersigning, see
-[permissions-and-trust.md](./permissions-and-trust.md).
+- Add integration tests with `greentic-extension-sdk-testing`.
+- Declare a `contributions.connection_test` so operators get a working "Test
+  connection" button — it names a contributed tool and its arguments.
+- For publishing with a permanent key and countersigning, see
+  [permissions-and-trust.md](./permissions-and-trust.md).
+- For the full manifest field reference, see
+  [describe-json-spec.md](./describe-json-spec.md).

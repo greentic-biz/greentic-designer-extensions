@@ -4,7 +4,8 @@ use tempfile::tempdir;
 #[test]
 fn list_roles_unknown_extension_returns_not_found() {
     let dir = tempdir().expect("tempdir");
-    let cfg = RuntimeConfig::from_paths(DiscoveryPaths::new(dir.path().to_path_buf()));
+    let cfg = RuntimeConfig::from_paths(DiscoveryPaths::new(dir.path().to_path_buf()))
+        .with_trust_root(dir.path().join("trust-root"));
     let rt = ExtensionRuntime::new(cfg).expect("new runtime");
     let err = rt.list_roles("does.not.exist").unwrap_err();
     assert!(
@@ -16,7 +17,8 @@ fn list_roles_unknown_extension_returns_not_found() {
 #[test]
 fn validate_role_unknown_extension_returns_not_found() {
     let dir = tempdir().expect("tempdir");
-    let cfg = RuntimeConfig::from_paths(DiscoveryPaths::new(dir.path().to_path_buf()));
+    let cfg = RuntimeConfig::from_paths(DiscoveryPaths::new(dir.path().to_path_buf()))
+        .with_trust_root(dir.path().join("trust-root"));
     let rt = ExtensionRuntime::new(cfg).expect("new runtime");
     let err = rt
         .validate_role("does.not.exist", "topic_picker", "{}")
@@ -32,7 +34,8 @@ fn compile_role_unknown_extension_returns_unknown_role() {
     use greentic_ext_runtime::{RoleError, TargetKind};
 
     let dir = tempdir().expect("tempdir");
-    let cfg = RuntimeConfig::from_paths(DiscoveryPaths::new(dir.path().to_path_buf()));
+    let cfg = RuntimeConfig::from_paths(DiscoveryPaths::new(dir.path().to_path_buf()))
+        .with_trust_root(dir.path().join("trust-root"));
     let rt = ExtensionRuntime::new(cfg).expect("new runtime");
     let err = rt
         .compile_role(

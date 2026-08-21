@@ -8,3 +8,4 @@
 .greentic/
 Cargo.lock.bak
 .worktrees/
+.claude/worktrees/

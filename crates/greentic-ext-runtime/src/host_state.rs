@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
-use crate::host_bindings::greentic::extension_host::{broker, http, i18n, logging, secrets};
-use crate::host_ports::{KeyTranslator, SecretsBackend, Translator};
+use crate::host_bindings::greentic::extension_host::{broker, http, i18n, llm, logging, secrets};
+use crate::host_ports::{KeyTranslator, LlmPort, SecretsBackend, Translator};
 use crate::url_matcher::UrlMatcher;
 use greentic_extension_sdk_contract::describe::Permissions;
 
@@ -22,8 +22,16 @@ pub struct HostState {
     translator: Arc<dyn Translator>,
     secrets_backend: Arc<dyn SecretsBackend>,
     http_client: Option<reqwest::blocking::Client>,
+    llm_port: Option<Arc<dyn LlmPort>>,
+    /// Per-call caller context for this dispatch (tenant slug + authenticated
+    /// user email), threaded from the host's
+    /// [`crate::host_ports::HostCallContext`] and forwarded to host ports.
+    /// `Default` (all `None`) when the host runs single-tenant/dev.
+    call_ctx: crate::host_ports::HostCallContext,
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
+    // consumed by the oauth broker Host impl below
+    oauth_config: Option<crate::oauth::OAuthBrokerConfig>,
     // WASI state — required because cargo-component-built WASM components
     // implicitly import WASI interfaces (wasi:cli/environment etc.).
     wasi: WasiCtx,
@@ -41,9 +49,12 @@ impl HostState {
             translator: Arc::new(KeyTranslator),
             secrets_backend: Arc::new(crate::host_ports::InMemorySecrets::new()),
             http_client: None,
+            llm_port: None,
+            call_ctx: crate::host_ports::HostCallContext::default(),
             url_matcher: UrlMatcher::default(),
             runtime_weak: std::sync::Weak::new(),
             call_depth_start: 0,
+            oauth_config: None,
         }
     }
 
@@ -70,9 +81,12 @@ pub struct HostStateBuilder {
     translator: Arc<dyn Translator>,
     secrets_backend: Arc<dyn SecretsBackend>,
     http_client: Option<reqwest::blocking::Client>,
+    llm_port: Option<Arc<dyn LlmPort>>,
+    call_ctx: crate::host_ports::HostCallContext,
     url_matcher: UrlMatcher,
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     call_depth_start: u32,
+    oauth_config: Option<crate::oauth::OAuthBrokerConfig>,
 }
 
 impl HostStateBuilder {
@@ -92,6 +106,19 @@ impl HostStateBuilder {
         self
     }
     #[must_use]
+    pub fn llm_port(mut self, p: Option<Arc<dyn LlmPort>>) -> Self {
+        self.llm_port = p;
+        self
+    }
+    /// Set the per-call caller context (tenant slug + authenticated user
+    /// email) for this dispatch. Threaded into host ports (today the LLM port)
+    /// so the host can resolve per-tenant and validate per-user identity.
+    #[must_use]
+    pub fn call_ctx(mut self, ctx: crate::host_ports::HostCallContext) -> Self {
+        self.call_ctx = ctx;
+        self
+    }
+    #[must_use]
     pub fn url_matcher(mut self, m: UrlMatcher) -> Self {
         self.url_matcher = m;
         self
@@ -106,6 +133,11 @@ impl HostStateBuilder {
         self.call_depth_start = n;
         self
     }
+    #[must_use]
+    pub fn oauth_config(mut self, c: Option<crate::oauth::OAuthBrokerConfig>) -> Self {
+        self.oauth_config = c;
+        self
+    }
 
     #[must_use]
     pub fn build(self) -> HostState {
@@ -118,8 +150,11 @@ impl HostStateBuilder {
             translator: self.translator,
             secrets_backend: self.secrets_backend,
             http_client: self.http_client,
+            llm_port: self.llm_port,
+            call_ctx: self.call_ctx,
             url_matcher: self.url_matcher,
             runtime_weak: self.runtime_weak,
+            oauth_config: self.oauth_config,
             wasi,
             table,
         }
@@ -332,6 +367,157 @@ impl http::Host for HostState {
     }
 }
 
+impl llm::Host for HostState {
+    fn complete(&mut self, request: llm::LlmRequest) -> Result<llm::LlmResponse, String> {
+        // 1. Resolve the effective role from describe permissions. A `role_hint`
+        //    must be one the extension declared; with no hint we allow the sole
+        //    declared role and otherwise require disambiguation.
+        let declared = &self.permissions.llm_roles;
+        let role = match (&request.role_hint, declared.as_slice()) {
+            (Some(hint), roles) if roles.iter().any(|r| r == hint) => hint.clone(),
+            (Some(hint), _) => {
+                tracing::warn!(ext = %self.extension_id, requested = %hint, "llm role not permitted");
+                return Err(format!("llm role not permitted: {hint}"));
+            }
+            (None, [sole]) => sole.clone(),
+            (None, []) => {
+                return Err("llm role not permitted: extension declares no llm_roles".to_string());
+            }
+            (None, _many) => {
+                return Err(
+                    "llm role-hint required: extension declares multiple llm_roles".to_string(),
+                );
+            }
+        };
+
+        // 2. Resolve the port. Absent in unit tests and runtimes the host did
+        //    not wire for LLM use — surface a clean error rather than panic.
+        let Some(port) = self.llm_port.as_ref() else {
+            return Err("llm not configured for this runtime".to_string());
+        };
+
+        // 3. Map the WIT request onto the host port, call, map the response.
+        let port_req = crate::host_ports::LlmPortRequest {
+            system_prompt: request.system_prompt,
+            messages: request
+                .messages
+                .into_iter()
+                .map(|m| (m.role, m.content))
+                .collect(),
+            response_format: match request.response_format {
+                None | Some(llm::ResponseFormat::Text) => {
+                    crate::host_ports::LlmPortResponseFormat::Text
+                }
+                Some(llm::ResponseFormat::Json) => crate::host_ports::LlmPortResponseFormat::Json,
+                Some(llm::ResponseFormat::JsonSchema(s)) => {
+                    crate::host_ports::LlmPortResponseFormat::JsonSchema(s)
+                }
+            },
+        };
+        match port.complete(&self.extension_id, &self.call_ctx, &role, port_req) {
+            Ok(r) => Ok(llm::LlmResponse {
+                content: r.content,
+                total_tokens: r.total_tokens,
+            }),
+            Err(e) => {
+                tracing::warn!(ext = %self.extension_id, %role, error = %e, "llm port error");
+                Err(e.to_string())
+            }
+        }
+    }
+}
+
+impl crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::Host for HostState {
+    /// Retrieve a token for the given OAuth provider.
+    ///
+    /// Permission gate: the provider must be declared in
+    /// `permissions.oauth_providers`. If not, returns a JSON error string with
+    /// `"error": "permission_denied"` — fails closed.
+    ///
+    /// When permitted but no `oauth_config` or `http_client` is present (e.g.
+    /// the runtime was not configured with an OAuth broker), returns
+    /// `"error": "oauth_broker_unconfigured"`.
+    ///
+    /// The `shared_secret` is NEVER logged.
+    fn get_token(&mut self, provider_id: String, _subject: String, scopes: Vec<String>) -> String {
+        // Permission gate — mirror the secrets/network allowlist checks.
+        if !self
+            .permissions
+            .oauth_providers
+            .iter()
+            .any(|p| p == &provider_id)
+        {
+            tracing::warn!(
+                ext = %self.extension_id,
+                provider = %provider_id,
+                "oauth get-token permission denied"
+            );
+            return serde_json::json!({"error": "permission_denied", "provider": provider_id})
+                .to_string();
+        }
+
+        let Some(cfg) = self.oauth_config.clone() else {
+            return "{\"error\":\"oauth_broker_unconfigured\"}".to_string();
+        };
+        let Some(client) = self.http_client.clone() else {
+            return "{\"error\":\"oauth_broker_unconfigured\"}".to_string();
+        };
+
+        let req = crate::oauth::ResourceTokenRequest {
+            http_base_url: cfg.http_base_url,
+            env: cfg.env,
+            tenant: cfg.tenant,
+            team: cfg.team,
+            resource_id: provider_id.clone(),
+            scopes,
+        };
+
+        match crate::oauth::request_resource_token_blocking(
+            &client,
+            &req,
+            cfg.shared_secret.as_deref(),
+        ) {
+            Ok(resp) => serde_json::to_string(&resp)
+                .unwrap_or_else(|_| "{\"error\":\"encode_failed\"}".to_string()),
+            Err(e) => {
+                tracing::warn!(provider = %provider_id, error = %e, "oauth get-token failed");
+                "{\"error\":\"broker_request_failed\"}".to_string()
+            }
+        }
+    }
+
+    /// Build a consent URL for the given OAuth provider.
+    ///
+    /// Not yet implemented in the design-extension runtime — returns an empty
+    /// string. Consent flows are handled by the OAuth broker service directly;
+    /// this stub satisfies the WIT interface contract.
+    fn get_consent_url(
+        &mut self,
+        _provider_id: String,
+        _subject: String,
+        _scopes: Vec<String>,
+        _redirect_path: String,
+        _extra_json: String,
+    ) -> String {
+        String::new()
+    }
+
+    /// Exchange an authorization code for a token set.
+    ///
+    /// Not yet implemented in the design-extension runtime — returns an empty
+    /// string. Code exchange is handled by the OAuth broker service directly;
+    /// this stub satisfies the WIT interface contract.
+    fn exchange_code(
+        &mut self,
+        _provider_id: String,
+        _subject: String,
+        _code: String,
+        _redirect_path: String,
+    ) -> String {
+        String::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -487,6 +673,179 @@ mod tests {
         assert!(err.contains("not found"), "got: {err}");
     }
 
+    /// In-test [`LlmPort`] that records the `extension_id` / `ctx` / `role`
+    /// it was called with and echoes the system prompt back. Asserts the host
+    /// resolved the expected role and threaded the expected tenant + user email
+    /// before forwarding.
+    ///
+    /// `expected_*` prefix is deliberate (these are the values the port asserts
+    /// against, not generic data), so the shared-prefix lint is silenced here.
+    #[allow(clippy::struct_field_names)]
+    struct FakeLlm {
+        expected_extension_id: String,
+        expected_tenant: Option<String>,
+        expected_user_email: Option<String>,
+        expected_role: String,
+    }
+
+    impl crate::host_ports::LlmPort for FakeLlm {
+        fn complete(
+            &self,
+            extension_id: &str,
+            ctx: &crate::host_ports::HostCallContext,
+            role: &str,
+            request: crate::host_ports::LlmPortRequest,
+        ) -> Result<crate::host_ports::LlmPortResponse, crate::host_ports::LlmPortError> {
+            assert_eq!(extension_id, self.expected_extension_id, "extension_id");
+            assert_eq!(ctx.tenant, self.expected_tenant, "tenant");
+            assert_eq!(ctx.user_email, self.expected_user_email, "user_email");
+            assert_eq!(role, self.expected_role, "role");
+            Ok(crate::host_ports::LlmPortResponse {
+                content: format!("echo:{}", request.system_prompt),
+                total_tokens: Some(7),
+            })
+        }
+    }
+
+    fn llm_request(role_hint: Option<&str>) -> llm::LlmRequest {
+        llm::LlmRequest {
+            role_hint: role_hint.map(str::to_string),
+            system_prompt: "you are a composer".to_string(),
+            messages: vec![],
+            response_format: None,
+        }
+    }
+
+    #[test]
+    fn llm_complete_resolves_sole_declared_role() {
+        use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
+
+        let mut perms = Permissions::default();
+        perms.llm_roles.push("sorla_composer".to_string());
+        let port = Arc::new(FakeLlm {
+            expected_extension_id: "test-ext".to_string(),
+            expected_tenant: Some("acme".to_string()),
+            expected_user_email: None,
+            expected_role: "sorla_composer".to_string(),
+        });
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .llm_port(Some(port))
+            .call_ctx(crate::host_ports::HostCallContext {
+                tenant: Some("acme".into()),
+                user_email: None,
+            })
+            .build();
+
+        let resp = h
+            .complete(llm_request(None))
+            .expect("complete should succeed");
+        assert_eq!(resp.content, "echo:you are a composer");
+        assert_eq!(resp.total_tokens, Some(7));
+    }
+
+    #[test]
+    fn llm_complete_passes_none_tenant_by_default() {
+        use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
+
+        let mut perms = Permissions::default();
+        perms.llm_roles.push("sorla_composer".to_string());
+        let port = Arc::new(FakeLlm {
+            expected_extension_id: "test-ext".to_string(),
+            expected_tenant: None,
+            expected_user_email: None,
+            expected_role: "sorla_composer".to_string(),
+        });
+        // No `.call_ctx(...)` in the builder chain — the host runs
+        // single-tenant/dev, so the port must observe a default (all-`None`)
+        // context.
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .llm_port(Some(port))
+            .build();
+
+        let resp = h
+            .complete(llm_request(None))
+            .expect("complete should succeed");
+        assert_eq!(resp.content, "echo:you are a composer");
+    }
+
+    #[test]
+    fn llm_complete_passes_user_email() {
+        use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
+
+        let mut perms = Permissions::default();
+        perms.llm_roles.push("sorla_composer".to_string());
+        let port = Arc::new(FakeLlm {
+            expected_extension_id: "test-ext".to_string(),
+            expected_tenant: Some("acme".to_string()),
+            expected_user_email: Some("alice@acme.com".to_string()),
+            expected_role: "sorla_composer".to_string(),
+        });
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .llm_port(Some(port))
+            .call_ctx(crate::host_ports::HostCallContext {
+                tenant: Some("acme".into()),
+                user_email: Some("alice@acme.com".into()),
+            })
+            .build();
+
+        let resp = h
+            .complete(llm_request(None))
+            .expect("complete should succeed");
+        assert_eq!(resp.content, "echo:you are a composer");
+    }
+
+    #[test]
+    fn llm_complete_rejects_undeclared_role() {
+        use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
+
+        let perms = Permissions::default(); // no llm_roles declared
+        let port = Arc::new(FakeLlm {
+            expected_extension_id: "test-ext".to_string(),
+            expected_tenant: None,
+            expected_user_email: None,
+            expected_role: "sorla_composer".to_string(),
+        });
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .llm_port(Some(port))
+            .build();
+
+        let err = h.complete(llm_request(Some("sorla_composer"))).unwrap_err();
+        assert!(err.contains("llm role not permitted"), "got: {err}");
+    }
+
+    #[test]
+    fn llm_complete_without_port_errors() {
+        use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
+
+        let mut perms = Permissions::default();
+        perms.llm_roles.push("sorla_composer".to_string());
+        let mut h = HostState::builder("test-ext".to_string(), perms).build();
+
+        let err = h.complete(llm_request(None)).unwrap_err();
+        assert!(err.contains("llm not configured"), "got: {err}");
+    }
+
+    #[test]
+    fn llm_complete_requires_hint_when_multiple_roles() {
+        use crate::host_bindings::greentic::extension_host::llm::Host as LlmHost;
+
+        let mut perms = Permissions::default();
+        perms.llm_roles.push("a".to_string());
+        perms.llm_roles.push("b".to_string());
+        let port = Arc::new(FakeLlm {
+            expected_extension_id: "test-ext".to_string(),
+            expected_tenant: None,
+            expected_user_email: None,
+            expected_role: "unused".to_string(),
+        });
+        let mut h = HostState::builder("test-ext".to_string(), perms)
+            .llm_port(Some(port))
+            .build();
+
+        let err = h.complete(llm_request(None)).unwrap_err();
+        assert!(err.contains("role-hint required"), "got: {err}");
+    }
+
     #[test]
     fn i18n_tf_substitutes_named_args() {
         struct GreetTranslator;
@@ -510,5 +869,39 @@ mod tests {
             vec![("name".to_string(), "Bima".to_string())],
         );
         assert_eq!(got, "Halo Bima!");
+    }
+
+    #[test]
+    fn oauth_get_token_denied_when_provider_not_declared() {
+        use crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::Host as OAuthHost;
+        let mut h = HostState::builder("ext".into(), Permissions::default()).build();
+        let out = h.get_token("hubspot".into(), String::new(), vec![]);
+        assert!(out.contains("permission_denied"), "got: {out}");
+    }
+
+    #[test]
+    fn oauth_get_token_errors_when_unconfigured() {
+        use crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::Host as OAuthHost;
+        let mut perms = Permissions::default();
+        perms.oauth_providers.push("hubspot".into());
+        let mut h = HostState::builder("ext".into(), perms).build();
+        let out = h.get_token("hubspot".into(), String::new(), vec![]);
+        assert!(out.contains("oauth_broker_unconfigured"), "got: {out}");
+    }
+
+    #[test]
+    fn host_state_carries_oauth_config() {
+        use crate::oauth::OAuthBrokerConfig;
+        let cfg = OAuthBrokerConfig {
+            http_base_url: "https://oauth.example/".into(),
+            env: "dev".into(),
+            tenant: "acme".into(),
+            team: None,
+            shared_secret: Some("s".into()),
+        };
+        let h = HostState::builder("test-ext".to_string(), Permissions::default())
+            .oauth_config(Some(cfg.clone()))
+            .build();
+        assert_eq!(h.oauth_config.as_ref().unwrap().tenant, "acme");
     }
 }

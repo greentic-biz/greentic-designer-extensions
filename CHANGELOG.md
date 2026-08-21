@@ -1,5 +1,60 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **Unified 6-variant `extension-error` WIT contract with host dual-support.**
+  `extension-base@0.2.0` adds `not-found` + `schema-invalid`; design@0.3.0,
+  bundle/deploy/provider/dw-composer/runtime-side@0.2.0 adopt it. provider drops
+  its local 3-variant error; dw-composer `compose` returns `extension-error`
+  instead of a bare string. The runtime resolves each extension's contract
+  version at dispatch and maps old (4-variant) and new (6-variant) errors into
+  a single typed `RuntimeError::Extension` / `RoleError` / `DeployExtensionError`
+  surface — legacy extensions keep working, with a one-shot deprecation warning.
+
+### Added (security)
+
+- **Loopback-http rule for extension network allow-lists.** A declared
+  `http://127.0.0.1` / `http://localhost` pattern in an extension's
+  `runtime.permissions.network` now permits plain http to that loopback host
+  (the matcher enables `allow_http` only when a loopback http pattern is
+  present). Non-loopback `http://` patterns are dropped with a warning —
+  plain http to public hosts is never honoured. This lets a design extension
+  reach a local dev service (e.g. the telco-x service on
+  `http://127.0.0.1:8787`) without weakening the scheme-downgrade defence for
+  public hosts. Replace semantics remain: a non-empty declaration is the
+  authoritative allow-list for that extension; the host-level override is not
+  added.
+
+### Changed (BREAKING — security)
+
+- **Contract bump to `1.2.4-research`** (typed v2 describe + C1/C2 trust-chain
+  APIs). The runtime now consumes `verify_describe_self_consistent` +
+  `verify_manifest_binding` from the contract.
+- **Extension verify now fails closed (audit P5).** `verify_dir_signature` →
+  `verify_dir_manifest` now: (1) rejects a pack with no `manifest.json`
+  (previously fail-open for legacy packs) — the `dev-allow-unsigned` build +
+  `GREENTIC_EXT_ALLOW_UNSIGNED` escape still loads it for local dev; (2) verifies
+  the signed describe is **bound** to the on-disk `manifest.json`
+  (`manifestSha256`), so the signature transitively covers the ledger — a
+  swapped manifest is rejected before any per-entry check; (3) keeps the
+  per-entry sha256 hash-match. Anchored authenticity (`verify_describe_with_key`
+  against a trust-anchored key) remains a follow-up: it needs a runtime trust
+  store and the org-provisioned prod root key.
+
+### Tests
+
+- **Real-wasm v2-contract two-path coverage.** New optional end-to-end test
+  `ac_invoke_v2` (reads `GTDX_TEST_GTXPACK_V2`) loads an adaptive-cards
+  extension built against the v2 contract (extension-base@0.2.0,
+  extension-design@0.3.0, 6-variant `extension-error`) and asserts both a
+  success invoke (`validate_card` → `valid=true`) and a typed
+  `RuntimeError::Extension` error path (unknown tool → `not-found`). Mirrors
+  the v1 `ac_invoke` gating and self-skips when the env var is unset. Fixture
+  provenance: AC-MCP PR #74, `2.0.4-research`. The unsigned local fixture
+  requires the `dev-allow-unsigned` build + `GREENTIC_EXT_ALLOW_UNSIGNED=1`.
+
 ## [0.3.0] - 2026-04-22
 
 ### Changed
