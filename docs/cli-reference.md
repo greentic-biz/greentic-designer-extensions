@@ -30,20 +30,22 @@ GREENTIC_HOME=./.gtdx-test gtdx list
 
 ## Table of Contents
 
-- [new](#new)
-- [validate](#validate)
-- [list](#list)
-- [install](#install)
-- [uninstall](#uninstall)
-- [enable](#enable)
-- [disable](#disable)
-- [search](#search)
-- [info](#info)
-- [login](#login)
-- [logout](#logout)
-- [registries](#registries)
-- [doctor](#doctor)
-- [version](#version)
+**Authoring**
+
+- [new](#new) · [openapi](#openapi) · [dev](#dev) · [validate](#validate) · [lint](#lint)
+
+**Publishing**
+
+- [publish](#publish) · [keygen](#keygen) · [sign](#sign) · [verify](#verify) · [yank](#yank) · [unyank](#unyank)
+
+**Installing and operating**
+
+- [install](#install) · [list](#list) · [info](#info) · [search](#search) · [uninstall](#uninstall)
+- [enable](#enable) · [disable](#disable) · [outdated](#outdated) · [update](#update) · [doctor](#doctor)
+
+**Registries and admin**
+
+- [login](#login) · [logout](#logout) · [registries](#registries) · [component](#component) · [version](#version)
 
 ---
 
@@ -64,7 +66,7 @@ gtdx new <NAME> [--kind KIND] [--id ID] [--version VERSION] [--author NAME]
 | Argument / Flag | Required | Default | Description |
 |-----------------|----------|---------|-------------|
 | `NAME` | Yes | — | Project folder name (kebab-case). Also used as the default suffix when `--id` is omitted. |
-| `-k`, `--kind KIND` | No | `design` | Extension kind. One of: `design`, `bundle`, `deploy`, `provider`, `wasm-component`. |
+| `-k`, `--kind KIND` | No | `design` | Extension kind. One of: `design`, `bundle`, `deploy`, `provider`, `wasm-component`, `mcp`, `llm`. |
 | `-i`, `--id ID` | No | `com.example.<NAME>` | Reverse-DNS extension id (e.g. `myco.my-tool`). |
 | `-v`, `--version VERSION` | No | `0.1.0` | Initial semver. |
 | `--author NAME` | No | `git config user.name` | Author name written into `describe.json` and Cargo metadata. |
@@ -74,7 +76,11 @@ gtdx new <NAME> [--kind KIND] [--id ID] [--version VERSION] [--author NAME]
 | `--label TEXT` | No | humanized form of derived `--node-type-id` | **`wasm-component` only.** Sets `contributions.nodeTypes[0].label`. |
 | `--force` | No | false | Overwrite the target directory if it already exists. |
 | `--no-git` | No | false | Skip `git init` after scaffolding. |
-| `-y`, `--yes` | No | false | Skip interactive prompts. |
+| `-y`, `--yes` | No | false | Skip the wizard; resolve everything from flags and defaults. |
+| `-w`, `--wizard` | No | false | Force the interactive wizard even when a name/flags are given. Omitting `NAME` on a terminal also launches it. |
+| `--from-openapi SPEC` | No | — | **`mcp` only.** Seed the router from an OpenAPI/Swagger spec instead of the echo skeleton. |
+| `--component-ref OCI_REF` | No | an `example.invalid` placeholder | **`wasm-component` only.** OCI reference of the already-published component that executes the node, ideally digest-pinned. Written to `runtime.components.<key>-node.oci_ref`. A node's component must be reachable by `oci_ref`: the designer's flow compiler skips a `gtpack`-only component, and the install path relocates a nested `.gtpack` for `ProviderExtension` only. |
+| `--icon PATH` | No | — | Icon (svg/png/jpg/webp, ≤ 1 MiB) copied into `assets/` and set as `metadata.icon`. |
 
 **Kinds:**
 
@@ -87,18 +93,26 @@ gtdx new <NAME> [--kind KIND] [--id ID] [--version VERSION] [--author NAME]
   [how-to-write-a-deploy-extension.md](./how-to-write-a-deploy-extension.md).
 - **`provider`** — messaging / event provider. See
   [how-to-write-a-provider-extension.md](./how-to-write-a-provider-extension.md).
-- **`wasm-component`** — convenience flavor for wrapping a pre-built WASM
-  runtime `.gtpack` as a single designer canvas node. Use this when you
-  already have a working component and only need to surface it as a node.
-  See
+- **`wasm-component`** — a design extension that surfaces an
+  already-published component as a single canvas node. Pass the component's
+  OCI reference with `--component-ref`. See
   [how-to-write-a-wasm-component-extension.md](./how-to-write-a-wasm-component-extension.md).
+- **`mcp`** — a `wasix:mcp/router` artifact. It imports no greentic WIT
+  package, and is the one kind that builds straight out of `gtdx new`.
+- **`llm`** — an LLM provider flavor of the design world.
 
 **Example — design extension (default):**
 
 ```
-$ gtdx new my-ext --id com.example.my-ext
-Scaffolded design extension at ./my-ext (12 files, contract 0.1.0).
+$ gtdx new my-ext --kind design --id greentic.my-ext -y
+Scaffolded design extension at my-ext (19 files, contract 0.2.0).
 ```
+
+> **The generated project does not build as-is** (every kind but `mcp`): the
+> rendered `wit/world.wit` asks for `greentic:extension-host@0.2.0` while the
+> vendored package is `@0.1.0`. See
+> [getting-started-scaffolding.md](./getting-started-scaffolding.md#if-you-are-on-gtdx-120-or-older)
+> for the one-line fix and the per-kind table.
 
 **Example — wasm-component flavor:**
 
@@ -109,12 +123,17 @@ $ gtdx new myco.my-tool \
     --label "My Tool" \
     --dir ./my-tool \
     -y --no-git
-Scaffolded wasm-component extension at ./my-tool (10 files, contract 0.1.0).
+Scaffolded wasm-component extension at ./my-tool (20 files, contract 0.2.0).
 ```
 
-The output directory contains a Cargo workspace, the extension WASM crate
-under `extension/`, a `runtime/` subdirectory ready for your pre-built
-`.gtpack`, and a pre-wired `describe.json` with one `nodeTypes` entry.
+The output directory is a single crate — the same layout as `--kind design` —
+plus a `describe.json` declaring two components: this crate's design-time
+`extension.wasm`, and the `oci_ref` of the component that executes the node,
+which `contributions.nodeTypes[0].runtime_ref` points at.
+
+(On `gtdx` 1.2.0 and older this kind emitted a two-crate workspace with an
+`extension/` and a `runtime/` directory. That shape never built, and its node
+pointed at a component the runner cannot execute.)
 
 ---
 
@@ -137,16 +156,26 @@ gtdx validate [PATH]
 **Description:**
 
 Reads `<PATH>/describe.json`, validates it against the embedded JSON Schema
-(`describe-v1.json`), and then deserializes it to confirm all required fields
-are present and type-correct.
+(`describe-v2.json`), and then deserializes it into the Rust contract to
+confirm all required fields are present and type-correct.
+
+The deserialize step is the one that matters: the v2 schema types
+`contributions.tools` as `items: {}`, so it checks that `tools` is an array
+and nothing about what is in it. Every contract struct is
+`deny_unknown_fields`, so one misspelled key fails the whole describe.
+
+A field-level error such as `unknown field 'operation'` usually means **your
+`gtdx` is older than the describe you are validating**, not that the field is
+wrong. See also [`lint`](#lint), which checks cross-field rules this command
+does not.
 
 This command runs entirely offline — no network calls are made.
 
 **Example:**
 
 ```
-$ gtdx validate ./reference-extensions/adaptive-cards/
-✓ ./reference-extensions/adaptive-cards/describe.json valid
+$ gtdx validate ~/.greentic/extensions/design/greentic.calendly-1.3.0/
+✓ ~/.greentic/extensions/design/greentic.calendly-1.3.0/describe.json valid
 ```
 
 **Failure example:**
@@ -563,7 +592,7 @@ List all configured registries and the current default.
 ```
 $ gtdx registries list
 default: greentic-store
-  greentic-store  https://store.greentic.ai
+  greentic-store  https://store.greentic.cloud
   local-mirror    https://registry.corp.example.com
 ```
 
@@ -668,5 +697,279 @@ gtdx version
 
 ```
 $ gtdx version
-gtdx 0.1.0
+gtdx 1.2.1
 ```
+
+---
+
+## `openapi`
+
+Generate a `DesignExtension` connector from an OpenAPI 3.0 spec, instead of
+hand-writing the tool dispatch.
+
+**Synopsis:**
+
+```
+gtdx openapi <SPEC> [--name NAME] [--out DIR] [--base-url URL]
+```
+
+| Argument / Flag | Required | Default | Description |
+|---|---|---|---|
+| `SPEC` | Yes | — | Path to the OpenAPI 3.0 spec (JSON or YAML). |
+| `-n`, `--name NAME` | No | the spec's `info.title` | Connector name override. |
+| `-o`, `--out DIR` | No | `./<slugified-name>` | Output directory. |
+| `--base-url URL` | No | the spec's first `servers[]` entry | Base URL override. |
+
+To seed an MCP router from a spec instead, use `gtdx new --kind mcp
+--from-openapi <SPEC>`.
+
+---
+
+## `dev`
+
+The developer inner loop: rebuild, pack, and install on every source change.
+Full walk-through: [getting-started-dev.md](./getting-started-dev.md).
+
+**Synopsis:**
+
+```
+gtdx dev [--once | --watch | --mount PATH] [--release] [--no-install]
+         [--debounce-ms MS] [--force-rebuild] [--format human|json]
+         [--manifest PATH] [--log LEVEL]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--watch` | on | Continuous watch mode. |
+| `--once` | — | Build + install once, then exit. CI-friendly. |
+| `--mount PATH` | — | Build + pack + install the extension at `PATH` once, exactly as `gtdx install` would. Conflicts with `--watch` / `--once`. |
+| `--no-install` | false | Build and pack only. |
+| `--release` | false (debug) | Build with `--release`. |
+| `--debounce-ms MS` | `500` | File-watch debounce window. |
+| `--force-rebuild` | false | `cargo clean -p <crate>` first. |
+| `--format FMT` | `human` | `human`, or `json` for one JSON object per lifecycle event. |
+| `--manifest PATH` | `./Cargo.toml` | Path to the project's `Cargo.toml`. |
+| `--log LEVEL` | `info` | Log filter level. |
+
+`dev` invokes `cargo component build --target wasm32-wasip2` and then looks
+for the artifact under `wasm32-wasip2/<profile>/`, falling back to
+`wasm32-wasip1/<profile>/` (cargo-component 0.21 emits wasip2 only under some
+toolchains).
+
+---
+
+## `lint`
+
+Check a `describe.json` against cross-field governance rules that the JSON
+Schema cannot express. **Not run by `gtdx publish`**, and not part of the
+scaffold's `ci/local_check.sh` — invoke it yourself or wire it into your CI.
+
+**Synopsis:**
+
+```
+gtdx lint [--dir DIR] [--publish]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--dir DIR` | `.` | Extension source directory containing `describe.json`. |
+| `--publish` | false | Also run publish-only rules (e.g. `E_SHA256_ZERO`). |
+
+Rule table: [describe-json-spec.md](./describe-json-spec.md#gtdx-lint).
+
+**Example:**
+
+```
+$ gtdx lint --dir ./my-ext
+error: E_ENGINE_DEPRECATED: engine block is deprecated; move all version
+       constraints into compat (min_designer_version / min_runner_version)
+       and delete engine
+error: E_ID_PATTERN: metadata.id "com.example.my-ext" must match
+       ^greentic\.[a-z0-9][a-z0-9-]*$
+Error: 2 error(s)
+```
+
+Both of those fire on an untouched `gtdx new` scaffold.
+
+---
+
+## `publish`
+
+Build the component, assemble the `.gtxpack`, and write it to a registry.
+You do **not** hand it a path to a pre-built pack — it builds from the
+project directory.
+
+**Synopsis:**
+
+```
+gtdx publish [--registry URI] [--version VERSION] [--dry-run] [--sign]
+             [--key PATH | --key-id ID | --key-env VAR] [--trust POLICY]
+             [--dist DIR] [--force] [--verify-only] [--wasm PATH]
+             [--manifest PATH] [--oci-token TOKEN] [--icon PATH]
+             [--format human|json] [-w]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-r`, `--registry URI` | `local` | `local` (→ `$GREENTIC_HOME/registries/local`), `file://<path>`, `oci://<host>/<ns>[/<artifact>]`, or a named entry from `~/.greentic/config.toml`. |
+| `--version VERSION` | describe's own | Override `describe.json`'s version for this run (CI version bumps). |
+| `--dry-run` | false | Build + pack + validate; skip the registry write. |
+| `--sign` | false | Sign the `.gtxpack`. Requires a key. |
+| `--key PATH` | — | Explicit PKCS8 PEM signing key. Overrides `--key-id`. |
+| `--key-id ID` | — | Loads `~/.greentic/keys/<ID>.key` and labels the signature with `<ID>`. |
+| `--key-env VAR` | `GREENTIC_EXT_SIGNING_KEY_PEM` | Read the PKCS8 PEM key from this env var (CI / headless). |
+| `--trust POLICY` | `loose` | `loose` \| `normal` \| `strict`. |
+| `--dist DIR` | `./dist` | Also copy the artifact here. |
+| `--force` | false | Overwrite an existing version. |
+| `--verify-only` | false | Skip the build; only check the registry for a version conflict. |
+| `--wasm PATH` | — | Pack this pre-built `wasm32-wasip2` component instead of running `cargo component build`. For externally produced components (e.g. a generated MCP router). The project's `describe.json` still drives the pack. |
+| `--oci-token TOKEN` | — | Bearer token for `oci://` registries. Falls back to `GHCR_TOKEN`, `GITHUB_TOKEN`, `OCI_TOKEN`, then anonymous. |
+| `--icon PATH` | — | Icon copied into `assets/` and written to `metadata.icon` — **updates `describe.json` on disk**, so commit the change. |
+| `-w`, `--wizard` | false | Prompt for registry, mode, signing and trust instead of requiring the full flag string. |
+
+---
+
+## `keygen`
+
+Generate an ed25519 keypair for signing extension artifacts.
+
+**Synopsis:**
+
+```
+gtdx keygen [--out PATH]
+```
+
+`--out` writes the private key to a file with mode `0600`; the file must not
+already exist. Without it, the key goes to stdout.
+
+---
+
+## `sign`
+
+Sign a `describe.json` in place.
+
+**Synopsis:**
+
+```
+gtdx sign <DESCRIBE_PATH> [--key PATH | --key-env VAR]
+```
+
+`--key` and `--key-env` are mutually exclusive; `--key-env` defaults to
+`GREENTIC_EXT_SIGNING_KEY_PEM`.
+
+---
+
+## `verify`
+
+Verify an extension's signature.
+
+**Synopsis:**
+
+```
+gtdx verify <PATH> [--trusted-key KEY]
+```
+
+`PATH` accepts three shapes, checking progressively more:
+
+| Input | Checks |
+|---|---|
+| a `describe.json` file | the inline signature |
+| an extension directory | the `describe.json` inside it |
+| a `.gtxpack` archive | the full chain: signature + manifest binding + ledger |
+
+**`--trusted-key` decides what the result means.** With it (a base64 ed25519
+public key, an `ed25519:` prefix is accepted), the signature must have been
+produced by that exact key — this is an *authenticity* check. Without it,
+only describe self-consistency is verified: that proves the describe is
+unmodified, **not who signed it**.
+
+---
+
+## `outdated`
+
+Check installed extensions for available updates.
+
+**Synopsis:**
+
+```
+gtdx outdated [--registry NAME]
+```
+
+---
+
+## `update`
+
+Update installed extensions to the latest permitted version.
+
+**Synopsis:**
+
+```
+gtdx update [TARGET] [--all] [--registry NAME] [-y]
+```
+
+| Argument / Flag | Description |
+|---|---|
+| `TARGET` | Extension id to update. Omit it and pass `--all` to update everything. |
+| `--all` | Update every installed extension that has an update available. |
+| `--registry NAME` | Registry name from config. |
+| `-y`, `--yes` | Skip the permission prompt. |
+
+---
+
+## `yank`
+
+Withdraw a published version. A yanked version is hidden from the version
+list and is never selected as `latest`, but **stays downloadable for existing
+pins** — it is a deprecation signal, not a deletion.
+
+**Synopsis:**
+
+```
+gtdx yank <NAME> <VERSION> [--reason TEXT] [--registry NAME]
+```
+
+`--reason` is stored by the store and shown to anyone who inspects the
+version. Worth the extra seconds.
+
+---
+
+## `unyank`
+
+Reverse a yank, putting a version back in circulation.
+
+**Synopsis:**
+
+```
+gtdx unyank <NAME> <VERSION> [--registry NAME]
+```
+
+---
+
+## `component`
+
+Register a **component-tool** by URL against greentic-designer-admin. This is
+a different object from an extension: it registers an existing component so a
+tenant's flow editor or agentic workers can call it, and it writes to the
+admin, not to `~/.greentic`.
+
+**Synopsis:**
+
+```
+gtdx component register --url URL --name NAME --tenant SLUG --user EMAIL
+                        [--admin-url URL] [--admin-token KEY]
+                        [--component-ref REF] [--component-version VERSION]
+                        [--component-digest DIGEST]
+                        [--allowed-ops OPS] [--role ROLE]
+```
+
+| Flag | Description |
+|---|---|
+| `--url URL` | Store / OCI / repo URL of the component to register. |
+| `--name NAME` | Friendly name for the component-tool, unique per tenant. |
+| `--tenant SLUG` | Sent as the `X-Greentic-Tenant` header. |
+| `--user EMAIL` | Acting user, sent as `X-Greentic-User`. **Must be a tenant admin.** |
+| `--admin-url URL` | Base URL of greentic-designer-admin, else `GREENTIC_ADMIN_URL`. |
+| `--admin-token KEY` | `gts_` service key, else `GREENTIC_ADMIN_TOKEN`, else the `greentic-admin` key in `credentials.toml`. |
+| `--component-ref` / `--component-version` / `--component-digest` | Optional identifying detail for the component. |
+| `--allowed-ops OPS` | Restrict the registration to these operations (repeatable or comma-separated). Omitted = all operations allowed. |
+| `--role ROLE` | Grant the component-tool to these roles (repeatable): `flow_editor`, `agentic_worker`. |

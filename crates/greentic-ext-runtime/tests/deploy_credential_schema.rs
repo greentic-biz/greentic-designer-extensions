@@ -23,7 +23,10 @@ fn load_rt_from_pack() -> Option<(tempfile::TempDir, ExtensionRuntime, String)> 
     let ext_dir = tmp.path().join("ext");
     greentic_extension_sdk_testing::unpack_to_dir(&pack, &ext_dir).unwrap();
 
-    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(tmp.path().to_path_buf()));
+    // Trust root inside the existing tempdir: the default root is the
+    // developer's real ~/.greentic, which tests must never pin into.
+    let config = RuntimeConfig::from_paths(DiscoveryPaths::new(tmp.path().to_path_buf()))
+        .with_trust_root(tmp.path().join("trust-root"));
     let mut rt = ExtensionRuntime::new(config).unwrap();
     rt.register_loaded_from_dir(&ext_dir).unwrap();
 
@@ -90,5 +93,26 @@ fn validate_credentials_returns_diagnostics_slice() {
             !d.message.is_empty(),
             "diagnostic message should be non-empty"
         );
+    }
+}
+
+#[test]
+fn deploy_on_mode_a_extension_surfaces_typed_internal_error() {
+    let Some((_tmp, rt, id)) = load_rt_from_pack() else {
+        eprintln!("skipping: GTDX_TEST_DEPLOY_GTXPACK not set.");
+        return;
+    };
+    let req = greentic_ext_runtime::DeployRequest {
+        target_id: "anything".into(),
+        artifact_bytes: vec![],
+        credentials_json: "{}".into(),
+        config_json: "{}".into(),
+        deployment_name: "smoke".into(),
+    };
+    match rt.deploy(&id, req) {
+        Err(greentic_ext_runtime::RuntimeError::Deploy(
+            greentic_ext_runtime::DeployExtensionError::Internal(msg),
+        )) => assert!(!msg.is_empty(), "Mode A stub should carry a message"),
+        other => panic!("expected Deploy(Internal), got {other:?}"),
     }
 }

@@ -13,40 +13,92 @@ section of `describe.json`:
 
 ```json
 "runtime": {
-  "component": "extension.wasm",
   "memoryLimitMB": 64,
   "permissions": {
     "network": [
-      "https://api.example.com",
-      "https://cdn.example.com"
+      "https://api.example.com/*",
+      "https://*.cdn.example.com/assets/*"
     ],
     "secrets": [
-      "secrets://*/default/my-ext/*"
+      "secret://my-ext/api_key"
     ],
-    "callExtensionKinds": ["design"]
+    "callExtensionKinds": ["design"],
+    "llmRoles": [],
+    "oauthProviders": []
+  },
+  "components": {
+    "my-ext": {
+      "gtpack": {
+        "file": "extension.wasm",
+        "sha256": "<64 lowercase hex>",
+        "pack_id": "greentic.my-ext",
+        "component_version": "0.1.0"
+      },
+      "sha256": "<64 lowercase hex>",
+      "world": "greentic:my-ext/extension@1.0.0"
+    }
   }
 }
 ```
 
+(The v1 `runtime.component` string became the `runtime.components` map in v2 —
+see [describe-json-spec.md](./describe-json-spec.md#runtime).)
+
 ### `network`
 
-An allowlist of HTTPS origins the extension may call via
-`greentic:extension-host/http`. Each entry is an exact origin
-(`scheme://host`) or an origin with port (`scheme://host:port`). Wildcards
-are not supported in the origin itself — only exact matches are allowed.
+An allowlist of URL patterns the extension may call via
+`greentic:extension-host/http`. `UrlMatcher` compares three facets
+independently:
+
+- **Scheme** — exact, and non-`https` is rejected outright unless the host
+  opts in (`with_allow_http`). This is a deliberate defence against
+  scheme-downgrade.
+- **Host** — exact, or a `*.<suffix>` wildcard that requires **at least one
+  label**: `https://*.example.com/*` matches `api.example.com` but **not**
+  bare `example.com`. Substring matches are rejected, so
+  `evil.com.allowed.com` does not match `allowed.com`.
+- **Path** — prefix match against the pattern's path with a trailing `/*`
+  stripped: `https://api.example.com/v1/*` matches `/v1/chat/completions`. A
+  pattern with a bare `/` path (or no path) matches any path.
+
+An unparseable pattern is **logged at WARN and ignored**, so a typo does not
+fail the load — it silently allows nothing.
 
 An extension that leaves `network` empty (or omits it) cannot make any
 outbound HTTP calls even if it imports the `http` interface.
 
 ### `secrets`
 
-An allowlist of secret URI patterns the extension may read via
-`greentic:extension-host/secrets`. Each pattern is a URI with `*` as a
-wildcard segment. For example:
+An allowlist of secret URIs the extension may read via
+`greentic:extension-host/secrets`. **This list is not a glob**, and it does
+not use the same matcher as `network`. A declared entry permits a requested
+URI only when the URI **equals** it, or **starts with the entry followed by
+`/`**:
 
-- `secrets://*/default/my-ext/*` — matches any env, the `default` team,
-  the `my-ext` provider, any key.
-- `secrets://prod/acme/slack/bot-token` — exact match.
+```rust
+uri == *allowed || uri.starts_with(&format!("{allowed}/"))
+```
+
+Three consequences, none of which produce an install-time error — only
+`permission denied for secret: <uri>` when the tool runs:
+
+- **`*` is a literal asterisk.** `secret://my-ext/*` permits nothing.
+- **A trailing slash breaks the prefix**, because the code appends its own
+  separator: `secret://notion/` permits `secret://notion//token`, never
+  `secret://notion/token`.
+- The scheme is `secret://`, singular.
+
+Working forms are the full URIs:
+
+```json
+"secrets": ["secret://calendly/token", "secret://calendly/auth_mode"]
+```
+
+or a prefix with **no** trailing slash:
+
+```json
+"secrets": ["secret://notion"]
+```
 
 An extension that omits `secrets` cannot read any secrets.
 

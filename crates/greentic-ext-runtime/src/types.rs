@@ -4,7 +4,20 @@ pub struct ToolDefinition {
     pub name: String,
     pub description: String,
     pub input_schema_json: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_schema_json: Option<String>,
+    /// Runtime contexts the tool supports (`"flow"`, `"agentic_worker"`).
+    /// Legacy extensions return `None`; consumers must default to `["flow"]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<Vec<String>>,
+    /// JSON-encoded `AgenticWorkerMetadata` blob. Decode via
+    /// `greentic_extension_sdk_contract::AgenticWorkerMetadata::decode`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agentic_worker_metadata: Option<String>,
+    /// Per-tool secret/credential requirements (v2 declarative tools).
+    /// Legacy v1 WIT tools have none; defaults to empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secret_requirements: Vec<greentic_types::secrets::SecretRequirement>,
 }
 
 /// Host-side mirror of WIT `greentic:extension-design/prompting@0.2.0::prompt-fragment`.
@@ -66,6 +79,68 @@ pub struct TargetSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon_path: Option<String>,
     pub supports_rollback: bool,
+}
+
+/// Host-side mirror of WIT `greentic:extension-deploy/deployment@0.1.0::deploy-request`.
+///
+/// Note: no `serde` derives — `artifact_bytes` is a raw binary blob handed
+/// to the WASM guest verbatim; JSON-encoding it would be wasteful and
+/// incorrect.
+#[derive(Debug, Clone)]
+pub struct DeployRequest {
+    pub target_id: String,
+    pub artifact_bytes: Vec<u8>,
+    pub credentials_json: String,
+    pub config_json: String,
+    pub deployment_name: String,
+}
+
+/// Host-side mirror of WIT `greentic:extension-deploy/deployment@0.1.0::deploy-status`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DeployStatus {
+    Pending,
+    Provisioning,
+    Configuring,
+    Starting,
+    Running,
+    Failed,
+    RolledBack,
+}
+
+/// Host-side mirror of WIT `greentic:extension-deploy/deployment@0.1.0::deploy-job`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DeployJob {
+    pub id: String,
+    pub status: DeployStatus,
+    pub message: String,
+    pub endpoints: Vec<String>,
+}
+
+/// Typed extension-level error surfaced by `deploy`/`poll`/`rollback`.
+///
+/// Variant choice is a host-visible contract: the designer treats
+/// `Internal` from `deploy()` as "not implemented in WASM" (Mode A stub)
+/// and falls back to the greentic-deployer binary. Mode B extensions
+/// must use the other variants for expected failures.
+///
+/// Structurally mirrors [`HostExtensionError`] by design; kept separate
+/// because the two types participate in different dispatch paths and may
+/// diverge as the deploy surface grows.
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum DeployExtensionError {
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+    #[error("missing capability: {0}")]
+    MissingCapability(String),
+    #[error("permission denied: {0}")]
+    PermissionDenied(String),
+    #[error("not found: {0}")]
+    NotFound(String),
+    #[error("schema invalid: {0}")]
+    SchemaInvalid(String),
+    #[error("internal: {0}")]
+    Internal(String),
 }
 
 /// Host-side mirror of WIT `greentic:extension-design/validation@0.2.0::validate-result`.
@@ -152,6 +227,11 @@ pub struct CompileContext {
 /// Host-level failure that a role compiler may surface. Mirrored here
 /// so [`RoleError::Host`] can carry the variant without dragging in
 /// the bindgen-generated type at the public API boundary.
+///
+/// The `code()` method returns a stable kebab-case string that matches
+/// the WIT `extension-error` variant name — used as the wire contract
+/// for the designer's `{ok, data, error}` response envelope. Never
+/// rename existing codes without a wire-breaking version bump.
 #[derive(Debug, Clone, thiserror::Error, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "kind", content = "message")]
 pub enum HostExtensionError {
@@ -161,8 +241,29 @@ pub enum HostExtensionError {
     MissingCapability(String),
     #[error("permission denied: {0}")]
     PermissionDenied(String),
+    #[error("not found: {0}")]
+    NotFound(String),
+    #[error("schema invalid: {0}")]
+    SchemaInvalid(String),
     #[error("internal: {0}")]
     Internal(String),
+}
+
+impl HostExtensionError {
+    /// Stable kebab-case code matching the WIT `extension-error` variant
+    /// name. This string is the wire contract for the designer's
+    /// `{ok, data, error}` envelope — never rename existing codes.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidInput(_) => "invalid-input",
+            Self::MissingCapability(_) => "missing-capability",
+            Self::PermissionDenied(_) => "permission-denied",
+            Self::NotFound(_) => "not-found",
+            Self::SchemaInvalid(_) => "schema-invalid",
+            Self::Internal(_) => "internal",
+        }
+    }
 }
 
 /// Host-side mirror of WIT
@@ -187,6 +288,25 @@ pub enum RoleError {
     VersionNotSupported(u32),
     #[error("host: {0}")]
     Host(#[from] HostExtensionError),
+}
+
+#[cfg(test)]
+mod host_extension_error_tests {
+    #[test]
+    fn host_extension_error_codes_are_stable_kebab() {
+        use super::HostExtensionError as E;
+        let cases = [
+            (E::InvalidInput("x".into()), "invalid-input"),
+            (E::MissingCapability("x".into()), "missing-capability"),
+            (E::PermissionDenied("x".into()), "permission-denied"),
+            (E::NotFound("x".into()), "not-found"),
+            (E::SchemaInvalid("x".into()), "schema-invalid"),
+            (E::Internal("x".into()), "internal"),
+        ];
+        for (e, code) in cases {
+            assert_eq!(e.code(), code);
+        }
+    }
 }
 
 #[cfg(test)]
