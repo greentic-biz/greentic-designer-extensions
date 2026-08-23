@@ -15,7 +15,25 @@ default = []
 dev-allow-unsigned = []
 
 [dependencies]
-greentic-extension-sdk-contract = "=1.2.1-research"
+greentic-extension-sdk-contract = "=1.2.1"
+# Reused for `trust_store::TrustStore` — the TOFU publisher-key anchor the
+# verify chain pins against. Deliberately reused rather than ported: the SDK's
+# store already carries the file-locking + atomic-rename care this needs, and
+# relocating it to `-contract` would require a new SDK tag plus a version bump
+# in every consumer. Compile-time weight only.
+greentic-extension-sdk-registry = "=1.2.1"
+greentic-types = { workspace = true }
+
+[dependencies.directories]
+workspace = true
+
+# Both are needed to parse the publisher key out of a signed describe and check
+# the signature against it (anchored verify). Previously dev-only.
+[dependencies.base64]
+workspace = true
+
+[dependencies.ed25519-dalek]
+workspace = true
 
 [dependencies.anyhow]
 workspace = true
@@ -68,7 +86,8 @@ version = "2"
 workspace = true
 
 [dev-dependencies]
-greentic-extension-sdk-testing = "=1.2.1-research"
+cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+greentic-extension-sdk-testing = "=1.2.1"
 wat = "1"
 
 [dev-dependencies.wiremock]
@@ -96,4 +115,7 @@ workspace = true
 workspace = true
 
 [lints]
+workspace = true
+
+[dev-dependencies.directories]
 workspace = true

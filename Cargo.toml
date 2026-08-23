@@ -5,9 +5,31 @@ members = [
     "crates/greentic-ext-runtime",
 ]
 
+# Audit P5 (trust chain) — research-branch dev patch.
+# greentic-extension-sdk-contract 1.2.7-research carries the C1/C2 trust-chain
+# APIs (verify_describe_with_key, verify_manifest_binding) plus the
+# `Permissions.llm_roles` field consumed by the LlmPort host port. `-research`
+# versions
+# are intentionally NOT published to crates.io (the SDK's release.yml blocks
+# `research` tags — fb57181 / audit H6/M16), so this local sibling checkout is
+# the permanent resolution mechanism for the whole research line. Remove this
+# patch only when graduating to a published, non-research SDK version.
+# The SDK's 1.3.0 research line is git-tag-only — crates.io stops at
+# `1.2.3-research` — so the crates.io requirements have to be redirected onto
+# the tag. Keep ALL FOUR on ONE tag: they are `=`-pinned to each other, so a
+# split resolves two crate instances.
+#
+# These were sibling PATH patches (`../greentic-designer-sdk/...`), which only
+# resolve on a developer box that happens to have the SDK checked out next to
+# this repo. That is why `ci.yml` could only ever run on `main` (which carries
+# no patch block at all): on `research` a plain `actions/checkout` has no
+# sibling, so any CI run would fail before compiling a line. Do not reintroduce
+# a path patch here — it takes the lane's CI down with it, silently, by making
+# the lane unbuildable anywhere but one machine.
+
 [workspace.package]
 edition = "2024"
-version = "1.2.0"
+version = "1.2.28"
 license = "MIT"
 repository = "https://github.com/greenticai/greentic-designer-extensions"
 rust-version = "1.94"
@@ -42,6 +64,11 @@ wasmtime-wasi-http = "45"
 wit-bindgen = "0.41"
 wit-bindgen-rt = "0.41"
 wit-parser = "0.221"
+
+[workspace.dependencies.greentic-types]
+version = "=1.3.0-research.1"
+default-features = false
+features = ["std", "serde"]
 
 [workspace.dependencies.chrono]
 version = "0.4"
@@ -138,6 +165,7 @@ version = "45"
 features = [
     "component-model",
     "async",
+    "cache",
 ]
 
 [workspace.dependencies.zip]
