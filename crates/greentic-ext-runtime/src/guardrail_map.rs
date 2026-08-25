@@ -67,9 +67,18 @@ pub(crate) fn call_evaluate(
     let dto: InputDto =
         serde_json::from_str(input_json).map_err(|e| crate::RuntimeError::Wasmtime(e.into()))?;
 
+    // Fail closed on an unknown direction. Defaulting to `inbound` meant a typo,
+    // or an `outbound` field the caller forgot to set, silently evaluated the
+    // guardrail against the wrong direction — and a guardrail that answers the
+    // wrong question still answers `accept`.
     let direction = match dto.direction.as_str() {
+        "inbound" => gr::Direction::Inbound,
         "outbound" => gr::Direction::Outbound,
-        _ => gr::Direction::Inbound,
+        other => {
+            return Err(crate::RuntimeError::Wasmtime(anyhow::anyhow!(
+                "guardrail direction must be \"inbound\" or \"outbound\", got {other:?}"
+            )));
+        }
     };
 
     let input = gr::GuardrailInput {
