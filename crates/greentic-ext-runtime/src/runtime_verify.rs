@@ -11,6 +11,8 @@ use std::path::{Component, Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
+use greentic_extension_sdk_contract::DescribeJson;
+
 use crate::error::RuntimeError;
 use crate::runtime::ExtensionRuntime;
 
@@ -34,30 +36,32 @@ impl ExtensionRuntime {
     /// integrity → artifact ledger → anchor. The anchor is a *write* into the
     /// store `gtdx` shares, so it must never run for a load that then fails.
     ///
-    /// # Known residual: check-to-use gap
+    /// # Known residual: check-to-use gap on the component bytes
     ///
-    /// This verifies the directory; the caller then re-reads `describe.json`
-    /// and the wasm from that same directory to instantiate. A writer who can
-    /// modify the pack *between* the two can still substitute the component.
-    /// Closing it means threading the bytes read here through to
-    /// `Component::from_binary`, which is a wider change than this gate.
-    /// The window needs sustained write access to the extension directory —
-    /// the same privilege that would let an attacker edit the host binary — so
-    /// it is documented rather than defended here. It is not a substitute for
-    /// the checks above, which defend against a malicious *publisher* and
-    /// against a single momentary write.
-    pub(crate) fn verify_dir_signature(&self, dir: &Path) -> Result<(), RuntimeError> {
+    /// The verified [`DescribeJson`] is returned and handed to
+    /// [`crate::loaded::LoadedExtension::from_verified`], so nothing downstream
+    /// re-reads it: the extension id this pins under and the permissions it
+    /// runs with are the ones this function checked, not whatever is on disk a
+    /// moment later.
+    ///
+    /// The **component bytes** are still opened by path afterwards, so a writer
+    /// who lands between the ledger check and `Component::from_file` can still
+    /// substitute the wasm. Closing that means threading the bytes read here
+    /// through to `Component::from_binary` — worth doing, and deliberately not
+    /// bundled into this gate. Note the window is reachable through the
+    /// watcher, not only by a privileged process: writing into a watched
+    /// directory is what schedules the load in the first place.
+    pub(crate) fn verify_dir_signature(&self, dir: &Path) -> Result<DescribeJson, RuntimeError> {
+        let describe = read_describe(dir)?;
+
         #[cfg(feature = "dev-allow-unsigned")]
         if std::env::var("GREENTIC_EXT_ALLOW_UNSIGNED").is_ok() {
             tracing::warn!(
                 extension_dir = %dir.display(),
                 "GREENTIC_EXT_ALLOW_UNSIGNED is set — signature verification skipped"
             );
-            return Ok(());
+            return Ok(describe);
         }
-        let path = dir.join(greentic_extension_sdk_contract::DESCRIBE_ENTRY_NAME);
-        let raw = std::fs::read_to_string(&path)?;
-        let describe: greentic_extension_sdk_contract::DescribeJson = serde_json::from_str(&raw)?;
         // Step 1 — integrity: the describe is unmodified since signing. This is
         // NOT authenticity: it proves nothing about *who* signed, because an
         // attacker can re-sign their own describe with their own key and pass
@@ -116,8 +120,22 @@ impl ExtensionRuntime {
             key_prefix = %pub_prefix,
             "extension signature verified and anchored to the pinned publisher key"
         );
-        Ok(())
+        Ok(describe)
     }
+}
+
+/// Read and schema-validate `describe.json`, once.
+///
+/// The parsed value is handed back to the caller so nothing downstream re-reads
+/// the file — see the check-to-use note on
+/// [`ExtensionRuntime::verify_dir_signature`] for why that matters.
+fn read_describe(dir: &Path) -> Result<DescribeJson, RuntimeError> {
+    let path = dir.join(greentic_extension_sdk_contract::DESCRIBE_ENTRY_NAME);
+    let raw = std::fs::read(&path)?;
+    let value: serde_json::Value = serde_json::from_slice(&raw)?;
+    greentic_extension_sdk_contract::schema::validate_describe_json(&value)
+        .map_err(|e| RuntimeError::Wasmtime(anyhow::anyhow!("invalid {}: {e}", path.display())))?;
+    serde_json::from_value(value).map_err(RuntimeError::Json)
 }
 
 /// Verify the unpacked extension dir against its `manifest.json`
@@ -145,10 +163,7 @@ impl ExtensionRuntime {
 ///   to regular files. `dir.join(entry.path)` honours an absolute path by
 ///   discarding `dir` outright, and follows a symlink out of the pack; either
 ///   lets a ledger "verify" against bytes that are not in the pack at all.
-fn verify_dir_manifest(
-    dir: &Path,
-    describe: &greentic_extension_sdk_contract::DescribeJson,
-) -> Result<(), RuntimeError> {
+fn verify_dir_manifest(dir: &Path, describe: &DescribeJson) -> Result<(), RuntimeError> {
     let extension_id = describe.metadata.id.as_str();
     let invalid = |reason: String| RuntimeError::SignatureInvalid {
         extension_id: extension_id.to_string(),
@@ -184,9 +199,16 @@ fn verify_dir_manifest(
         )));
     }
 
-    let mut listed: BTreeSet<String> = BTreeSet::new();
+    // Keyed by resolved `PathBuf`, not by the raw string. Comparing rendered
+    // strings made the check evadable: the walk lowered every on-disk name
+    // through `to_string_lossy().replace('\\', "/")`, so on Linux — where a
+    // backslash is an ordinary filename byte — a file literally named `a\b.txt`
+    // rendered as `a/b.txt` and matched a ledger entry for a different file,
+    // and any non-UTF-8 name rendered as U+FFFD and collided with any entry
+    // containing it. Comparing paths removes both mappings.
+    let mut listed: BTreeSet<PathBuf> = BTreeSet::new();
     for entry in &manifest.entries {
-        let path = safe_entry_path(dir, &entry.path).map_err(&invalid)?;
+        let path = pack_relative_path(dir, &entry.path).map_err(&invalid)?;
         // `symlink_metadata` does not follow the final component, so a symlink
         // is rejected here rather than silently hashing whatever it points at.
         //
@@ -217,17 +239,19 @@ fn verify_dir_manifest(
                 entry.path, entry.sha256, computed
             )));
         }
-        listed.insert(entry.path.clone());
+        listed.insert(path);
     }
 
     // Coverage: nothing on disk may sit outside the ledger.
-    for present in collect_relative_files(dir)? {
-        if LEDGER_EXEMPT.contains(&present.as_str()) || listed.contains(&present) {
+    let exempt: Vec<PathBuf> = LEDGER_EXEMPT.iter().map(|n| dir.join(n)).collect();
+    for present in collect_pack_files(dir)? {
+        if exempt.contains(&present) || listed.contains(&present) {
             continue;
         }
         return Err(invalid(format!(
-            "{present} is present in the extension directory but absent from manifest.json — \
-             refusing to load a pack carrying files the signed ledger does not cover"
+            "{} is present in the extension directory but absent from manifest.json — \
+             refusing to load a pack carrying files the signed ledger does not cover",
+            present.strip_prefix(dir).unwrap_or(&present).display()
         )));
     }
 
@@ -247,8 +271,8 @@ fn verify_dir_manifest(
 /// base), `..` (`ParentDir`), and a bare `.` (`CurDir`). The final-component
 /// symlink case is handled by the caller's `symlink_metadata` check; an
 /// intermediate symlinked directory cannot exist in a verified pack because
-/// [`collect_relative_files`] refuses to descend into one.
-fn safe_entry_path(dir: &Path, rel: &str) -> Result<PathBuf, String> {
+/// [`collect_pack_files`] refuses to descend into one.
+pub(crate) fn pack_relative_path(dir: &Path, rel: &str) -> Result<PathBuf, String> {
     if rel.is_empty() {
         return Err("manifest lists an empty path".to_string());
     }
@@ -274,24 +298,23 @@ fn safe_entry_path(dir: &Path, rel: &str) -> Result<PathBuf, String> {
 /// is refused, and refusal is the safe answer either way.
 const MAX_PACK_DEPTH: usize = 32;
 
-/// Every regular file under `dir`, as `/`-joined paths relative to it.
+/// Every regular file under `dir`, as absolute paths.
+///
+/// Paths, not rendered strings: the caller compares these against ledger
+/// entries resolved through [`pack_relative_path`], and any lossy rendering in
+/// between is a way to make two different files compare equal.
 ///
 /// Uses `symlink_metadata`, so a symlink — to a file or to a directory — is
 /// reported as itself and never followed. A symlinked directory therefore shows
 /// up as one unlisted entry instead of silently expanding into whatever it
 /// points at, and the caller's coverage check rejects the pack.
-fn collect_relative_files(dir: &Path) -> Result<Vec<String>, RuntimeError> {
+fn collect_pack_files(dir: &Path) -> Result<Vec<PathBuf>, RuntimeError> {
     let mut out = Vec::new();
-    collect_into(dir, dir, 0, &mut out)?;
+    collect_into(dir, 0, &mut out)?;
     Ok(out)
 }
 
-fn collect_into(
-    root: &Path,
-    current: &Path,
-    depth: usize,
-    out: &mut Vec<String>,
-) -> Result<(), RuntimeError> {
+fn collect_into(current: &Path, depth: usize, out: &mut Vec<PathBuf>) -> Result<(), RuntimeError> {
     if depth > MAX_PACK_DEPTH {
         return Err(RuntimeError::Io(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -305,15 +328,9 @@ fn collect_into(
         let path = entry.path();
         let meta = std::fs::symlink_metadata(&path)?;
         if meta.is_dir() {
-            collect_into(root, &path, depth + 1, out)?;
+            collect_into(&path, depth + 1, out)?;
         } else {
-            // A path that is not under `root` cannot match any ledger entry, so
-            // falling back to the absolute path still ends in rejection. There
-            // is no way to reach this — `path` is built by joining onto
-            // `current` — but the fallback keeps that fail-closed rather than
-            // resting on the argument.
-            let rel = path.strip_prefix(root).unwrap_or(&path);
-            out.push(rel.to_string_lossy().replace('\\', "/"));
+            out.push(path);
         }
     }
     Ok(())
@@ -327,7 +344,7 @@ mod tests {
     fn a_plain_relative_path_resolves_under_the_pack_root() {
         let root = Path::new("/packs/demo");
         assert_eq!(
-            safe_entry_path(root, "runtime/component.wasm").unwrap(),
+            pack_relative_path(root, "runtime/component.wasm").unwrap(),
             Path::new("/packs/demo/runtime/component.wasm")
         );
     }
@@ -337,31 +354,38 @@ mod tests {
         // `Path::join` replaces the base with an absolute argument, so without
         // this check the ledger would verify `/etc/passwd` and call the pack
         // intact.
-        let err = safe_entry_path(Path::new("/packs/demo"), "/etc/passwd").unwrap_err();
+        let err = pack_relative_path(Path::new("/packs/demo"), "/etc/passwd").unwrap_err();
         assert!(err.contains("not a plain relative path"), "{err}");
     }
 
     #[test]
     fn a_traversing_ledger_path_is_refused() {
-        let err = safe_entry_path(Path::new("/packs/demo"), "../other/extension.wasm").unwrap_err();
+        let err =
+            pack_relative_path(Path::new("/packs/demo"), "../other/extension.wasm").unwrap_err();
         assert!(err.contains("not a plain relative path"), "{err}");
     }
 
     #[test]
     fn an_empty_ledger_path_is_refused() {
-        let err = safe_entry_path(Path::new("/packs/demo"), "").unwrap_err();
+        let err = pack_relative_path(Path::new("/packs/demo"), "").unwrap_err();
         assert!(err.contains("empty path"), "{err}");
     }
 
     #[test]
-    fn nested_files_are_collected_with_slash_separated_relative_paths() {
+    fn nested_files_are_collected_as_paths_under_the_root() {
         let tmp = tempfile::TempDir::new().unwrap();
         std::fs::write(tmp.path().join("extension.wasm"), b"a").unwrap();
         std::fs::create_dir(tmp.path().join("runtime")).unwrap();
         std::fs::write(tmp.path().join("runtime").join("pack.gtpack"), b"b").unwrap();
 
-        let mut found = collect_relative_files(tmp.path()).unwrap();
+        let mut found = collect_pack_files(tmp.path()).unwrap();
         found.sort();
-        assert_eq!(found, ["extension.wasm", "runtime/pack.gtpack"]);
+        assert_eq!(
+            found,
+            [
+                tmp.path().join("extension.wasm"),
+                tmp.path().join("runtime").join("pack.gtpack"),
+            ]
+        );
     }
 }

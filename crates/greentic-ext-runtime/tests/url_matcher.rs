@@ -123,3 +123,40 @@ fn path_prefix_stops_at_a_segment_boundary() {
         "a sibling path stays denied"
     );
 }
+
+#[test]
+fn wildcard_requires_a_real_label_boundary_not_just_a_suffix() {
+    // `notexample.com` ends with `example.com` as a *string*. Without the
+    // separating-dot check the wildcard would read that as a subdomain and hand
+    // an attacker-registrable domain the same grant as the real one.
+    let m = matcher(&["https://*.example.com/*"]);
+    assert!(m.is_allowed("https://api.example.com/x"));
+    assert!(
+        !m.is_allowed("https://notexample.com/x"),
+        "a bare suffix match is not a subdomain"
+    );
+    assert!(
+        !m.is_allowed("https://evilexample.com/x"),
+        "a bare suffix match is not a subdomain"
+    );
+}
+
+#[test]
+fn enabling_http_does_not_downgrade_an_https_pattern() {
+    // `allow_http` is matcher-wide, so it has to be the per-pattern scheme
+    // comparison that keeps an https-only host https-only. Every other test
+    // short-circuits at the global https gate and never reaches that check.
+    let m =
+        UrlMatcher::from_patterns(vec!["https://api.example.com/*".into()]).with_allow_http(true);
+    assert!(m.is_allowed("https://api.example.com/v1"));
+    assert!(
+        !m.is_allowed("http://api.example.com/v1"),
+        "the http opt-in must not downgrade a host declared over https"
+    );
+}
+
+#[test]
+fn host_matching_is_case_insensitive() {
+    let m = matcher(&["https://API.Example.COM/*"]);
+    assert!(m.is_allowed("https://api.example.com/x"));
+}

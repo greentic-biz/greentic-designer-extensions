@@ -50,8 +50,10 @@ in their own GitHub orgs and consume this runtime via crates.io
 
 `greentic-ext-runtime` exposes (see `crates/greentic-ext-runtime/src/lib.rs`):
 
-- `ExtensionRuntime::new(config)` — load + verify signed extensions
-  from `~/.greentic/extensions/{design,deploy,bundle,provider}/`.
+- `ExtensionRuntime::new(config)` — build the wasmtime engine. It loads
+  **nothing**: the returned runtime has an empty extension map, and
+  registration is the embedder's job via `register_loaded_from_dir`
+  (which is where the verify gate runs) or `start_watcher`.
 - `register_loaded_from_dir(path)` — explicit registration; designer
   calls this for design + deploy + bundle dirs at startup. Bundle
   registration is required for `render_bundle()` to find the
@@ -116,14 +118,15 @@ broker + logging + i18n imports).
 
 ### Module layout
 
-`runtime.rs` holds only the core: `RuntimeConfig`, the `ExtensionRuntime`
-handle and its stores, the shared `dispatch_instance` / `lookup` /
+`runtime.rs` holds only the core: the `ExtensionRuntime` handle and its
+stores, the shared `dispatch_instance` / `lookup` / `mutate_loaded` /
 `resolve_iface_versions` / `resolve_func` plumbing, and the per-family
 version tables. Everything else is a sibling with its own
 `impl ExtensionRuntime` block:
 
 | Module | Surface |
 | --- | --- |
+| `runtime_config` | `RuntimeConfig` — the knobs a host sets |
 | `runtime_verify` | the load gate (signature, ledger, TOFU anchor) |
 | `runtime_registry` | registration, `rebuild_registry`, the fs watcher |
 | `runtime_design` | `tools`, `validation`, `guardrail` |
@@ -137,6 +140,14 @@ version tables. Everything else is a sibling with its own
 `host_state.rs` is split the same way: the state and its builder there,
 the `Host` impls in `host_state_ports` (logging / i18n / secrets /
 broker), `host_state_net` (http / llm), and `host_state_oauth`.
+`net_permissions` resolves an extension's URL allow-list, and `limits`
+carries the per-store execution ceilings.
+
+**Every mutation of `loaded` goes through `ExtensionRuntime::mutate_loaded`.**
+It holds the write lock across the read-modify-write and stores the map
+together with a registry rebuilt from it, so no caller can drop a
+concurrent edit or leave the two out of step. A new mutation path that
+clones and stores by hand reintroduces both bugs at once.
 
 ## External tool integration
 
@@ -221,7 +232,19 @@ developers publishing one extension from their own local keys will
 collide.
 
 `GREENTIC_EXT_ALLOW_UNSIGNED=1` (only under the `dev-allow-unsigned`
-feature) still skips all three steps.
+feature) still skips all three steps. Because that feature also decides
+whether the bypass is compiled at all, `ci/local_check.sh` runs the test
+suite in **both** feature shapes — an all-features-only run never
+exercises the production build's lack of a bypass.
+
+## Execution limits
+
+Every dispatch store gets a memory/table ceiling and, by default, a
+wall-clock deadline (`RuntimeConfig::dispatch_timeout`, 5 minutes; see
+`limits.rs`). The deadline needs `Config::epoch_interruption` on the
+engine plus the `EpochTicker` the runtime holds for its lifetime — if a
+future change constructs an `Engine` without both, deadlines silently
+stop firing.
 
 ## Capability registry
 

@@ -57,12 +57,17 @@ impl secrets::Host for HostState {
         // declared verbatim or as a path prefix in `permissions.secrets`.
         // The `/` boundary matters — a bare `starts_with` would let a
         // declaration of `api.openai.com` also unlock `api.openai.com.evil/key`.
-        let permitted = self.permissions.secrets.iter().any(|allowed| {
-            uri == *allowed
-                || (uri.len() > allowed.len()
-                    && uri.starts_with(allowed.as_str())
-                    && uri.as_bytes()[allowed.len()] == b'/')
-        });
+        let permitted = self
+            .permissions
+            .secrets
+            .iter()
+            .filter(|allowed| declaration_is_specific(allowed))
+            .any(|allowed| {
+                uri == *allowed
+                    || (uri.len() > allowed.len()
+                        && uri.starts_with(allowed.as_str())
+                        && uri.as_bytes()[allowed.len()] == b'/')
+            });
         if !permitted {
             tracing::warn!(
                 ext = %self.extension_id,
@@ -82,6 +87,27 @@ impl secrets::Host for HostState {
             }
         }
     }
+}
+
+/// Does a declared secret prefix actually name something?
+///
+/// The `/`-boundary match below is only as narrow as what it is matching
+/// against. `""` covers every URI starting with `/`, and `"secrets:"` covers
+/// every `secrets://…` URI — the whole namespace — because the byte at the
+/// prefix length is `/` in both cases. There is one process-wide
+/// `SecretsBackend` with no per-extension partition, so this predicate is the
+/// entire isolation boundary between extensions; a declaration that names no
+/// path segment is not a grant, it is a wildcard, and it is refused.
+fn declaration_is_specific(declared: &str) -> bool {
+    // Drop an optional `scheme:` prefix and any authority slashes, then require
+    // something left over. Splitting on the first `:` rather than on `://` is
+    // what catches `secrets:` — which has no authority, so it never matched
+    // `://`, yet still lined a `/` up at the boundary offset and passed.
+    let after_scheme = declared.split_once(':').map_or(declared, |(_, rest)| rest);
+    !after_scheme
+        .trim_start_matches('/')
+        .trim_end_matches('/')
+        .is_empty()
 }
 
 impl broker::Host for HostState {
@@ -255,6 +281,36 @@ mod tests {
         let mut h = host_with_secret(&["team/acme"], &[("team/acme-evil/openai", "sk-real")]);
         let err = h.get("team/acme-evil/openai".to_string()).unwrap_err();
         assert!(err.contains("permission denied"), "got: {err}");
+    }
+
+    #[test]
+    fn a_declaration_naming_no_path_segment_grants_nothing() {
+        // `""` and `"secrets:"` both satisfy the `/`-boundary test for an
+        // entire namespace. Since one backend serves every extension with no
+        // partition, honouring either would hand one extension every other
+        // extension's secrets.
+        for wildcard in ["", "secrets:", "secrets://", "/"] {
+            let mut h = host_with_secret(&[wildcard], &[("secrets://team/openai", "sk-real")]);
+            let err = h
+                .get("secrets://team/openai".to_string())
+                .expect_err("a declaration naming no path segment must grant nothing");
+            assert!(
+                err.contains("permission denied"),
+                "{wildcard:?} was honoured as a grant: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_scheme_qualified_declaration_still_works() {
+        let mut h = host_with_secret(
+            &["secrets://team/acme"],
+            &[("secrets://team/acme/openai", "sk-real")],
+        );
+        assert_eq!(
+            h.get("secrets://team/acme/openai".to_string()).unwrap(),
+            "sk-real"
+        );
     }
 
     #[test]

@@ -14,11 +14,13 @@ mod host_state;
 mod host_state_net;
 mod host_state_oauth;
 mod host_state_ports;
+mod limits;
 mod loaded;
 mod net_permissions;
 pub mod oauth;
 mod runtime;
 mod runtime_bundle;
+mod runtime_config;
 mod runtime_deploy;
 mod runtime_design;
 mod runtime_dw_composer;
@@ -42,8 +44,10 @@ pub use self::host_ports::{
     InMemorySecrets, KeyTranslator, SecretsBackend, SecretsError, Translator,
 };
 pub use self::host_state::HostState;
+pub use self::limits::DEFAULT_DISPATCH_TIMEOUT;
 pub use self::loaded::{ExtensionId, HostOverrides, LoadedExtension, LoadedExtensionRef};
-pub use self::runtime::{ExtensionRuntime, RuntimeConfig, RuntimeEvent, WatcherGuard};
+pub use self::runtime::{ExtensionRuntime, RuntimeEvent, WatcherGuard};
+pub use self::runtime_config::RuntimeConfig;
 pub use self::runtime_design::contribution_tool_to_definition;
 pub use self::types::{
     BundleArtifact, BundleSession, CompileContext, DeployExtensionError, DeployJob, DeployRequest,

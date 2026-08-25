@@ -54,9 +54,19 @@ fn pack_without_manifest_is_rejected() {
 fn pack_with_intact_manifest_loads() {
     let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
     let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.with-manifest", "0.1.0");
-    let (mut rt, _trust) = new_runtime();
+    let (mut rt, trust) = new_runtime();
     rt.register_loaded_from_dir(fx.root())
         .expect("a bound, intact manifest must verify");
+
+    // Positive control for `valid_signature_with_broken_manifest_pins_nothing`,
+    // which proves the anchor was NOT reached by asserting this directory is
+    // absent. That assertion is only meaningful if a *successful* load does
+    // create it — otherwise an SDK change that relocates the store would
+    // silently disarm the ordering guard with nothing turning red.
+    assert!(
+        trust.path().join("trust").exists(),
+        "a successful load must reach the trust store, or the ordering guard proves nothing"
+    );
 }
 
 #[test]
@@ -234,4 +244,103 @@ fn a_ledger_entry_replaced_by_a_symlink_is_rejected() {
         ),
         other => panic!("expected SignatureInvalid, got {other:?}"),
     }
+}
+
+/// Rewrite `manifest.json` with `mutate` applied to the parsed ledger, then
+/// re-bind and re-sign so the pack is internally consistent again.
+///
+/// Without the re-bind the describe's `manifestSha256` no longer matches and
+/// the *binding* check rejects first — which is what made it possible for the
+/// path rules to look covered while never actually running.
+fn reseal_with_manifest<F>(
+    fx: &greentic_extension_sdk_testing::ExtensionFixture,
+    sk: &ed25519_dalek::SigningKey,
+    mutate: F,
+) where
+    F: FnOnce(&mut greentic_extension_sdk_contract::Manifest),
+{
+    let raw = std::fs::read(manifest_path(fx.root())).unwrap();
+    let mut manifest: greentic_extension_sdk_contract::Manifest =
+        serde_json::from_slice(&raw).unwrap();
+    mutate(&mut manifest);
+
+    let bytes = serde_jcs::to_vec(&manifest).unwrap();
+    std::fs::write(manifest_path(fx.root()), &bytes).unwrap();
+
+    let describe_raw = std::fs::read_to_string(fx.root().join("describe.json")).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&describe_raw).unwrap();
+    greentic_extension_sdk_contract::bind_manifest(&mut describe, &bytes);
+    greentic_extension_sdk_contract::sign_describe(&mut describe, sk).expect("re-sign");
+    std::fs::write(
+        fx.root().join("describe.json"),
+        serde_json::to_string_pretty(&describe).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_bound_ledger_that_traverses_out_of_the_pack_is_rejected() {
+    // The malicious-publisher case: the attacker controls the ledger AND the
+    // signing key, so binding and signature both verify. `dir.join("../x")`
+    // walks out of the pack, so without the path rule the ledger could commit
+    // to bytes that are not in the artifact at all.
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
+    let (fx, sk) = signed_fixture(ExtensionKind::Design, "greentic.traversing-ledger", "0.1.0");
+    reseal_with_manifest(&fx, &sk, |m| {
+        m.entries[0].path = "../escaped.wasm".to_string();
+    });
+
+    let (mut rt, _trust) = new_runtime();
+    let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
+    match err {
+        RuntimeError::SignatureInvalid { reason, .. } => assert!(
+            reason.contains("not a plain relative path"),
+            "unexpected reason: {reason}",
+        ),
+        other => panic!("expected SignatureInvalid, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_bound_ledger_with_an_absolute_path_is_rejected() {
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
+    let (fx, sk) = signed_fixture(ExtensionKind::Design, "greentic.absolute-ledger", "0.1.0");
+    reseal_with_manifest(&fx, &sk, |m| {
+        m.entries[0].path = "/etc/hostname".to_string();
+    });
+
+    let (mut rt, _trust) = new_runtime();
+    let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
+    match err {
+        RuntimeError::SignatureInvalid { reason, .. } => assert!(
+            reason.contains("not a plain relative path"),
+            "unexpected reason: {reason}",
+        ),
+        other => panic!("expected SignatureInvalid, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_pack_nested_past_the_depth_cap_is_refused() {
+    // The coverage walk runs over an unverified directory, so its shape is
+    // attacker-controlled at that moment; an unbounded recursive walk over a
+    // deliberately deep tree aborts the process instead of rejecting the pack.
+    // Empty directories carry no files, so the signed ledger stays intact and
+    // the walk is genuinely what trips.
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
+    let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.deep-pack", "0.1.0");
+    let mut deep = fx.root().to_path_buf();
+    for i in 0..40 {
+        deep = deep.join(format!("d{i}"));
+    }
+    std::fs::create_dir_all(&deep).unwrap();
+
+    let (mut rt, _trust) = new_runtime();
+    let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
+    let rendered = err.to_string();
+    assert!(
+        rendered.contains("nests deeper than"),
+        "expected the depth cap to trip, got: {rendered}"
+    );
 }

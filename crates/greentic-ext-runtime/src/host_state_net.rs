@@ -1,7 +1,8 @@
-//! `Host` impls for the network-facing host interfaces: http, llm, oauth-broker.
+//! `Host` impls for the network-facing host interfaces: http and llm.
 //!
 //! Split out of [`crate::host_state`]; the local impls (logging, i18n, secrets,
-//! broker) live in [`crate::host_state_ports`].
+//! broker) live in [`crate::host_state_ports`] and the oauth-broker impl in
+//! [`crate::host_state_oauth`].
 
 use std::io::Read;
 
@@ -17,13 +18,34 @@ use crate::host_state::HostState;
 /// assets) and far below anything that threatens the process.
 const MAX_RESPONSE_BYTES: u64 = 32 * 1024 * 1024;
 
+/// Render a URL for logging with its credential-bearing parts removed.
+///
+/// Query strings routinely carry `?api_key=`, `?access_token=`, presigned SAS
+/// tokens and OAuth `?code=`, and userinfo carries a password outright. The
+/// denial log below is the sharp case: it fires *because* the URL was rejected,
+/// which is to say on attacker-influenced input.
+fn loggable(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(mut u) => {
+            u.set_query(None);
+            u.set_fragment(None);
+            let _ = u.set_password(None);
+            let _ = u.set_username("");
+            u.to_string()
+        }
+        // Unparseable: the matcher rejected it anyway, and echoing it back into
+        // a log is not worth the chance that it is a credential-bearing string.
+        Err(_) => "<unparseable url>".to_string(),
+    }
+}
+
 impl http::Host for HostState {
     fn fetch(&mut self, req: http::Request) -> Result<http::Response, String> {
         // 1. Permission check via strict UrlMatcher.
         if !self.url_matcher.is_allowed(&req.url) {
             tracing::warn!(
                 ext = %self.extension_id,
-                url = %req.url,
+                url = %loggable(&req.url),
                 "http::fetch permission denied"
             );
             return Err(format!("network not allowed for url: {}", req.url));
@@ -72,12 +94,13 @@ impl http::Host for HostState {
         if final_url.as_str() != req.url && !self.url_matcher.is_allowed(final_url.as_str()) {
             tracing::warn!(
                 ext = %self.extension_id,
-                requested = %req.url,
-                final_url = %final_url,
+                requested = %loggable(&req.url),
+                final_url = %loggable(final_url.as_str()),
                 "http::fetch redirected off the allow-list; response withheld"
             );
             return Err(format!(
-                "network not allowed for redirect target: {final_url}"
+                "network not allowed for redirect target: {}",
+                loggable(final_url.as_str())
             ));
         }
 
@@ -106,7 +129,7 @@ impl http::Host for HostState {
         if body.len() as u64 > MAX_RESPONSE_BYTES {
             tracing::warn!(
                 ext = %self.extension_id,
-                url = %req.url,
+                url = %loggable(&req.url),
                 cap = MAX_RESPONSE_BYTES,
                 "http::fetch response exceeded the body cap"
             );
@@ -354,6 +377,43 @@ mod tests {
 
         let err = h.complete(llm_request(Some("sorla_composer"))).unwrap_err();
         assert!(err.contains("llm role not permitted"), "got: {err}");
+    }
+
+    #[test]
+    fn llm_complete_honours_a_valid_hint_among_several_roles() {
+        // The selection arm itself: with more than one role declared, the hint
+        // decides. Nothing covered a hint that is actually accepted, so the
+        // arm could have returned any declared role and stayed green.
+        let port = Arc::new(FakeLlm {
+            expected_extension_id: "test-ext".to_string(),
+            expected_tenant: None,
+            expected_user_email: None,
+            expected_role: "reviewer".to_string(),
+        });
+        let mut h = HostState::builder(
+            "test-ext".to_string(),
+            perms_with_roles(&["composer", "reviewer"]),
+        )
+        .llm_port(Some(port))
+        .build();
+
+        let resp = h
+            .complete(llm_request(Some("reviewer")))
+            .expect("a declared role named by the hint must be accepted");
+        assert_eq!(resp.content, "echo:you are a composer");
+    }
+
+    #[test]
+    fn llm_complete_rejects_a_hint_that_is_not_among_the_declared_roles() {
+        let mut h = HostState::builder(
+            "test-ext".to_string(),
+            perms_with_roles(&["composer", "reviewer"]),
+        )
+        .llm_port(Some(fake_llm(None, None)))
+        .build();
+
+        let err = h.complete(llm_request(Some("admin"))).unwrap_err();
+        assert!(err.contains("llm role not permitted: admin"), "got: {err}");
     }
 
     #[test]

@@ -31,18 +31,11 @@ impl ExtensionRuntime {
     /// The signature gate runs first and unconditionally — see
     /// [`crate::runtime_verify`].
     pub fn register_loaded_from_dir(&mut self, dir: &Path) -> Result<(), RuntimeError> {
-        self.verify_dir_signature(dir)?;
-        let loaded = LoadedExtension::load_from_dir(self.engine(), dir)?;
+        let describe = self.verify_dir_signature(dir)?;
+        let loaded = LoadedExtension::from_verified(self.engine(), dir, describe)?;
         let id = loaded.id.clone();
 
-        let mut new_map = self.loaded_map();
-        new_map.insert(id.clone(), Arc::new(loaded));
-        let new_registry = Self::rebuild_registry(&new_map)?;
-
-        // Atomically swap in the new loaded map and its registry. Both stores
-        // happen only after the rebuild succeeds, so a bad offered version
-        // leaves the runtime exactly as it was.
-        self.store_loaded(new_map, new_registry);
+        self.mutate_loaded(|map| map.insert(id.clone(), Arc::new(loaded)))?;
 
         self.emit(RuntimeEvent::ExtensionInstalled(id));
         Ok(())
@@ -124,35 +117,82 @@ impl ExtensionRuntime {
         Ok(WatcherGuard::new(stop_tx, join))
     }
 
+    /// Drive one filesystem event through the classifier.
+    ///
+    /// `#[doc(hidden)] pub` for the same reason as [`Self::handle_removal`]:
+    /// the classification itself — which events evict and which reload — is
+    /// what the watcher tests need to pin, and driving a real filesystem
+    /// watcher to reach it would be slow and racy. Not part of the supported
+    /// API.
+    #[doc(hidden)]
+    pub fn handle_fs_event_for_test(
+        &self,
+        event: &crate::watcher::FsEvent,
+    ) -> Result<(), RuntimeError> {
+        self.handle_fs_event(event)
+    }
+
     fn handle_fs_event(&self, event: &crate::watcher::FsEvent) -> Result<(), RuntimeError> {
         use crate::watcher::FsEvent;
         let path = match event {
             FsEvent::Added(p) | FsEvent::Modified(p) | FsEvent::Removed(p) => p.clone(),
         };
 
-        // Classify state file events first. The state file lives at
-        // `<home>/extensions-state.json`, which is outside the per-kind
-        // extension dirs, so `find_extension_dir` would return None — but
-        // matching by filename is cheaper and unambiguous.
-        if path.file_name().is_some_and(|n| n == STATE_FILENAME) {
+        // Classify state file events first. The state file lives at exactly
+        // `<home>/extensions-state.json`. Match the whole path, not the
+        // basename: the home dir is watched recursively, so a basename match
+        // also fired for any pack shipping a file of that name — which both
+        // emitted spurious `StateFileChanged` and, worse, returned early and
+        // skipped re-verifying the pack that file belonged to.
+        let is_state_file = self
+            .config()
+            .paths
+            .home()
+            .is_some_and(|home| path == home.join(STATE_FILENAME));
+        if is_state_file {
             self.emit(RuntimeEvent::StateFileChanged);
             return Ok(());
         }
 
-        let ext_dir = find_extension_dir(&path);
         match event {
-            FsEvent::Removed(_) => {
-                if let Some(dir) = ext_dir {
-                    self.handle_removal(&dir);
-                }
-            }
+            // Removal cannot go through `find_extension_dir`: that resolves a
+            // path by looking for a `describe.json` beside it, and after an
+            // uninstall there is no describe.json to find — so the event was
+            // dropped and the extension stayed loaded and dispatchable until
+            // the process restarted. Match against what is loaded instead, and
+            // let the filesystem confirm which of those are actually gone.
+            FsEvent::Removed(_) => self.evict_vanished_extensions(),
             FsEvent::Added(_) | FsEvent::Modified(_) => {
-                if let Some(dir) = ext_dir {
+                let roots = self.config().paths.all();
+                if let Some(dir) = find_extension_dir(&roots, &path) {
                     self.handle_added_or_modified(&dir)?;
                 }
             }
         }
         Ok(())
+    }
+
+    /// Drop every loaded extension whose source directory no longer exists.
+    ///
+    /// Driven by the removal event rather than by the removed path: an
+    /// uninstall can arrive as one event for the directory, or as a burst of
+    /// per-file events in whatever order the debouncer coalesced them, and
+    /// asking the filesystem which extensions are still there answers all of
+    /// those the same way. Deleting a single asset out of a pack leaves its
+    /// directory in place and so does not evict — the compiled component is
+    /// already in memory, and a re-verify would only reject the pack without
+    /// unloading it.
+    fn evict_vanished_extensions(&self) {
+        let vanished: Vec<ExtensionId> = self
+            .loaded()
+            .iter()
+            .filter(|(_, ext)| !ext.source_dir.exists())
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        for id in vanished {
+            self.evict(&id);
+        }
     }
 
     /// Hot-reload entry point for a removed extension directory.
@@ -162,31 +202,45 @@ impl ExtensionRuntime {
     /// would be slow and racy. Not part of the supported API.
     #[doc(hidden)]
     pub fn handle_removal(&self, dir: &Path) {
-        let current = self.loaded();
-        let Some((id, _)) = current.iter().find(|(_, v)| v.source_dir == dir) else {
-            return;
-        };
-        let id = id.clone();
-        let mut new_map = (*current).clone();
-        new_map.remove(&id);
-        // Rebuilding drops the removed extension's offerings. Leaving them
-        // advertised is the false positive that lets a preflight check pass a
-        // policy the runtime then fails closed on.
-        match Self::rebuild_registry(&new_map) {
-            Ok(new_registry) => {
-                self.store_loaded(new_map, new_registry);
-                self.emit(RuntimeEvent::ExtensionRemoved(id));
-            }
+        // The lookup happens inside the edit so it sees the same map the
+        // removal is applied to; resolving the id outside would reintroduce the
+        // race the lock exists to close.
+        let found = self.mutate_loaded(|map| {
+            let id = map
+                .iter()
+                .find(|(_, v)| v.source_dir == dir)
+                .map(|(id, _)| id.clone())?;
+            map.remove(&id);
+            Some(id)
+        });
+        self.report_eviction(&dir.display().to_string(), found);
+    }
+
+    /// Drop one extension by id.
+    fn evict(&self, id: &ExtensionId) {
+        let found = self.mutate_loaded(|map| map.remove(id).map(|_| id.clone()));
+        self.report_eviction(id.as_str(), found);
+    }
+
+    /// Announce an eviction, or record why one did not happen.
+    ///
+    /// Rebuilding drops the evicted extension's offerings. Leaving them
+    /// advertised is the false positive that lets a preflight check pass a
+    /// policy the runtime then fails closed on.
+    fn report_eviction(&self, subject: &str, found: Result<Option<ExtensionId>, RuntimeError>) {
+        match found {
+            Ok(Some(id)) => self.emit(RuntimeEvent::ExtensionRemoved(id)),
+            Ok(None) => {}
             // Unreachable in practice: an extension whose offered version does
-            // not parse never enters `loaded` (both insert paths rebuild before
-            // storing and bail on error), so a rebuild over a subset of
-            // `loaded` cannot fail. Removal returns no error, so rather than
+            // not parse never enters `loaded` (every insert rebuilds before
+            // storing and bails on error), so a rebuild over a subset of
+            // `loaded` cannot fail. Eviction returns no error, so rather than
             // strand the runtime in a half-applied state we keep both the map
             // and the registry as they were and make the anomaly auditable.
             Err(e) => tracing::error!(
-                extension_id = %id.as_str(),
+                subject,
                 error = %e,
-                "capability registry rebuild failed on removal; extension left loaded"
+                "capability registry rebuild failed on eviction; extension left loaded"
             ),
         }
     }
@@ -203,16 +257,14 @@ impl ExtensionRuntime {
         // this, anyone able to write to a watched extension directory got code
         // execution with no signature check at all — and did not even need to
         // re-sign, since this path previously verified nothing.
-        self.verify_dir_signature(dir)?;
-        let loaded = LoadedExtension::load_from_dir(self.engine(), dir)?;
+        let describe = self.verify_dir_signature(dir)?;
+        let loaded = LoadedExtension::from_verified(self.engine(), dir, describe)?;
         let id = loaded.id.clone();
-        let mut new_map = self.loaded_map();
-        let prev_version = new_map
-            .get(&id)
-            .map(|e| e.describe.metadata.version.clone());
-        new_map.insert(id.clone(), Arc::new(loaded));
-        let new_registry = Self::rebuild_registry(&new_map)?;
-        self.store_loaded(new_map, new_registry);
+        let prev_version = self.mutate_loaded(|map| {
+            let prev = map.get(&id).map(|e| e.describe.metadata.version.clone());
+            map.insert(id.clone(), Arc::new(loaded));
+            prev
+        })?;
         let event = match prev_version {
             Some(prev) => RuntimeEvent::ExtensionUpdated {
                 id,
@@ -225,16 +277,28 @@ impl ExtensionRuntime {
     }
 }
 
-/// Walk up from `p` until a directory containing `describe.json` is found.
+/// Resolve a changed path to the extension directory that owns it, if any.
 ///
-/// Returns `None` at the filesystem root, so an event outside any extension
-/// directory classifies as "not an extension" rather than looping.
-fn find_extension_dir(p: &Path) -> Option<PathBuf> {
+/// An extension directory is `<root>/<kind>/<name>` — exactly what
+/// [`crate::discovery::scan_kind_dir`] enumerates. This walks up from `p` only
+/// as far as that shape allows, and requires the result to sit directly under
+/// a kind directory of one of the configured `roots`.
+///
+/// The bound is the point. Walking up to the filesystem root and taking the
+/// first `describe.json` found meant any nested or dot-prefixed directory
+/// anywhere under the watched tree — places discovery would never enumerate —
+/// got a load attempt, and on success a first-use publisher pin under an
+/// extension id of the writer's choosing. That pin is a write into the store
+/// shared with `gtdx`, so it permanently blocks the genuine publisher for that
+/// id. Making the two enumerators agree on what an extension directory is
+/// closes that door.
+fn find_extension_dir(roots: &[&PathBuf], p: &Path) -> Option<PathBuf> {
     let mut cur = p;
     loop {
         if cur
             .join(greentic_extension_sdk_contract::DESCRIBE_ENTRY_NAME)
             .exists()
+            && is_extension_dir(roots, cur)
         {
             return Some(cur.to_path_buf());
         }
@@ -242,27 +306,74 @@ fn find_extension_dir(p: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Is `dir` a `<root>/<kind>/<name>` directory for one of `roots`?
+fn is_extension_dir(roots: &[&PathBuf], dir: &Path) -> bool {
+    dir.parent()
+        .and_then(Path::parent)
+        .is_some_and(|root| roots.iter().any(|r| r.as_path() == root))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// `<root>/<kind>/<name>/describe.json`, the shape `scan_kind_dir` finds.
+    fn extension_at(root: &Path, kind: &str, name: &str) -> PathBuf {
+        let dir = root.join(kind).join(name);
+        std::fs::create_dir_all(dir.join("assets")).unwrap();
+        std::fs::write(dir.join("describe.json"), b"{}").unwrap();
+        dir
+    }
+
     #[test]
-    fn find_extension_dir_walks_up_to_the_describe() {
+    fn find_extension_dir_walks_up_to_the_owning_extension() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let ext = tmp.path().join("design").join("greentic.demo");
-        std::fs::create_dir_all(ext.join("assets")).unwrap();
-        std::fs::write(ext.join("describe.json"), b"{}").unwrap();
+        let root = tmp.path().to_path_buf();
+        let ext = extension_at(&root, "design", "greentic.demo");
 
         let touched = ext.join("assets").join("icon.svg");
-        assert_eq!(find_extension_dir(&touched), Some(ext));
+        assert_eq!(find_extension_dir(&[&root], &touched), Some(ext));
     }
 
     #[test]
     fn find_extension_dir_gives_up_outside_an_extension() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let stray = tmp.path().join("not-an-extension.txt");
+        let root = tmp.path().to_path_buf();
+        let stray = root.join("not-an-extension.txt");
         std::fs::write(&stray, b"x").unwrap();
-        // Walks to the filesystem root and stops there rather than looping.
-        assert_eq!(find_extension_dir(&stray), None);
+        assert_eq!(find_extension_dir(&[&root], &stray), None);
+    }
+
+    #[test]
+    fn a_describe_nested_below_the_expected_depth_is_not_an_extension() {
+        // A `describe.json` smuggled one level deeper than `<root>/<kind>/<name>`
+        // is somewhere `scan_kind_dir` would never look. Loading it would hand
+        // whoever wrote it a first-use publisher pin under an id of their
+        // choosing, in the trust store gtdx shares.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let nested = root.join("design").join("greentic.demo").join("smuggled");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("describe.json"), b"{}").unwrap();
+
+        // It resolves to the real extension above it, never to the nested dir.
+        assert_eq!(
+            find_extension_dir(&[&root], &nested.join("describe.json")),
+            None,
+            "the enclosing directory has no describe.json of its own here"
+        );
+    }
+
+    #[test]
+    fn a_describe_outside_every_configured_root_is_ignored() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().join("configured");
+        std::fs::create_dir_all(&root).unwrap();
+        let elsewhere = extension_at(&tmp.path().join("elsewhere"), "design", "greentic.rogue");
+
+        assert_eq!(
+            find_extension_dir(&[&root], &elsewhere.join("describe.json")),
+            None
+        );
     }
 }

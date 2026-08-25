@@ -124,10 +124,30 @@ impl UrlMatcher {
         };
         let port = parsed.port_or_known_default();
         let path = parsed.path();
+        // `url` decodes and normalizes `..`, but leaves `%2f` and `%5c` encoded
+        // — and a server that decodes them before routing resolves
+        // `/v1/..%2f..%2fadmin` to `/admin`, walking straight out of a narrow
+        // path grant. An encoded separator has no legitimate use in a path we
+        // are about to prefix-match, so it is refused rather than guessed at.
+        if contains_encoded_separator(path) {
+            return false;
+        }
         self.patterns
             .iter()
             .any(|pat| pat.matches(parsed.scheme(), host, port, path))
     }
+}
+
+/// Does `path` carry a percent-encoded `/` or `\`?
+fn contains_encoded_separator(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.windows(3).any(|w| {
+        w[0] == b'%'
+            && matches!(
+                (w[1].to_ascii_lowercase(), w[2].to_ascii_lowercase()),
+                (b'2', b'f') | (b'5', b'c')
+            )
+    })
 }
 
 impl ParsedPattern {

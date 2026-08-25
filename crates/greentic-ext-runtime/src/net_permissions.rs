@@ -66,23 +66,21 @@ pub(crate) fn effective_url_matcher(
     // any loopback http pattern remains so we can flip the matcher-wide
     // allow_http toggle.
     let mut allow_loopback_http = false;
-    patterns.retain(|p| {
-        if let Some(host) = http_pattern_host(p) {
-            if is_loopback_host(host) {
-                allow_loopback_http = true;
-                true
-            } else {
-                tracing::warn!(
-                    pattern = %p,
-                    "dropping non-loopback http url pattern; plain http is only honoured for loopback hosts"
-                );
-                false
-            }
-        } else {
-            // https (or any non-http) pattern — kept verbatim; UrlMatcher
-            // validates it on construction.
+    patterns.retain(|p| match classify_http_pattern(p) {
+        HttpClass::Loopback => {
+            allow_loopback_http = true;
             true
         }
+        HttpClass::Public => {
+            tracing::warn!(
+                pattern = %p,
+                "dropping non-loopback http url pattern; plain http is only honoured for loopback hosts"
+            );
+            false
+        }
+        // https (or any non-http) pattern — kept verbatim; UrlMatcher
+        // validates it on construction.
+        HttpClass::Other => true,
     });
 
     crate::url_matcher::UrlMatcher::from_patterns(patterns).with_allow_http(allow_loopback_http)
@@ -97,30 +95,56 @@ pub(crate) fn effective_url_matcher(
 /// returned with their brackets intact so that `is_loopback_host` can strip
 /// them: splitting on the first `:` would otherwise yield the bare `"["`
 /// opener and misclassify `[::1]` as non-loopback.
-fn http_pattern_host(pattern: &str) -> Option<&str> {
-    let rest = pattern.strip_prefix("http://")?;
-    let host_and_port = rest.split('/').next().unwrap_or(rest);
-    // Strip the userinfo (`user@host`) if present.
-    let host_and_port = host_and_port.rsplit('@').next().unwrap_or(host_and_port);
-    // Bracketed IPv6 literal: `[::1]` or `[::1]:8787`.
-    // Return the bracketed token (including the `]`) so is_loopback_host can
-    // strip the brackets and compare against `::1`.
-    let host = if let Some(bracket_end) = host_and_port.find(']') {
-        &host_and_port[..=bracket_end]
-    } else {
-        // Plain hostname or IPv4: split on first `:` to drop optional port.
-        host_and_port.split(':').next().unwrap_or(host_and_port)
-    };
-    Some(host.trim_start_matches("*."))
+/// How a declared pattern is classified for the plain-http rule.
+#[derive(Debug, PartialEq, Eq)]
+enum HttpClass {
+    /// Plain http to a loopback address — keep it, and switch the toggle on.
+    Loopback,
+    /// Plain http to anything else — drop it; it could never be honoured safely.
+    Public,
+    /// Not plain http (https, or a scheme the matcher will reject on its own).
+    Other,
 }
 
-/// Loopback hosts for which plain http is acceptable: `localhost`,
-/// `127.0.0.1` (any IPv4 loopback in `127.0.0.0/8` would also qualify, but
-/// the only spellings extensions declare in practice are these two and
-/// `[::1]`), and the IPv6 loopback.
-fn is_loopback_host(host: &str) -> bool {
-    let host = host.trim_start_matches('[').trim_end_matches(']');
-    host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" || host == "::1"
+/// Classify a declared pattern with the *same parser the matcher uses*.
+///
+/// This used to be hand-rolled string surgery — `strip_prefix("http://")`, then
+/// split on `/`, then `rsplit('@')` — and the two disagreed about where the
+/// authority ends. `Url` terminates it at `/`, `?`, `#`, or `\`, and normalizes
+/// the scheme; the string version stopped only at `/` and matched the scheme
+/// literally. Every gap between them was a plain-http downgrade to a public
+/// host: `http://evil.com?@localhost/*` classified as loopback (last `@` yields
+/// `localhost`) and so both survived the drop *and* switched the toggle on,
+/// while the matcher resolved the host to `evil.com` with a path prefix of `/`.
+/// `HTTP://evil.com/*` and a leading space did the same by failing the literal
+/// prefix test and being waved through as "not http".
+///
+/// One parser decides both, so there is no gap left to disagree in.
+fn classify_http_pattern(pattern: &str) -> HttpClass {
+    // The matcher normalizes `*.` into a placeholder label before parsing;
+    // do the same here so a wildcard pattern reaches `Url` in the same shape.
+    let normalized = pattern
+        .trim_end_matches("/*")
+        .replace("://*.", "://__wildcard__.");
+    let Ok(url) = url::Url::parse(&normalized) else {
+        // Unparseable patterns are dropped by `UrlMatcher::from_patterns`
+        // anyway; classifying as NotHttp keeps them out of the toggle.
+        return HttpClass::Other;
+    };
+    if url.scheme() != "http" {
+        return HttpClass::Other;
+    }
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) if ip.is_loopback() => HttpClass::Loopback,
+        Some(url::Host::Ipv6(ip)) if ip.is_loopback() => HttpClass::Loopback,
+        // `localhost` only, and only as the whole host. A wildcard pattern
+        // arrives here as `__wildcard__.localhost`, which is not loopback —
+        // `*.localhost` resolves through the system resolver like any other
+        // name, so treating it as loopback would hand plain http to whatever a
+        // search-domain quirk points `evil.localhost` at.
+        Some(url::Host::Domain(d)) if d.eq_ignore_ascii_case("localhost") => HttpClass::Loopback,
+        _ => HttpClass::Public,
+    }
 }
 
 #[cfg(test)]
@@ -272,6 +296,33 @@ mod tests {
         );
     }
 
+    /// A declaration that mixes loopback http with a *public* http host must
+    /// keep only the loopback one.
+    ///
+    /// This is the case that isolates the drop step. Every other http test
+    /// declares a public host alone, where the denial comes from
+    /// `allow_loopback_http` never being switched on — so the `retain` that
+    /// drops public-host http patterns could be deleted outright and the suite
+    /// would stay green, while an extension declaring both got cleartext http
+    /// to the public host.
+    #[test]
+    fn a_loopback_declaration_does_not_carry_a_public_http_host_with_it() {
+        let declared = vec![
+            "http://127.0.0.1:8787/*".to_string(),
+            "http://evil.com/*".to_string(),
+        ];
+        let matcher = effective_url_matcher(&declared, empty_override());
+
+        assert!(
+            matcher.is_allowed("http://127.0.0.1:8787/execute"),
+            "the loopback pattern must survive"
+        );
+        assert!(
+            !matcher.is_allowed("http://evil.com/anything"),
+            "the loopback opt-in must not carry a public http host through with it"
+        );
+    }
+
     /// A bracketed IPv6 loopback `http://[::1]:8787/*` must survive the
     /// loopback filter and allow plain http to `http://[::1]:8787/x`.
     ///
@@ -320,5 +371,71 @@ mod tests {
             !matcher.is_allowed("http://[::1]/x"),
             "bad pattern must not accidentally allow real IPv6 loopback"
         );
+    }
+
+    /// Authority-delimiter smuggling. `Url` ends the authority at `?`, `#` or
+    /// `\` as well as `/`; the old hand-rolled parser stopped only at `/` and
+    /// then took the text after the last `@`, so each of these read as
+    /// `localhost` — surviving the drop AND switching the matcher-wide http
+    /// toggle on — while the matcher resolved the host to `evil.com`.
+    #[test]
+    fn a_pattern_that_smuggles_loopback_past_the_authority_is_not_loopback() {
+        for pattern in [
+            "http://evil.com?@localhost/*",
+            "http://evil.com#@localhost/*",
+            "http://evil.com\\@localhost/*",
+        ] {
+            let matcher = effective_url_matcher(&[pattern.to_string()], empty_override());
+            assert!(
+                !matcher.is_allowed("http://evil.com/anything"),
+                "{pattern} must not grant plain http to evil.com"
+            );
+            assert!(
+                !matcher.is_allowed("http://evil.com/@localhost/pwn"),
+                "{pattern} must not grant plain http to evil.com"
+            );
+        }
+    }
+
+    /// Scheme spelling and leading whitespace. `strip_prefix("http://")` is a
+    /// literal, non-trimming match, so both of these were misclassified as
+    /// "not http" and kept verbatim — and once any loopback pattern turned the
+    /// toggle on, the matcher honoured them.
+    #[test]
+    fn an_oddly_spelled_http_pattern_is_still_classified_as_http() {
+        for odd in ["HTTP://evil.com/*", " http://evil.com/*"] {
+            let declared = vec!["http://127.0.0.1:1/*".to_string(), odd.to_string()];
+            let matcher = effective_url_matcher(&declared, empty_override());
+            assert!(
+                !matcher.is_allowed("http://evil.com/anything"),
+                "{odd} must not survive the public-http drop"
+            );
+        }
+    }
+
+    /// `*.localhost` is not loopback: it resolves through the system resolver
+    /// like any other name, so a search-domain quirk could point
+    /// `evil.localhost` anywhere.
+    #[test]
+    fn a_wildcard_localhost_pattern_is_not_treated_as_loopback() {
+        let matcher =
+            effective_url_matcher(&["http://*.localhost/*".to_string()], empty_override());
+        assert!(
+            !matcher.is_allowed("http://evil.localhost/x"),
+            "a wildcard under .localhost must not get the loopback exemption"
+        );
+    }
+
+    /// Any address in `127.0.0.0/8` is loopback, not just the canonical
+    /// spelling — and `Url` normalizes `127.1` and `0x7f000001` into it.
+    #[test]
+    fn other_ipv4_loopback_spellings_are_loopback() {
+        for pattern in ["http://127.0.0.2:8787/*", "http://127.1:8787/*"] {
+            let matcher = effective_url_matcher(&[pattern.to_string()], empty_override());
+            assert!(
+                matcher.patterns().iter().any(|p| p == pattern),
+                "{pattern} should have been kept as loopback"
+            );
+        }
     }
 }

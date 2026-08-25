@@ -2,8 +2,8 @@
 //!
 //! This module owns the state and its builder. The `Host` trait impls that
 //! back the imported interfaces live in the siblings: `host_state_ports`
-//! (logging / i18n / secrets / broker) and `host_state_net` (http / llm /
-//! oauth-broker), so no single file carries the whole host surface.
+//! (logging / i18n / secrets / broker), `host_state_net` (http / llm), and
+//! `host_state_oauth`, so no single file carries the whole host surface.
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
@@ -41,6 +41,10 @@ pub struct HostState {
     pub(crate) url_matcher: UrlMatcher,
     pub(crate) runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     pub(crate) oauth_config: Option<crate::oauth::OAuthBrokerConfig>,
+    /// Memory/table ceilings, read back by `Store::limiter`. Lives here because
+    /// wasmtime resolves the limiter out of the store's data on every growth
+    /// request.
+    pub(crate) limits: wasmtime::StoreLimits,
     // WASI state — required because cargo-component-built WASM components
     // implicitly import WASI interfaces (wasi:cli/environment etc.).
     wasi: WasiCtx,
@@ -188,6 +192,7 @@ impl HostStateBuilder {
             url_matcher: self.url_matcher,
             runtime_weak: self.runtime_weak,
             oauth_config: self.oauth_config,
+            limits: crate::limits::store_limits(),
             // A default WASI context grants no preopened directory, no
             // environment, and no stdio — cargo-component imports the
             // interfaces unconditionally, but nothing behind them is reachable.

@@ -85,14 +85,36 @@ pub struct TargetSummary {
 ///
 /// Note: no `serde` derives — `artifact_bytes` is a raw binary blob handed
 /// to the WASM guest verbatim; JSON-encoding it would be wasteful and
-/// incorrect.
-#[derive(Debug, Clone)]
+/// incorrect. No derived `Debug` either: see the manual impl below.
+#[derive(Clone)]
 pub struct DeployRequest {
     pub target_id: String,
     pub artifact_bytes: Vec<u8>,
     pub credentials_json: String,
     pub config_json: String,
     pub deployment_name: String,
+}
+
+impl std::fmt::Debug for DeployRequest {
+    /// Redacts `credentials_json` and elides `artifact_bytes`.
+    ///
+    /// `credentials_json` is the cloud credential the deploy target needs —
+    /// AWS keys, GitHub tokens, registry passwords. A derived `Debug` put all
+    /// of it into any `{:?}` of the request, which the wizard's deploy step is
+    /// exactly the kind of code to log on failure. `artifact_bytes` is elided
+    /// for a duller reason: it is megabytes of zip.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeployRequest")
+            .field("target_id", &self.target_id)
+            .field(
+                "artifact_bytes",
+                &format_args!("<{} bytes>", self.artifact_bytes.len()),
+            )
+            .field("credentials_json", &"<redacted>")
+            .field("config_json", &self.config_json)
+            .field("deployment_name", &self.deployment_name)
+            .finish()
+    }
 }
 
 /// Host-side mirror of WIT `greentic:extension-deploy/deployment@0.1.0::deploy-status`.
@@ -326,5 +348,31 @@ mod target_summary_tests {
         let back: TargetSummary = serde_json::from_str(&json).unwrap();
         assert_eq!(back.id, t.id);
         assert!(back.supports_rollback);
+    }
+}
+
+#[cfg(test)]
+mod deploy_request_tests {
+    use super::DeployRequest;
+
+    #[test]
+    fn debug_never_renders_deploy_credentials() {
+        let req = DeployRequest {
+            target_id: "aws-ecs".into(),
+            artifact_bytes: vec![0u8; 4096],
+            credentials_json: r#"{"aws_secret_access_key":"AKIAsupersecret"}"#.into(),
+            config_json: r#"{"region":"eu-west-1"}"#.into(),
+            deployment_name: "demo".into(),
+        };
+        let rendered = format!("{req:?}");
+        assert!(
+            !rendered.contains("AKIAsupersecret"),
+            "deploy credentials must never reach a log: {rendered}"
+        );
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        // Non-secret fields stay legible, and the blob is summarised not dumped.
+        assert!(rendered.contains("aws-ecs"), "{rendered}");
+        assert!(rendered.contains("eu-west-1"), "{rendered}");
+        assert!(rendered.contains("<4096 bytes>"), "{rendered}");
     }
 }

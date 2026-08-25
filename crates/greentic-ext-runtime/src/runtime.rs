@@ -1,8 +1,11 @@
-//! Runtime core: configuration, the loaded/registry stores, and the shared
-//! plumbing every dispatch module builds on.
+//! Runtime core: the loaded/registry stores and the shared plumbing every
+//! dispatch module builds on. Configuration lives in
+//! [`crate::runtime_config`].
 //!
-//! The per-interface dispatch lives in sibling modules — [`crate::runtime_design`],
-//! [`crate::runtime_deploy`], [`crate::runtime_bundle`], [`crate::runtime_roles`],
+//! The per-interface dispatch lives in sibling modules —
+//! [`crate::runtime_design`], [`crate::runtime_knowledge`],
+//! [`crate::runtime_deploy`], [`crate::runtime_targets`],
+//! [`crate::runtime_bundle`], [`crate::runtime_roles`],
 //! [`crate::runtime_dw_composer`] — and the load gate in
 //! [`crate::runtime_verify`] / [`crate::runtime_registry`]. Each carries its own
 //! `impl ExtensionRuntime` block so no single file outgrows the 500-line cap.
@@ -20,116 +23,32 @@ use crate::discovery::DiscoveryPaths;
 use crate::error::RuntimeError;
 use crate::host_state::HostState;
 use crate::loaded::{ExtensionId, HostOverrides, LoadedExtensionRef};
+use crate::runtime_config::RuntimeConfig;
 
 /// Capacity of the [`RuntimeEvent`] broadcast channel. Subscribers that fall
 /// this far behind lose the oldest events (`broadcast` semantics) rather than
 /// stalling the watcher thread.
 const EVENT_CHANNEL_CAPACITY: usize = 64;
 
-/// Configuration passed to [`ExtensionRuntime::new`].
-///
-/// Carries both the filesystem discovery paths and the [`HostOverrides`]
-/// bundle that every dispatch call injects into the wasmtime `HostState`.
-/// Callers that only need defaults (tests, simple CLI tools) can use
-/// [`RuntimeConfig::from_paths`]; production callers that need real
-/// i18n/secrets/HTTP backends chain [`RuntimeConfig::with_host_overrides`]
-/// before handing the config to the runtime.
-#[derive(Clone, Debug)]
-pub struct RuntimeConfig {
-    pub paths: DiscoveryPaths,
-    /// Host-function overrides threaded into every WASM dispatch.
-    /// Defaults to [`HostOverrides::default()`] (key-translator, empty
-    /// secrets, no HTTP client, empty allow-list, no broker weak ref).
-    /// Production callers replace this via [`RuntimeConfig::with_host_overrides`]
-    /// or the ergonomic [`ExtensionRuntime::with_host_overrides`] builder.
-    pub host_overrides: HostOverrides,
-    /// Root of the TOFU publisher-key store (`<root>/trust/publishers.json`).
-    /// `None` resolves as [`RuntimeConfig::resolve_trust_root`] describes —
-    /// `$GREENTIC_HOME`, else `~/.greentic`. Tests point this at a temp dir.
-    pub trust_root: Option<PathBuf>,
-}
-
-impl RuntimeConfig {
-    /// Construct a config from discovery paths, using production-safe
-    /// [`HostOverrides::default()`] (no HTTP client, empty secrets/i18n).
-    #[must_use]
-    pub fn from_paths(paths: DiscoveryPaths) -> Self {
-        Self {
-            paths,
-            host_overrides: HostOverrides::default(),
-            trust_root: None,
-        }
-    }
-
-    /// Override the TOFU trust-store root. Returns `self` for builder-style
-    /// chaining. Mainly for tests — production should leave this `None` so the
-    /// root resolves to the same store `gtdx` writes.
-    #[must_use]
-    pub fn with_trust_root(mut self, root: PathBuf) -> Self {
-        self.trust_root = Some(root);
-        self
-    }
-
-    /// Resolve the root under which the TOFU publisher-key store lives.
-    ///
-    /// Resolution order, mirroring `gtdx` exactly:
-    /// 1. an explicit [`RuntimeConfig::with_trust_root`] override,
-    /// 2. `$GREENTIC_HOME` (gtdx's `--home` flag reads the same var),
-    /// 3. `~/.greentic`.
-    ///
-    /// This deliberately does **not** derive from [`DiscoveryPaths`]. The
-    /// trust store keys publisher keys by extension *id*; it has no
-    /// relationship to where an extension directory happens to live.
-    /// `DiscoveryPaths::home()` equals `~/.greentic` only by coincidence in
-    /// the default layout and diverges under either `$GREENTIC_HOME` or the
-    /// runner's `GREENTIC_EXTENSIONS_DIR` override — in which case a TOFU
-    /// check would silently re-pin into a *different* store instead of
-    /// matching the one gtdx populated.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`RuntimeError::Io`] when no override or `$GREENTIC_HOME` is
-    /// set and the platform reports no home directory. Failing closed is
-    /// deliberate: any invented fallback root would pin somewhere gtdx never
-    /// reads, which is the silent-mismatch failure this resolution exists to
-    /// prevent.
-    pub fn resolve_trust_root(&self) -> Result<PathBuf, RuntimeError> {
-        if let Some(root) = &self.trust_root {
-            return Ok(root.clone());
-        }
-        if let Some(home) = std::env::var_os("GREENTIC_HOME").filter(|v| !v.is_empty()) {
-            return Ok(PathBuf::from(home));
-        }
-        directories::BaseDirs::new()
-            .map(|d| d.home_dir().join(".greentic"))
-            .ok_or_else(|| {
-                RuntimeError::Io(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "cannot resolve the extension trust root: no home directory on this platform \
-                     and GREENTIC_HOME is unset",
-                ))
-            })
-    }
-
-    /// Replace the [`HostOverrides`] bundle. Returns `self` for builder-style
-    /// chaining:
-    ///
-    /// ```ignore
-    /// let config = RuntimeConfig::from_paths(paths)
-    ///     .with_host_overrides(production_overrides);
-    /// ```
-    #[must_use]
-    pub fn with_host_overrides(mut self, overrides: HostOverrides) -> Self {
-        self.host_overrides = overrides;
-        self
-    }
-}
-
 pub struct ExtensionRuntime {
     engine: Engine,
     config: RuntimeConfig,
     loaded: ArcSwap<HashMap<ExtensionId, LoadedExtensionRef>>,
     capability_registry: ArcSwap<CapabilityRegistry>,
+    /// Advances `engine`'s epoch so dispatch deadlines can fire. Dropping it
+    /// stops the ticker, so it is held for the runtime's whole life.
+    _epoch_ticker: crate::limits::EpochTicker,
+    /// Serialises the read-modify-write in [`Self::mutate_loaded`].
+    ///
+    /// `ArcSwap` makes each individual store atomic, which is what readers
+    /// need, but the mutators clone the map, edit the clone, and store it back.
+    /// Two of those running concurrently — the watcher thread reloading while
+    /// the embedder unregisters, say — lose one of the two edits. Losing an
+    /// insert is a missing extension; losing a *removal* leaves an evicted
+    /// extension in `loaded` with its capabilities still advertised through
+    /// `offerings()`, which is exactly the stale-offering false positive the
+    /// wholesale rebuild exists to prevent.
+    write_lock: std::sync::Mutex<()>,
     events: broadcast::Sender<RuntimeEvent>,
 }
 
@@ -141,7 +60,6 @@ pub enum RuntimeEvent {
         prev_version: String,
     },
     ExtensionRemoved(ExtensionId),
-    CapabilityRegistryRebuilt,
     /// `~/.greentic/extensions-state.json` was created or modified. Subscribers
     /// should reload extension state and re-apply their enable/disable filter.
     StateFileChanged,
@@ -186,6 +104,9 @@ impl ExtensionRuntime {
     pub fn new(config: RuntimeConfig) -> Result<Self, RuntimeError> {
         let mut ec = wasmtime::Config::new();
         ec.wasm_component_model(true);
+        // Required for the per-dispatch deadline in `crate::limits`. Cheap when
+        // no deadline is set: wasm checks a counter it would otherwise ignore.
+        ec.epoch_interruption(true);
 
         // Persist compiled component artifacts to an on-disk cache. Without
         // this, every `Component::from_file` recompiles the WASM via Cranelift
@@ -205,11 +126,14 @@ impl ExtensionRuntime {
 
         let engine = Engine::new(&ec).map_err(|e| RuntimeError::Wasmtime(e.into()))?;
         let (tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        let epoch_ticker = crate::limits::EpochTicker::spawn(&engine);
         Ok(Self {
             engine,
             config,
             loaded: ArcSwap::from_pointee(HashMap::new()),
             capability_registry: ArcSwap::from_pointee(CapabilityRegistry::default()),
+            _epoch_ticker: epoch_ticker,
+            write_lock: std::sync::Mutex::new(()),
             events: tx,
         })
     }
@@ -283,25 +207,36 @@ impl ExtensionRuntime {
         self.capability_registry.load_full()
     }
 
-    /// Snapshot of the loaded map, cloned for mutation by the registration
-    /// paths in [`crate::runtime_registry`].
-    pub(crate) fn loaded_map(&self) -> HashMap<ExtensionId, LoadedExtensionRef> {
-        (**self.loaded.load()).clone()
-    }
-
-    /// Publish a new loaded map together with the registry derived from it.
+    /// Apply `edit` to the loaded map and publish it with a registry rebuilt
+    /// from the result.
     ///
-    /// The pair is stored together on purpose: a registry that does not come
-    /// from the map beside it is the stale-offering bug the wholesale rebuild
-    /// exists to prevent. Callers must pass a registry produced by
-    /// [`Self::rebuild_registry`] over exactly this map.
-    pub(crate) fn store_loaded(
+    /// The whole read-modify-write runs under one lock, and the map and its
+    /// registry are stored together, so no caller can leave the two out of step
+    /// or drop another thread's edit. This is the *only* way to mutate
+    /// `loaded`; a new mutation path that bypasses it reintroduces both bugs at
+    /// once. `edit` returns whatever the caller needs to report afterwards.
+    ///
+    /// If the rebuild fails, nothing is stored — the runtime is left exactly as
+    /// it was rather than half-applied.
+    pub(crate) fn mutate_loaded<T>(
         &self,
-        map: HashMap<ExtensionId, LoadedExtensionRef>,
-        registry: CapabilityRegistry,
-    ) {
+        edit: impl FnOnce(&mut HashMap<ExtensionId, LoadedExtensionRef>) -> T,
+    ) -> Result<T, RuntimeError> {
+        // A poisoned lock means a previous mutator panicked mid-edit. Its
+        // partial work was never stored (nothing is published until the rebuild
+        // succeeds), so the map behind the lock is still consistent and
+        // recovering it is better than refusing every later load.
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let mut map = (**self.loaded.load()).clone();
+        let out = edit(&mut map);
+        let registry = Self::rebuild_registry(&map)?;
         self.loaded.store(Arc::new(map));
         self.capability_registry.store(Arc::new(registry));
+        Ok(out)
     }
 
     /// Broadcast a lifecycle event.
@@ -333,9 +268,11 @@ impl ExtensionRuntime {
         ctx: &crate::host_ports::HostCallContext,
     ) -> Result<(wasmtime::Store<HostState>, wasmtime::component::Instance), RuntimeError> {
         let loaded = self.lookup(ext_id)?;
-        loaded
+        let (mut store, instance) = loaded
             .build_store_and_instance(&self.engine, self.config.host_overrides.clone(), ctx)
-            .map_err(RuntimeError::Wasmtime)
+            .map_err(RuntimeError::Wasmtime)?;
+        crate::limits::apply(&mut store, self.config.dispatch_timeout);
+        Ok((store, instance))
     }
 
     /// Look a loaded extension up by id, or fail with
@@ -474,6 +411,21 @@ mod tests {
             Some(RuntimeError::NotFound(id)) => assert_eq!(id, "greentic.absent"),
             other => panic!("expected NotFound, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_default_config_bounds_dispatch() {
+        // Fail-closed default: a host that configures nothing still gets a
+        // wall-clock ceiling, so a runaway guest traps instead of wedging the
+        // calling thread for the life of the process.
+        let config = RuntimeConfig::from_paths(DiscoveryPaths::new(PathBuf::from("/dev/null")));
+        assert_eq!(
+            config.dispatch_timeout,
+            Some(crate::limits::DEFAULT_DISPATCH_TIMEOUT)
+        );
+
+        let unbounded = config.clone().with_dispatch_timeout(None);
+        assert!(unbounded.dispatch_timeout.is_none(), "hosts can opt out");
     }
 
     #[test]

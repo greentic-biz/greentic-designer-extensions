@@ -6,6 +6,9 @@ use wasmtime::Store;
 use wasmtime::component::{Component, HasSelf, Instance, Linker};
 
 use crate::health::ExtensionHealth;
+
+/// Design-side component every dual-layout pack ships at its root.
+const DESIGN_WASM_NAME: &str = "extension.wasm";
 use crate::host_state::HostState;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -45,13 +48,25 @@ pub struct LoadedExtension {
 }
 
 impl LoadedExtension {
-    pub fn load_from_dir(engine: &wasmtime::Engine, source_dir: &Path) -> anyhow::Result<Self> {
-        let describe_path = source_dir.join("describe.json");
-        let describe_bytes = std::fs::read(&describe_path)?;
-        let describe_value: serde_json::Value = serde_json::from_slice(&describe_bytes)?;
-        greentic_extension_sdk_contract::schema::validate_describe_json(&describe_value)
-            .map_err(|e| anyhow::anyhow!("invalid describe.json: {e}"))?;
-        let describe: DescribeJson = serde_json::from_value(describe_value)?;
+    /// Instantiate from the describe the load gate already verified.
+    ///
+    /// Taking the describe rather than re-reading it is the point: the gate
+    /// parses `describe.json`, and every field that decides *identity and
+    /// authority* is read back out of it here — `metadata.id` (the registration
+    /// key, and the key the publisher pin is filed under) and
+    /// `runtime.permissions` (the network allow-list and the secret namespace).
+    /// Re-reading the file would let a writer who lands between the two reads
+    /// have the runtime verify and pin one identity while registering a
+    /// different one, with wide-open permissions, from a directory the
+    /// installer owns and any user process can write.
+    ///
+    /// The component bytes are still read from disk here; see
+    /// `ExtensionRuntime::verify_dir_signature` for what that leaves open.
+    pub(crate) fn from_verified(
+        engine: &wasmtime::Engine,
+        source_dir: &Path,
+        describe: DescribeJson,
+    ) -> anyhow::Result<Self> {
         // Every load path funnels through here, so the report fires once per
         // load — boot and hot-reload — and never per `list_tools()` call.
         crate::tool_metadata_report::report_tool_metadata_gaps(&describe);
@@ -74,7 +89,7 @@ impl LoadedExtension {
     /// Build a fresh wasmtime Store with [`HostState`] and instantiate the component.
     /// Each call creates a new instance: a `Store` is single-threaded and
     /// carries this dispatch's `HostState`, so it is never reused across calls.
-    pub fn build_store_and_instance(
+    pub(crate) fn build_store_and_instance(
         &self,
         engine: &wasmtime::Engine,
         host_overrides: HostOverrides,
@@ -176,7 +191,7 @@ fn wasm_component_path(describe: &DescribeJson, source_dir: &Path) -> anyhow::Re
     // Provider, llm-openai (DesignExtension), and bundle-standard (BundleExtension)
     // all follow this layout. Older single-component extensions that don't ship
     // `extension.wasm` fall back to the describe.json declared path below.
-    let design_wasm = source_dir.join("extension.wasm");
+    let design_wasm = source_dir.join(DESIGN_WASM_NAME);
     if design_wasm.exists() {
         return Ok(design_wasm);
     }
@@ -198,7 +213,16 @@ fn wasm_component_path(describe: &DescribeJson, source_dir: &Path) -> anyhow::Re
             "describe.runtime.components[{id:?}].gtpack must be set for source-dir loads (OCI-only deploy is not yet supported)",
         )
     })?;
-    Ok(source_dir.join(gtpack.file.as_str()))
+    // `gtpack.file` is a publisher-controlled string that goes straight into
+    // the component compiler, so it gets the same path discipline as a ledger
+    // entry. `Path::join` honours an absolute path by discarding `source_dir`,
+    // and `..` walks out of the pack — either would compile bytes that sit
+    // outside the directory the manifest covers, which is to say bytes no
+    // signature and no hash has ever seen. Constrained to the pack, the file is
+    // necessarily one the ledger lists, because `verify_dir_manifest` rejects
+    // any file in the directory that it does not.
+    crate::runtime_verify::pack_relative_path(source_dir, gtpack.file.as_str())
+        .map_err(|e| anyhow::anyhow!("describe.runtime.components[{id:?}].gtpack.file: {e}"))
 }
 
 pub type LoadedExtensionRef = Arc<LoadedExtension>;
