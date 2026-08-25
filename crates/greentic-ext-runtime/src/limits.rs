@@ -77,7 +77,7 @@ impl EpochTicker {
         let stop = Arc::new(AtomicBool::new(false));
         let weak = engine.weak();
         let flag = stop.clone();
-        let join = std::thread::Builder::new()
+        let spawned = std::thread::Builder::new()
             .name("greentic-ext-epoch".to_string())
             .spawn(move || {
                 while !flag.load(Ordering::Relaxed) {
@@ -90,8 +90,22 @@ impl EpochTicker {
                     };
                     engine.increment_epoch();
                 }
-            })
-            .ok();
+            });
+
+        // Without this thread the epoch never advances, so every dispatch
+        // deadline is unreachable and the runaway-guest guard is off — the one
+        // failure here that must not pass in silence, because everything
+        // downstream keeps working exactly as if it were armed.
+        let join = match spawned {
+            Ok(handle) => Some(handle),
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "could not start the epoch ticker; extension dispatch deadlines will NOT fire"
+                );
+                None
+            }
+        };
         Self { stop, join }
     }
 }

@@ -416,10 +416,25 @@ mod tests {
     /// `*.localhost` is not loopback: it resolves through the system resolver
     /// like any other name, so a search-domain quirk could point
     /// `evil.localhost` anywhere.
+    ///
+    /// Declared *alongside* a real loopback pattern on purpose. On its own the
+    /// wildcard is denied by the global https gate however it was classified,
+    /// so the test would pass even if the classifier waved it through. It is
+    /// the real loopback entry that switches the matcher-wide http toggle on,
+    /// and only with the toggle on does the wildcard's classification decide
+    /// anything.
     #[test]
     fn a_wildcard_localhost_pattern_is_not_treated_as_loopback() {
-        let matcher =
-            effective_url_matcher(&["http://*.localhost/*".to_string()], empty_override());
+        let declared = vec![
+            "http://127.0.0.1:8787/*".to_string(),
+            "http://*.localhost/*".to_string(),
+        ];
+        let matcher = effective_url_matcher(&declared, empty_override());
+
+        assert!(
+            matcher.is_allowed("http://127.0.0.1:8787/x"),
+            "the real loopback pattern must still work"
+        );
         assert!(
             !matcher.is_allowed("http://evil.localhost/x"),
             "a wildcard under .localhost must not get the loopback exemption"

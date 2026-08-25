@@ -186,7 +186,7 @@ impl ExtensionRuntime {
         let vanished: Vec<ExtensionId> = self
             .loaded()
             .iter()
-            .filter(|(_, ext)| !ext.source_dir.exists())
+            .filter(|(_, ext)| has_vanished(&ext.source_dir))
             .map(|(id, _)| id.clone())
             .collect();
 
@@ -195,11 +195,17 @@ impl ExtensionRuntime {
         }
     }
 
-    /// Hot-reload entry point for a removed extension directory.
+    /// Drop the extension loaded from `dir`, addressed by its source path.
+    ///
+    /// The watcher no longer routes through here — it goes through
+    /// [`Self::evict_vanished_extensions`], which asks the filesystem rather
+    /// than trusting the removed path. This remains as the by-path entry point
+    /// for tests that want to evict one specific directory without staging a
+    /// real uninstall, and for an embedder that already knows which directory
+    /// went away.
     ///
     /// `#[doc(hidden)] pub` rather than private so the watcher-path tests can
-    /// exercise it directly — driving a real filesystem watcher from a test
-    /// would be slow and racy. Not part of the supported API.
+    /// reach it; not part of the supported API.
     #[doc(hidden)]
     pub fn handle_removal(&self, dir: &Path) {
         // The lookup happens inside the edit so it sees the same map the
@@ -303,6 +309,29 @@ fn find_extension_dir(roots: &[&PathBuf], p: &Path) -> Option<PathBuf> {
             return Some(cur.to_path_buf());
         }
         cur = cur.parent()?;
+    }
+}
+
+/// Has `dir` actually been removed, as opposed to merely being unreadable?
+///
+/// `Path::exists` answers `false` for *any* stat error, permission denied
+/// included — so a parent directory whose mode changed would read as a mass
+/// uninstall and silently unload every extension under it. Only `NotFound`
+/// means gone; anything else is logged and the extension is left alone, which
+/// is the conservative direction here (a stale load is recoverable, a
+/// spontaneous unload of a working install is not obviously so).
+fn has_vanished(dir: &Path) -> bool {
+    match std::fs::symlink_metadata(dir) {
+        Ok(_) => false,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        Err(e) => {
+            tracing::warn!(
+                dir = %dir.display(),
+                error = %e,
+                "cannot tell whether an extension directory still exists; leaving it loaded"
+            );
+            false
+        }
     }
 }
 
