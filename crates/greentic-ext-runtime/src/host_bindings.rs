@@ -1,4 +1,8 @@
-#![allow(warnings)]
+// Everything below is `wasmtime::component::bindgen!` output. Generated code is
+// not held to this crate's lint bar, but the suppression is enumerated rather
+// than a blanket `allow(warnings)` so a *new* class of warning here still
+// surfaces instead of being pre-silenced.
+#![allow(clippy::all, clippy::pedantic, dead_code, unused_imports, missing_docs)]
 
 // Bind against the design-extension world from the component's perspective.
 // wasmtime bindgen! generates:

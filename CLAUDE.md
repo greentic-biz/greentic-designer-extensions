@@ -101,15 +101,42 @@ broker + logging + i18n imports).
    `wasmtime::component::bindgen!({ path: "wit", world: "..." })`.
 3. Mirror the WIT records as Rust structs in `types.rs`; re-export
    from `lib.rs`.
-4. Implement the entry point in `runtime.rs` (own `impl ExtensionRuntime`
-   block to keep file sections small) — resolve the loaded extension,
-   walk the `get_export_index` chain, call the typed function, map
-   the WIT-level error into `RuntimeError::Wasmtime`.
-5. Add a smoke test in the matching `#[cfg(test)]` module that
-   exercises the `RuntimeError::NotFound` path against a tempdir.
+4. Add a `runtime_<kind>.rs` sibling carrying its own
+   `impl ExtensionRuntime` block. Open with
+   `self.dispatch_instance(ext_id)?`, resolve the interface with
+   `resolve_iface_versions`, the function with `resolve_func`, call the
+   typed signature, and map the WIT-level error through
+   `ext_error::from_*` into `RuntimeError::Extension` — never collapse
+   it into `Wasmtime`, which erases the extension's own error code.
+5. Register the module in `lib.rs` and add a smoke test in its
+   `#[cfg(test)]` module that exercises the `RuntimeError::NotFound`
+   path via `ExtensionRuntime::for_test()`.
 
-The existing bundle path (`render_bundle`) is the most recent
-example to mirror.
+`runtime_bundle.rs` is the smallest complete example to mirror.
+
+### Module layout
+
+`runtime.rs` holds only the core: `RuntimeConfig`, the `ExtensionRuntime`
+handle and its stores, the shared `dispatch_instance` / `lookup` /
+`resolve_iface_versions` / `resolve_func` plumbing, and the per-family
+version tables. Everything else is a sibling with its own
+`impl ExtensionRuntime` block:
+
+| Module | Surface |
+| --- | --- |
+| `runtime_verify` | the load gate (signature, ledger, TOFU anchor) |
+| `runtime_registry` | registration, `rebuild_registry`, the fs watcher |
+| `runtime_design` | `tools`, `validation`, `guardrail` |
+| `runtime_knowledge` | `prompting`, `knowledge` |
+| `runtime_roles` | `roles` |
+| `runtime_deploy` | `deployment` |
+| `runtime_targets` | `targets` |
+| `runtime_bundle` | `bundling.render` |
+| `runtime_dw_composer` | `composer` |
+
+`host_state.rs` is split the same way: the state and its builder there,
+the `Host` impls in `host_state_ports` (logging / i18n / secrets /
+broker), `host_state_net` (http / llm), and `host_state_oauth`.
 
 ## External tool integration
 
@@ -126,9 +153,9 @@ example to mirror.
   artefacts. The runtime's verify chain (`verify_dir_signature`)
   checks the describe signature for self-consistency, that the
   describe is bound to the whole-archive `manifest.json`
-  (`manifestSha256`), and that every manifest entry hash-matches —
-  failing closed on a missing manifest (audit P5). It then anchors
-  the signature (see below).
+  (`manifestSha256`), and that the directory and the ledger cover each
+  other exactly — failing closed on a missing manifest (audit P5). It
+  then anchors the signature (see below).
 
 ## Signature anchoring (TOFU)
 
@@ -137,7 +164,21 @@ example to mirror.
 1. `verify_describe_self_consistent` — **describe integrity**. Any key
    passes; this only proves the describe is unchanged since signing.
 2. `verify_dir_manifest` — **artifact integrity**: the describe is bound
-   to the whole-archive ledger and every listed file hash-matches.
+   to the whole-archive ledger, and the ledger and the directory cover
+   each other exactly. Four rules, all fail-closed:
+   - every listed file must hash to its recorded sha256;
+   - every file **on disk** must be listed (`describe.json` and
+     `manifest.json` excepted — they are covered by steps 1 and 2
+     themselves). Without this the directory gate was strictly weaker
+     than the archive gate it stands in for, and since
+     `wasm_component_path` prefers a root `extension.wasm`
+     unconditionally, dropping one into a gtpack-layout pack bought
+     arbitrary code execution with every other check still passing;
+   - ledger paths must be plain relative paths — an absolute path makes
+     `Path::join` discard the pack root, and `..` walks out of it;
+   - a ledger entry must be a regular file, checked with
+     `symlink_metadata` so a symlink is rejected rather than followed to
+     bytes that live outside the pack.
 3. `TrustStore::pin_or_verify` — **the anchor**, and the only step that
    supplies authenticity. Trust-on-first-use: the publisher key is
    pinned per `extension.id` on first load, and every later load of that

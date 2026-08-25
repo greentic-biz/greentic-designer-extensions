@@ -2,9 +2,6 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum RuntimeError {
-    #[error("extension '{0}' already loaded")]
-    AlreadyLoaded(String),
-
     #[error("extension '{0}' not found")]
     NotFound(String),
 

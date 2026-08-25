@@ -98,3 +98,29 @@ fn allow_unsigned_env_is_ignored_without_feature() {
         "without dev-allow-unsigned, env var must NOT bypass signature check; got {err:?}",
     );
 }
+
+/// A production build must not honour the escape hatch at all.
+///
+/// The bypass lives behind `#[cfg(feature = "dev-allow-unsigned")]`, so with
+/// the feature off the branch is not compiled and the env var is inert. That is
+/// the claim `CLAUDE.md` makes about production builds, and it is exactly the
+/// claim nothing was checking: every other test in this suite runs under
+/// `--all-features`, where the hatch *is* compiled in and is merely unset.
+///
+/// This test compiles only in the default (no-feature) shape, which is why
+/// `ci/local_check.sh` runs the suite both ways.
+#[cfg(not(feature = "dev-allow-unsigned"))]
+#[test]
+fn a_production_build_ignores_the_unsigned_escape_hatch() {
+    let _guard = EnvGuard::set("GREENTIC_EXT_ALLOW_UNSIGNED", "1");
+
+    let fx = unsigned_fixture(ExtensionKind::Design, "greentic.hatch-off", "0.1.0");
+    let (mut rt, _trust) = new_runtime();
+    let err = rt
+        .register_loaded_from_dir(fx.root())
+        .expect_err("the escape hatch must not exist without the dev-allow-unsigned feature");
+    assert!(
+        matches!(err, RuntimeError::SignatureInvalid { .. }),
+        "expected the signature gate to reject regardless of the env var, got {err:?}"
+    );
+}

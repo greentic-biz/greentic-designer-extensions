@@ -158,3 +158,80 @@ fn valid_signature_with_broken_manifest_pins_nothing() {
         "a rejected load touched the shared trust store"
     );
 }
+
+#[test]
+fn pack_carrying_a_file_the_ledger_does_not_list_is_rejected() {
+    // Coverage gate. An install unpacks an archive whose contents the SDK's
+    // archive verifier already requires to match the ledger exactly, so a file
+    // on disk that the ledger never mentions is by definition not part of the
+    // signed pack.
+    //
+    // The concrete attack this closes: `wasm_component_path` prefers a root
+    // `extension.wasm` unconditionally, so on a pack that ships none (the
+    // gtpack-fallback layout) an attacker who can write into the extension
+    // directory could drop one in. Every listed entry would still hash-match,
+    // the describe signature and manifest binding would both still verify — and
+    // the component the runtime instantiated would be entirely theirs.
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
+    let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.smuggled-file", "0.1.0");
+    std::fs::write(fx.root().join("smuggled.wasm"), b"\0asm\x01\0\0\0").unwrap();
+
+    let (mut rt, _trust) = new_runtime();
+    let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
+    match err {
+        RuntimeError::SignatureInvalid { reason, .. } => assert!(
+            reason.contains("smuggled.wasm") && reason.contains("absent from manifest.json"),
+            "unexpected reason: {reason}",
+        ),
+        other => panic!("expected SignatureInvalid, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_smuggled_file_in_a_subdirectory_is_rejected_too() {
+    // The coverage walk has to recurse; a nested drop site is the obvious way
+    // around a root-only check.
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
+    let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.smuggled-nested", "0.1.0");
+    let nested = fx.root().join("assets").join("deep");
+    std::fs::create_dir_all(&nested).unwrap();
+    std::fs::write(nested.join("payload.bin"), b"x").unwrap();
+
+    let (mut rt, _trust) = new_runtime();
+    let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
+    match err {
+        RuntimeError::SignatureInvalid { reason, .. } => assert!(
+            reason.contains("assets/deep/payload.bin"),
+            "unexpected reason: {reason}",
+        ),
+        other => panic!("expected SignatureInvalid, got {other:?}"),
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_ledger_entry_replaced_by_a_symlink_is_rejected() {
+    // Swapping a listed file for a symlink pointing at identical bytes outside
+    // the pack would hash-match if the check followed the link. It must not:
+    // what the ledger commits to is the file *in the pack*, and the link target
+    // is mutable by anyone who can write where it points.
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
+    let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.symlinked-wasm", "0.1.0");
+
+    let wasm = fx.root().join("extension.wasm");
+    let outside = tempfile::TempDir::new().unwrap();
+    let target = outside.path().join("extension.wasm");
+    std::fs::copy(&wasm, &target).unwrap();
+    std::fs::remove_file(&wasm).unwrap();
+    std::os::unix::fs::symlink(&target, &wasm).unwrap();
+
+    let (mut rt, _trust) = new_runtime();
+    let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
+    match err {
+        RuntimeError::SignatureInvalid { reason, .. } => assert!(
+            reason.contains("not a regular file"),
+            "unexpected reason: {reason}",
+        ),
+        other => panic!("expected SignatureInvalid, got {other:?}"),
+    }
+}
