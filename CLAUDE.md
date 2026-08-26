@@ -295,6 +295,11 @@ which builds the packs and calls `cargo test --tests -- --ignored`. It needs a
 `FIXTURE_REPO_TOKEN` secret with read access to
 `greentic-adaptive-card-mcp` and `greentic-deployer-extensions`.
 
+**This repo is public and both fixture repos are private**, so running that
+lane here would put private source into publicly-readable build logs. The copy
+meant to actually run lives in `ci/private-lane/` and belongs in a private
+repo; the one in `.github/workflows/` documents the gap and stays inert.
+
 Without that secret a scheduled run **skips** with a notice, while a manual
 dispatch **fails** — somebody pressed the button, so quietly doing nothing
 would be the wrong answer. A green scheduled run is therefore not by itself

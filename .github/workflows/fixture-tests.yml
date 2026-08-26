@@ -14,6 +14,18 @@ name: Fixture tests
 # teaches people to ignore red. Nightly plus on-demand gives the signal
 # without that.
 #
+# ⚠ THIS REPO IS PUBLIC, AND THE TWO FIXTURE REPOS ARE PRIVATE.
+#
+# On a public repo, Actions logs and artifacts are readable by anyone. This
+# lane clones and compiles private source, and a failing `cargo component
+# build` prints source snippets — so a broken fixture build would publish
+# private code. That is not configurable away from inside a public repo.
+#
+# The copy that should actually run lives in `ci/private-lane/` and belongs in
+# a private repo. This one stays to document the gap, and skips by default:
+# without `FIXTURE_REPO_TOKEN` it is inert. Dispatch it only if you have
+# weighed the log exposure.
+#
 # Requires a `FIXTURE_REPO_TOKEN` secret: a PAT with `contents: read` on
 # `greentic-biz/greentic-adaptive-card-mcp` and
 # `greentic-biz/greentic-deployer-extensions`.
