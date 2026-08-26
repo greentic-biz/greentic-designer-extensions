@@ -23,10 +23,10 @@ members = [
 # is the reason this is a tag and not a path; it is not a statement about which
 # branch carries the block. Every lane, `main` included, carries it.
 [patch.crates-io]
-greentic-extension-sdk-contract = { git = "https://github.com/greenticai/greentic-designer-sdk.git", tag = "v1.3.0-research.3" }
-greentic-extension-sdk-registry = { git = "https://github.com/greenticai/greentic-designer-sdk.git", tag = "v1.3.0-research.3" }
-greentic-extension-sdk-state = { git = "https://github.com/greenticai/greentic-designer-sdk.git", tag = "v1.3.0-research.3" }
-greentic-extension-sdk-testing = { git = "https://github.com/greenticai/greentic-designer-sdk.git", tag = "v1.3.0-research.3" }
+greentic-extension-sdk-contract = { git = "https://github.com/greenticai/greentic-designer-sdk.git", tag = "v1.3.0-research.4" }
+greentic-extension-sdk-registry = { git = "https://github.com/greenticai/greentic-designer-sdk.git", tag = "v1.3.0-research.4" }
+greentic-extension-sdk-state = { git = "https://github.com/greenticai/greentic-designer-sdk.git", tag = "v1.3.0-research.4" }
+greentic-extension-sdk-testing = { git = "https://github.com/greenticai/greentic-designer-sdk.git", tag = "v1.3.0-research.4" }
 
 [workspace.package]
 edition = "2024"
