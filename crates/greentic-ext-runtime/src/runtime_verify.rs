@@ -6,7 +6,7 @@
 //! watcher's `handle_added_or_modified` — funnels through
 //! [`ExtensionRuntime::verify_dir_signature`] here, in that order and no other.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
 use sha2::{Digest, Sha256};
@@ -51,7 +51,10 @@ impl ExtensionRuntime {
     /// bundled into this gate. Note the window is reachable through the
     /// watcher, not only by a privileged process: writing into a watched
     /// directory is what schedules the load in the first place.
-    pub(crate) fn verify_dir_signature(&self, dir: &Path) -> Result<DescribeJson, RuntimeError> {
+    pub(crate) fn verify_dir_signature(
+        &self,
+        dir: &Path,
+    ) -> Result<(DescribeJson, VerifiedLedger), RuntimeError> {
         let describe = read_describe(dir)?;
 
         #[cfg(feature = "dev-allow-unsigned")]
@@ -60,7 +63,7 @@ impl ExtensionRuntime {
                 extension_dir = %dir.display(),
                 "GREENTIC_EXT_ALLOW_UNSIGNED is set — signature verification skipped"
             );
-            return Ok(describe);
+            return Ok((describe, VerifiedLedger::unchecked()));
         }
         // Step 1 — integrity: the describe is unmodified since signing. This is
         // NOT authenticity: it proves nothing about *who* signed, because an
@@ -99,7 +102,7 @@ impl ExtensionRuntime {
         // because integrity is already done by the time it is called; reading
         // that rule without its caller is what put the pin ahead of the ledger
         // here.
-        verify_dir_manifest(dir, &describe)?;
+        let ledger = verify_dir_manifest(dir, &describe)?;
 
         // Step 3 — anchor (TOFU): the key that signed this describe must be the
         // one pinned for this extension id on first load. Step 1 proved the
@@ -120,7 +123,59 @@ impl ExtensionRuntime {
             key_prefix = %pub_prefix,
             "extension signature verified and anchored to the pinned publisher key"
         );
-        Ok(describe)
+        Ok((describe, ledger))
+    }
+}
+
+/// The sha256 the signed ledger records for each file in a verified pack.
+///
+/// Handed to the loader so the component it compiles is checked against the
+/// ledger *at the moment it is read*, rather than re-selected by a fresh
+/// `exists()` stat some time after the directory was walked.
+#[derive(Debug, Default)]
+pub(crate) struct VerifiedLedger {
+    /// `None` under `dev-allow-unsigned`, where no ledger was checked at all.
+    entries: Option<BTreeMap<PathBuf, String>>,
+}
+
+impl VerifiedLedger {
+    /// A ledger that checks nothing — the `dev-allow-unsigned` escape only.
+    ///
+    /// Gated on the feature, so a production build has no way to construct one
+    /// and the "no ledger to check against" branch is not even compiled.
+    #[cfg(feature = "dev-allow-unsigned")]
+    const fn unchecked() -> Self {
+        Self { entries: None }
+    }
+
+    /// Read `path` and confirm it hashes to what the ledger recorded.
+    ///
+    /// This is what closes the check-to-use window on the component bytes. The
+    /// gate verified the directory, but the loader then re-decided *which* file
+    /// to compile with a fresh stat — and `wasm_component_path` prefers a root
+    /// `extension.wasm` unconditionally, so for a pack that ships none, a file
+    /// created after the walk won outright. It was never in the ledger, so
+    /// requiring a ledger entry refuses it; and hashing the bytes we are about
+    /// to compile, rather than the path, leaves nothing to swap in between.
+    pub(crate) fn read_verified(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
+        let bytes = std::fs::read(path)?;
+
+        let Some(entries) = &self.entries else {
+            return Ok(bytes);
+        };
+        let expected = entries.get(path).ok_or_else(|| {
+            anyhow::anyhow!(
+                "{} is not covered by the signed manifest; refusing to load it",
+                path.display()
+            )
+        })?;
+        let computed = format!("{:x}", Sha256::digest(&bytes));
+        anyhow::ensure!(
+            &computed == expected,
+            "{} changed after verification: manifest recorded {expected}, read {computed}",
+            path.display()
+        );
+        Ok(bytes)
     }
 }
 
@@ -163,7 +218,10 @@ fn read_describe(dir: &Path) -> Result<DescribeJson, RuntimeError> {
 ///   to regular files. `dir.join(entry.path)` honours an absolute path by
 ///   discarding `dir` outright, and follows a symlink out of the pack; either
 ///   lets a ledger "verify" against bytes that are not in the pack at all.
-fn verify_dir_manifest(dir: &Path, describe: &DescribeJson) -> Result<(), RuntimeError> {
+fn verify_dir_manifest(
+    dir: &Path,
+    describe: &DescribeJson,
+) -> Result<VerifiedLedger, RuntimeError> {
     let extension_id = describe.metadata.id.as_str();
     let invalid = |reason: String| RuntimeError::SignatureInvalid {
         extension_id: extension_id.to_string(),
@@ -206,7 +264,7 @@ fn verify_dir_manifest(dir: &Path, describe: &DescribeJson) -> Result<(), Runtim
     // rendered as `a/b.txt` and matched a ledger entry for a different file,
     // and any non-UTF-8 name rendered as U+FFFD and collided with any entry
     // containing it. Comparing paths removes both mappings.
-    let mut listed: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut listed: BTreeMap<PathBuf, String> = BTreeMap::new();
     for entry in &manifest.entries {
         let path = pack_relative_path(dir, &entry.path).map_err(&invalid)?;
         // `symlink_metadata` does not follow the final component, so a symlink
@@ -239,13 +297,13 @@ fn verify_dir_manifest(dir: &Path, describe: &DescribeJson) -> Result<(), Runtim
                 entry.path, entry.sha256, computed
             )));
         }
-        listed.insert(path);
+        listed.insert(path, entry.sha256.clone());
     }
 
     // Coverage: nothing on disk may sit outside the ledger.
     let exempt: Vec<PathBuf> = LEDGER_EXEMPT.iter().map(|n| dir.join(n)).collect();
     for present in collect_pack_files(dir)? {
-        if exempt.contains(&present) || listed.contains(&present) {
+        if exempt.contains(&present) || listed.contains_key(&present) {
             continue;
         }
         return Err(invalid(format!(
@@ -260,7 +318,9 @@ fn verify_dir_manifest(dir: &Path, describe: &DescribeJson) -> Result<(), Runtim
         entries = manifest.entries.len(),
         "whole-archive manifest verified"
     );
-    Ok(())
+    Ok(VerifiedLedger {
+        entries: Some(listed),
+    })
 }
 
 /// Resolve a ledger path against the pack root, refusing anything that could

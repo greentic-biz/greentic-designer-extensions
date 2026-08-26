@@ -32,6 +32,10 @@ pub struct HostState {
     pub(crate) translator: Arc<dyn Translator>,
     pub(crate) secrets_backend: Arc<dyn SecretsBackend>,
     pub(crate) http_client: Option<reqwest::blocking::Client>,
+    /// Ceiling on one outbound request made on the guest's behalf. The wasm
+    /// deadline cannot interrupt a blocking host call, so this is the only
+    /// thing bounding `host.http.fetch`.
+    pub(crate) http_timeout: std::time::Duration,
     pub(crate) llm_port: Option<Arc<dyn LlmPort>>,
     /// Per-call caller context for this dispatch (tenant slug + authenticated
     /// user email), threaded from the host's
@@ -41,10 +45,10 @@ pub struct HostState {
     pub(crate) url_matcher: UrlMatcher,
     pub(crate) runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     pub(crate) oauth_config: Option<crate::oauth::OAuthBrokerConfig>,
-    /// Memory/table ceilings, read back by `Store::limiter`. Lives here because
-    /// wasmtime resolves the limiter out of the store's data on every growth
-    /// request.
-    pub(crate) limits: wasmtime::StoreLimits,
+    /// Store-wide memory/table budget, read back by `Store::limiter`. Lives
+    /// here because wasmtime resolves the limiter out of the store's data on
+    /// every growth request.
+    pub(crate) limits: crate::limits::PackLimits,
     // WASI state — required because cargo-component-built WASM components
     // implicitly import WASI interfaces (wasi:cli/environment etc.).
     wasi: WasiCtx,
@@ -68,6 +72,7 @@ impl HostState {
             runtime_weak: std::sync::Weak::new(),
             call_depth_start: 0,
             oauth_config: None,
+            http_timeout: crate::limits::http_timeout_for(None),
         }
     }
 
@@ -110,6 +115,7 @@ pub struct HostStateBuilder {
     runtime_weak: std::sync::Weak<crate::runtime::ExtensionRuntime>,
     call_depth_start: u32,
     oauth_config: Option<crate::oauth::OAuthBrokerConfig>,
+    http_timeout: std::time::Duration,
 }
 
 impl HostStateBuilder {
@@ -136,6 +142,13 @@ impl HostStateBuilder {
     #[must_use]
     pub fn http_client(mut self, c: Option<reqwest::blocking::Client>) -> Self {
         self.http_client = c;
+        self
+    }
+
+    /// Ceiling on a single outbound request made for the guest.
+    #[must_use]
+    pub fn http_timeout(mut self, t: std::time::Duration) -> Self {
+        self.http_timeout = t;
         self
     }
 
@@ -187,12 +200,13 @@ impl HostStateBuilder {
             translator: self.translator,
             secrets_backend: self.secrets_backend,
             http_client: self.http_client,
+            http_timeout: self.http_timeout,
             llm_port: self.llm_port,
             call_ctx: self.call_ctx,
             url_matcher: self.url_matcher,
             runtime_weak: self.runtime_weak,
             oauth_config: self.oauth_config,
-            limits: crate::limits::store_limits(),
+            limits: crate::limits::PackLimits::new(),
             // A default WASI context grants no preopened directory, no
             // environment, and no stdio — cargo-component imports the
             // interfaces unconditionally, but nothing behind them is reachable.

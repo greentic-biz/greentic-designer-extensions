@@ -57,6 +57,20 @@ impl secrets::Host for HostState {
         // declared verbatim or as a path prefix in `permissions.secrets`.
         // The `/` boundary matters — a bare `starts_with` would let a
         // declaration of `api.openai.com` also unlock `api.openai.com.evil/key`.
+        // Reject traversal before matching. The gate is a prefix test and the
+        // raw URI then goes straight to the backend, so `team/acme` plus
+        // `team/acme/../../ops/prod/db_password` passes the prefix and escapes
+        // on any backend that resolves the URI as a path. Percent-escapes are
+        // refused for the same reason — the backend may decode what this test
+        // did not.
+        if !uri_is_plain(&uri) {
+            tracing::warn!(
+                ext = %self.extension_id,
+                requested = %uri,
+                "secrets::get rejected a non-plain secret uri"
+            );
+            return Err(format!("malformed secret uri: {uri}"));
+        }
         let permitted = self
             .permissions
             .secrets
@@ -87,6 +101,17 @@ impl secrets::Host for HostState {
             }
         }
     }
+}
+
+/// Is `uri` free of anything a backend might resolve differently than we read?
+///
+/// No `.`/`..` segment, no percent-escape. Both are things this gate would
+/// compare literally and a path-shaped backend would then collapse.
+fn uri_is_plain(uri: &str) -> bool {
+    !uri.contains('%')
+        && !uri
+            .split('/')
+            .any(|segment| segment == "." || segment == "..")
 }
 
 /// Does a declared secret prefix actually name something?
@@ -281,6 +306,29 @@ mod tests {
         let mut h = host_with_secret(&["team/acme"], &[("team/acme-evil/openai", "sk-real")]);
         let err = h.get("team/acme-evil/openai".to_string()).unwrap_err();
         assert!(err.contains("permission denied"), "got: {err}");
+    }
+
+    #[test]
+    fn a_traversing_secret_uri_is_refused_before_the_prefix_test() {
+        // The prefix matches — that is exactly the problem. `team/acme` is a
+        // genuine grant, and the backend is what would collapse the `..`.
+        let mut h = host_with_secret(
+            &["team/acme"],
+            &[("team/acme/../../ops/prod/db_password", "leaked")],
+        );
+        let err = h
+            .get("team/acme/../../ops/prod/db_password".to_string())
+            .expect_err("a traversing uri must not reach the backend");
+        assert!(err.contains("malformed secret uri"), "got: {err}");
+    }
+
+    #[test]
+    fn a_percent_escaped_secret_uri_is_refused() {
+        let mut h = host_with_secret(&["team/acme"], &[("team/acme/%2e%2e/ops", "leaked")]);
+        let err = h
+            .get("team/acme/%2e%2e/ops".to_string())
+            .expect_err("percent-escapes must not reach a decoding backend");
+        assert!(err.contains("malformed secret uri"), "got: {err}");
     }
 
     #[test]

@@ -11,6 +11,13 @@ use std::path::PathBuf;
 
 use greentic_ext_runtime::{DiscoveryPaths, ExtensionRuntime, RuntimeConfig};
 
+// `#[ignore]` rather than a bare `return`. Printing "skipping" and returning
+// reports the test as **passed**, in a run indistinguishable from one that
+// actually exercised a real component — so a regression in `invoke_tool`
+// against real WASM was invisible to CI while the suite read green. Ignored
+// tests are counted and named in the summary. Run them with
+// `cargo test -- --ignored` once the fixture is built.
+#[ignore = "needs GTDX_TEST_GTXPACK; see the module docs to build the fixture"]
 #[test]
 fn invoke_validate_card_on_ac_extension() {
     let Ok(raw) = std::env::var("GTDX_TEST_GTXPACK") else {

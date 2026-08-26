@@ -268,11 +268,14 @@ impl ExtensionRuntime {
         ctx: &crate::host_ports::HostCallContext,
     ) -> Result<(wasmtime::Store<HostState>, wasmtime::component::Instance), RuntimeError> {
         let loaded = self.lookup(ext_id)?;
-        let (mut store, instance) = loaded
-            .build_store_and_instance(&self.engine, self.config.host_overrides.clone(), ctx)
-            .map_err(RuntimeError::Wasmtime)?;
-        crate::limits::apply(&mut store, self.config.dispatch_timeout);
-        Ok((store, instance))
+        loaded
+            .build_store_and_instance(
+                &self.engine,
+                self.config.host_overrides.clone(),
+                ctx,
+                self.config.dispatch_timeout,
+            )
+            .map_err(RuntimeError::Wasmtime)
     }
 
     /// Look a loaded extension up by id, or fail with

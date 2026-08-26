@@ -344,3 +344,104 @@ fn a_pack_nested_past_the_depth_cap_is_refused() {
         "expected the depth cap to trip, got: {rendered}"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn a_backslash_name_cannot_impersonate_a_nested_ledger_entry() {
+    // On Linux a backslash is an ordinary filename byte. The coverage walk used
+    // to lower every on-disk name through `to_string_lossy().replace('\\', "/")`
+    // before comparing, so a root file literally named `a\b.txt` rendered as
+    // `a/b.txt` and matched the ledger entry for a *different* file — an
+    // unlisted, unhashed file present in a pack the gate called intact.
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
+    let (fx, sk) = signed_fixture(ExtensionKind::Design, "greentic.backslash", "0.1.0");
+
+    // A genuine nested entry for the impostor to collide with.
+    std::fs::create_dir_all(fx.root().join("a")).unwrap();
+    std::fs::write(fx.root().join("a").join("b.txt"), b"real").unwrap();
+    let raw = std::fs::read_to_string(fx.root().join("describe.json")).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
+    support::finalize_signed_with_manifest(fx.root(), &mut describe, &sk);
+
+    // Now drop the impostor in, after the pack was sealed.
+    std::fs::write(fx.root().join(r"a\b.txt"), b"smuggled").unwrap();
+
+    let (mut rt, _trust) = new_runtime();
+    let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
+    match err {
+        RuntimeError::SignatureInvalid { reason, .. } => assert!(
+            reason.contains("absent from manifest.json"),
+            "unexpected reason: {reason}",
+        ),
+        other => panic!("expected SignatureInvalid, got {other:?}"),
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_directory_is_reported_as_one_unlisted_entry() {
+    // The walk uses `symlink_metadata`, so a symlink-to-dir is not descended
+    // into — it shows up as a single unlisted entry and the pack is refused.
+    // With plain `metadata` it would be followed and its contents walked as if
+    // they were part of the pack.
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
+    let (fx, _sk) = signed_fixture(ExtensionKind::Design, "greentic.symlinked-dir", "0.1.0");
+
+    let outside = tempfile::TempDir::new().unwrap();
+    std::fs::write(outside.path().join("payload.wasm"), b"x").unwrap();
+    std::os::unix::fs::symlink(outside.path(), fx.root().join("vendor")).unwrap();
+
+    let (mut rt, _trust) = new_runtime();
+    let err = rt.register_loaded_from_dir(fx.root()).unwrap_err();
+    match err {
+        RuntimeError::SignatureInvalid { reason, .. } => assert!(
+            reason.contains("vendor") && reason.contains("absent from manifest.json"),
+            "the symlink itself must be the unlisted entry, not its contents: {reason}",
+        ),
+        other => panic!("expected SignatureInvalid, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_component_must_still_match_the_ledger_when_it_is_read() {
+    // The check-to-use window. The gate walks the directory, but the loader
+    // then re-decided *which* file to compile with a fresh `exists()` stat —
+    // and `wasm_component_path` prefers a root `extension.wasm` unconditionally.
+    // For a pack that ships none, a file created after the walk won outright,
+    // never having been hashed by anything.
+    //
+    // Simulated by sealing a pack without a root component and dropping one in
+    // afterwards, which is the same state the race produces.
+    let _guard = EnvGuard::remove("GREENTIC_EXT_ALLOW_UNSIGNED");
+    let (fx, sk) = signed_fixture(ExtensionKind::Design, "greentic.late-component", "0.1.0");
+
+    std::fs::remove_file(fx.root().join("extension.wasm")).unwrap();
+    std::fs::create_dir_all(fx.root().join("runtime")).unwrap();
+    let real = wat::parse_str("(component)").unwrap();
+    std::fs::write(fx.root().join("runtime").join("pack.wasm"), &real).unwrap();
+
+    let raw = std::fs::read_to_string(fx.root().join("describe.json")).unwrap();
+    let mut describe: greentic_extension_sdk_contract::DescribeJson =
+        serde_json::from_str(&raw).unwrap();
+    for component in describe.runtime.components.values_mut() {
+        if let Some(gtpack) = component.gtpack.as_mut() {
+            gtpack.file = "runtime/pack.wasm".to_string();
+        }
+    }
+    support::finalize_signed_with_manifest(fx.root(), &mut describe, &sk);
+
+    // The pack is sealed and valid. Now the attacker's file appears.
+    std::fs::write(fx.root().join("extension.wasm"), &real).unwrap();
+
+    let (mut rt, _trust) = new_runtime();
+    let err = rt
+        .register_loaded_from_dir(fx.root())
+        .expect_err("a component the ledger never covered must not be compiled");
+    let rendered = err.to_string();
+    assert!(
+        rendered.contains("not covered by the signed manifest")
+            || rendered.contains("absent from manifest.json"),
+        "unexpected reason: {rendered}"
+    );
+}
