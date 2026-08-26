@@ -93,7 +93,9 @@ broker + logging + i18n imports).
   `ci/local_check.sh`.
 - **Feature branches + PRs** — never push directly to `main`.
 - **Tag releases** — `v0.X.Y` workspace tags + `<crate>-vX.Y.Z` per-
-  crate tags. Designer pins to the workspace tag.
+  crate tags. See "How consumers actually pin" below — it is not the
+  workspace tag, and getting this wrong makes a release look adopted
+  when nothing has moved.
 
 ## Adding a new world / interface
 
@@ -151,8 +153,8 @@ clones and stores by hand reintroduces both bugs at once.
 
 ## External tool integration
 
-- **`greentic-designer`** — primary consumer. Pins this crate via
-  git tag (`v0.12.0+` for bundle dispatch).
+- **`greentic-designer`** — primary consumer. Pins this crate by **git
+  rev**, not by tag (see below).
 - **`greentic-bundle-extensions`** — bundles the
   `bundle-standard` reference recipe + the OSS-side dispatcher stub
   (`greentic-bundle-extension-host::dispatcher::invoke_recipe`
@@ -167,6 +169,46 @@ clones and stores by hand reintroduces both bugs at once.
   (`manifestSha256`), and that the directory and the ledger cover each
   other exactly — failing closed on a missing manifest (audit P5). It
   then anchors the signature (see below).
+
+## How consumers actually pin
+
+Neither consumer pins the workspace tag, and they do not agree with each
+other. Verified against their committed manifests and lockfiles:
+
+| Consumer | Spec | Source |
+| --- | --- | --- |
+| `greentic-designer` | `rev = "8bc7713…"` | git |
+| `greentic-runner` — `greentic-aw-runtime` | `"=1.2.24"` | **crates.io** |
+| `greentic-runner` — `greentic-runner-host` | `"=1.2.24"` (optional) | **crates.io** |
+
+`greentic-ext-runtime` **is** on crates.io (1.2.24–1.2.27, plus some
+CI-generated timestamp versions) even though this crate carries
+`publish = false` and this repo has no publish workflow — those releases
+came from somewhere else. Nothing from 1.2.28 on has ever been
+published, this line's tags included.
+
+That combination is why the designer builds today, and it is fragile.
+Its lockfile holds exactly **one** `greentic-ext-runtime`, from the git
+rev, shared by all three consumers — and that unification works only
+because the rev's workspace version happens to be exactly `1.2.24`, the
+version the two runner crates require with `=`. Bump the rev to a
+different version and the `=1.2.24` requirement can no longer be met by
+it, so Cargo pulls a second copy from crates.io. Two copies means two
+distinct `ExtensionRuntime` types and a build that fails on type
+mismatch, which is what the designer's own Cargo.toml comment warns
+about.
+
+So a version bump here is a **three-repo, lockstep change**, not a tag
+push:
+
+1. `greentic-runner` — move both `=1.2.24` requirements, and add the
+   `[patch.crates-io]` redirect its root `Cargo.toml` still has a
+   dangling comment for (the comment ends mid-sentence at "onto the
+   git"; the section itself is gone).
+2. `greentic-designer` — the patch has to live here too. `[patch]` is
+   honoured only from the *root* workspace of a build, so the runner's
+   own patch does nothing when the runner is consumed as a dependency.
+3. Land them together.
 
 ## Signature anchoring (TOFU)
 
