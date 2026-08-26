@@ -6,13 +6,21 @@
 
 /// Select the URL matcher for a single extension instantiation.
 ///
-/// **Replace semantics:** when the extension's `describe.json` declares one
-/// or more patterns under `runtime.permissions.network`, those patterns are
-/// the authoritative allow-list for that extension and a fresh
-/// [`UrlMatcher`] is built from them (with the loopback-http rule applied —
-/// see below). The host-level `override_matcher` is **ignored** in this
-/// path — it is the host-wide default that applies only to extensions that
-/// make no network declaration.
+/// **Narrowing semantics:** the extension's `runtime.permissions.network`
+/// patterns say what it wants; the host-level `override_matcher`, when the
+/// operator sets one, says what it may have. The effective list is their
+/// intersection — a declared pattern the operator's list does not contain is
+/// dropped.
+///
+/// When the operator sets no list at all, the declared patterns stand on their
+/// own. That is deliberate and load-bearing: the default `override_matcher` is
+/// empty (deny-all), so intersecting against it unconditionally would hand
+/// every extension that declares anything an empty allow-list.
+///
+/// This used to be *replace* semantics — declared patterns won outright and the
+/// operator's list was ignored. Combined with TOFU, which lets a first-seen
+/// pack self-sign, an extension self-granted its own network reach with nothing
+/// above it to say otherwise.
 ///
 /// When the declaration is empty the host-level override is returned
 /// unchanged, which is the deny-all default in most deployments. This
@@ -57,21 +65,52 @@ pub(crate) fn effective_url_matcher(
         return override_matcher;
     }
 
-    // Replace path: build the effective matcher exclusively from the
-    // extension's declared patterns (the host override does NOT apply).
-    let mut patterns: Vec<String> = declared_patterns.to_vec();
+    // The operator's list, when they set one, is a **ceiling**: a declared
+    // pattern the operator did not allow is dropped, not honoured. Replacing it
+    // outright let an extension grant itself any host it liked — its own
+    // describe was the only thing consulted, and TOFU makes a self-signed pack
+    // trivial on first load.
+    //
+    // Only when the operator sets NO ceiling do declared patterns stand alone.
+    // That case must keep working: the default override is deny-all, so
+    // intersecting against it unconditionally would give every extension that
+    // declares anything an empty allow-list.
+    let ceiling: Option<Vec<String>> = if override_matcher.patterns().is_empty() {
+        None
+    } else {
+        Some(override_matcher.patterns().to_vec())
+    };
+
+    let mut patterns: Vec<String> = declared_patterns
+        .iter()
+        .filter(|p| match &ceiling {
+            None => true,
+            Some(allowed) => {
+                let within = allowed.iter().any(|a| a == *p);
+                if !within {
+                    tracing::warn!(
+                        pattern = %p,
+                        "dropping a declared url pattern the host allow-list does not contain; \
+                         the operator's list is a ceiling, not a default"
+                    );
+                }
+                within
+            }
+        })
+        .cloned()
+        .collect();
 
     // Loopback-http handling: keep loopback http patterns, drop public-host
     // http patterns (they can never be honoured safely), and record whether
     // any loopback http pattern remains so we can flip the matcher-wide
     // allow_http toggle.
     let mut allow_loopback_http = false;
-    patterns.retain(|p| match classify_http_pattern(p) {
-        HttpClass::Loopback => {
+    patterns.retain(|p| match crate::http_scheme_policy::classify(p) {
+        crate::http_scheme_policy::HttpClass::Loopback => {
             allow_loopback_http = true;
             true
         }
-        HttpClass::Public => {
+        crate::http_scheme_policy::HttpClass::Public => {
             tracing::warn!(
                 pattern = %p,
                 "dropping non-loopback http url pattern; plain http is only honoured for loopback hosts"
@@ -80,7 +119,7 @@ pub(crate) fn effective_url_matcher(
         }
         // https (or any non-http) pattern — kept verbatim; UrlMatcher
         // validates it on construction.
-        HttpClass::Other => true,
+        crate::http_scheme_policy::HttpClass::Other => true,
     });
 
     crate::url_matcher::UrlMatcher::from_patterns(patterns).with_allow_http(allow_loopback_http)
@@ -95,58 +134,6 @@ pub(crate) fn effective_url_matcher(
 /// returned with their brackets intact so that `is_loopback_host` can strip
 /// them: splitting on the first `:` would otherwise yield the bare `"["`
 /// opener and misclassify `[::1]` as non-loopback.
-/// How a declared pattern is classified for the plain-http rule.
-#[derive(Debug, PartialEq, Eq)]
-enum HttpClass {
-    /// Plain http to a loopback address — keep it, and switch the toggle on.
-    Loopback,
-    /// Plain http to anything else — drop it; it could never be honoured safely.
-    Public,
-    /// Not plain http (https, or a scheme the matcher will reject on its own).
-    Other,
-}
-
-/// Classify a declared pattern with the *same parser the matcher uses*.
-///
-/// This used to be hand-rolled string surgery — `strip_prefix("http://")`, then
-/// split on `/`, then `rsplit('@')` — and the two disagreed about where the
-/// authority ends. `Url` terminates it at `/`, `?`, `#`, or `\`, and normalizes
-/// the scheme; the string version stopped only at `/` and matched the scheme
-/// literally. Every gap between them was a plain-http downgrade to a public
-/// host: `http://evil.com?@localhost/*` classified as loopback (last `@` yields
-/// `localhost`) and so both survived the drop *and* switched the toggle on,
-/// while the matcher resolved the host to `evil.com` with a path prefix of `/`.
-/// `HTTP://evil.com/*` and a leading space did the same by failing the literal
-/// prefix test and being waved through as "not http".
-///
-/// One parser decides both, so there is no gap left to disagree in.
-fn classify_http_pattern(pattern: &str) -> HttpClass {
-    // The matcher normalizes `*.` into a placeholder label before parsing;
-    // do the same here so a wildcard pattern reaches `Url` in the same shape.
-    let normalized = pattern
-        .trim_end_matches("/*")
-        .replace("://*.", "://__wildcard__.");
-    let Ok(url) = url::Url::parse(&normalized) else {
-        // Unparseable patterns are dropped by `UrlMatcher::from_patterns`
-        // anyway; classifying as NotHttp keeps them out of the toggle.
-        return HttpClass::Other;
-    };
-    if url.scheme() != "http" {
-        return HttpClass::Other;
-    }
-    match url.host() {
-        Some(url::Host::Ipv4(ip)) if ip.is_loopback() => HttpClass::Loopback,
-        Some(url::Host::Ipv6(ip)) if ip.is_loopback() => HttpClass::Loopback,
-        // `localhost` only, and only as the whole host. A wildcard pattern
-        // arrives here as `__wildcard__.localhost`, which is not loopback —
-        // `*.localhost` resolves through the system resolver like any other
-        // name, so treating it as loopback would hand plain http to whatever a
-        // search-domain quirk points `evil.localhost` at.
-        Some(url::Host::Domain(d)) if d.eq_ignore_ascii_case("localhost") => HttpClass::Loopback,
-        _ => HttpClass::Public,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,22 +181,52 @@ mod tests {
         );
     }
 
-    /// Non-empty declaration REPLACES (not unions) the host-level
-    /// override. A broader operator override must not bleed through to
-    /// an extension that declared its own narrower allow-list.
+    /// The operator's list is a ceiling, not a default.
+    ///
+    /// Under the old replace semantics this host was reachable: the extension's
+    /// own describe was the only thing consulted, which — with TOFU making a
+    /// self-signed pack trivial — is an extension granting itself network reach
+    /// the operator never approved.
     #[test]
-    fn declared_patterns_replace_not_union_host_override() {
+    fn a_declared_pattern_outside_the_operator_ceiling_is_dropped() {
         let declared = vec!["https://api.github.com/*".to_string()];
         let override_matcher = override_with_pattern("https://operator-allowed.com/*");
         let matcher = effective_url_matcher(&declared, override_matcher);
 
         assert!(
-            matcher.is_allowed("https://api.github.com/repos/org/repo"),
-            "declared host must be allowed"
+            !matcher.is_allowed("https://api.github.com/repos/org/repo"),
+            "a declared host outside the operator ceiling must not be reachable"
         );
         assert!(
             !matcher.is_allowed("https://operator-allowed.com/anything"),
-            "operator override must NOT bleed through when declaration is non-empty"
+            "and the ceiling is not itself a grant — the extension never asked for this host"
+        );
+    }
+
+    /// The intersection, not just the exclusion: what both sides name survives.
+    #[test]
+    fn a_declared_pattern_inside_the_operator_ceiling_survives() {
+        let declared = vec![
+            "https://api.github.com/*".to_string(),
+            "https://evil.com/*".to_string(),
+        ];
+        let override_matcher = UrlMatcher::from_patterns(vec![
+            "https://api.github.com/*".to_string(),
+            "https://unused.example/*".to_string(),
+        ]);
+        let matcher = effective_url_matcher(&declared, override_matcher);
+
+        assert!(
+            matcher.is_allowed("https://api.github.com/repos/org/repo"),
+            "a pattern both sides name must survive"
+        );
+        assert!(
+            !matcher.is_allowed("https://evil.com/x"),
+            "one the operator did not name must not"
+        );
+        assert!(
+            !matcher.is_allowed("https://unused.example/x"),
+            "and one the extension did not declare must not either"
         );
     }
 
@@ -224,233 +241,5 @@ mod tests {
             !matcher.is_allowed("https://api.github.com/anything"),
             "empty declaration + empty override must produce deny-all matcher"
         );
-    }
-
-    /// A declared loopback `http://127.0.0.1` pattern must be reachable
-    /// over plain http. The matcher rejects non-https by default, so the
-    /// effective matcher has to opt http in — but ONLY because the
-    /// declared pattern is loopback.
-    #[test]
-    fn declared_http_loopback_127_allows_plain_http() {
-        let declared = vec!["http://127.0.0.1:8787/*".to_string()];
-        let matcher = effective_url_matcher(&declared, empty_override());
-
-        assert!(
-            matcher.is_allowed("http://127.0.0.1:8787/execute"),
-            "declared http loopback pattern must permit plain http to that loopback"
-        );
-    }
-
-    /// `http://localhost` is the other loopback spelling and must behave
-    /// the same as `127.0.0.1`.
-    #[test]
-    fn declared_http_loopback_localhost_allows_plain_http() {
-        let declared = vec!["http://localhost:8787/*".to_string()];
-        let matcher = effective_url_matcher(&declared, empty_override());
-
-        assert!(
-            matcher.is_allowed("http://localhost:8787/execute"),
-            "declared http localhost pattern must permit plain http to localhost"
-        );
-    }
-
-    /// The loopback-http opt-in must NOT leak to non-loopback http: a
-    /// declared `http://evil.com` pattern must stay denied (no plain-http
-    /// downgrade for a public host) even though the pattern technically
-    /// targets http.
-    #[test]
-    fn declared_http_non_loopback_stays_denied() {
-        let declared = vec!["http://evil.com/*".to_string()];
-        let matcher = effective_url_matcher(&declared, empty_override());
-
-        assert!(
-            !matcher.is_allowed("http://evil.com/anything"),
-            "plain http must stay denied for a non-loopback declared host"
-        );
-    }
-
-    /// A mixed declaration (loopback http + a normal https host) must keep
-    /// https reachable AND the loopback http reachable, while still
-    /// refusing plain http to the https host (the global `allow_http` toggle
-    /// must not downgrade the https-only host because no http pattern for
-    /// it exists, and `is_allowed` matches scheme exactly per pattern).
-    #[test]
-    fn mixed_loopback_http_and_https_host() {
-        let declared = vec![
-            "http://127.0.0.1:8787/*".to_string(),
-            "https://api.example.com/*".to_string(),
-        ];
-        let matcher = effective_url_matcher(&declared, empty_override());
-
-        assert!(
-            matcher.is_allowed("http://127.0.0.1:8787/execute"),
-            "loopback http must be allowed in a mixed declaration"
-        );
-        assert!(
-            matcher.is_allowed("https://api.example.com/v1/foo"),
-            "declared https host must stay reachable"
-        );
-        assert!(
-            !matcher.is_allowed("http://api.example.com/v1/foo"),
-            "plain http to the https-only host must stay denied even with loopback http enabled"
-        );
-    }
-
-    /// A declaration that mixes loopback http with a *public* http host must
-    /// keep only the loopback one.
-    ///
-    /// This is the case that isolates the drop step. Every other http test
-    /// declares a public host alone, where the denial comes from
-    /// `allow_loopback_http` never being switched on — so the `retain` that
-    /// drops public-host http patterns could be deleted outright and the suite
-    /// would stay green, while an extension declaring both got cleartext http
-    /// to the public host.
-    #[test]
-    fn a_loopback_declaration_does_not_carry_a_public_http_host_with_it() {
-        let declared = vec![
-            "http://127.0.0.1:8787/*".to_string(),
-            "http://evil.com/*".to_string(),
-        ];
-        let matcher = effective_url_matcher(&declared, empty_override());
-
-        assert!(
-            matcher.is_allowed("http://127.0.0.1:8787/execute"),
-            "the loopback pattern must survive"
-        );
-        assert!(
-            !matcher.is_allowed("http://evil.com/anything"),
-            "the loopback opt-in must not carry a public http host through with it"
-        );
-    }
-
-    /// A bracketed IPv6 loopback `http://[::1]:8787/*` must survive the
-    /// loopback filter and allow plain http to `http://[::1]:8787/x`.
-    ///
-    /// The url crate's `host_str()` returns the bracketed form `"[::1]"` for
-    /// both the pattern and the request URL, so the Exact host rule matches.
-    /// The bug this test guards against: `http_pattern_host` previously split
-    /// on the first `:`, yielding `"["` as the host, which was classified as
-    /// non-loopback and dropped.
-    #[test]
-    fn declared_http_ipv6_loopback_allows_plain_http() {
-        let declared = vec!["http://[::1]:8787/*".to_string()];
-        let matcher = effective_url_matcher(&declared, empty_override());
-
-        assert!(
-            matcher.is_allowed("http://[::1]:8787/x"),
-            "declared http IPv6 loopback pattern must permit plain http to [::1]"
-        );
-        // Must not bleed to arbitrary non-loopback hosts.
-        assert!(
-            !matcher.is_allowed("http://evil.com/x"),
-            "IPv6 loopback opt-in must not permit plain http to non-loopback hosts"
-        );
-    }
-
-    /// An adversarial pattern `http://[::1].evil.com/*` that tries to smuggle
-    /// a non-loopback host inside brackets must be rejected. The url crate
-    /// refuses to parse this (it is not a valid bracketed IPv6 literal), so
-    /// the pattern is either unparseable (dropped by `UrlMatcher`) or the
-    /// resulting host does not match `[::1]` in `is_loopback_host`.
-    ///
-    /// Either way the request to `http://[::1].evil.com/x` must be denied.
-    #[test]
-    fn adversarial_fake_ipv6_bracket_host_is_denied() {
-        let declared = vec!["http://[::1].evil.com/*".to_string()];
-        let matcher = effective_url_matcher(&declared, empty_override());
-
-        // The pattern is malformed: url::Url::parse rejects `[::1].evil.com`
-        // as a host, so the pattern is silently dropped and the matcher
-        // remains deny-all for this declaration.
-        assert!(
-            !matcher.is_allowed("http://[::1].evil.com/x"),
-            "malformed bracketed host must not be allowed"
-        );
-        // Real IPv6 loopback must also NOT be granted by a bad pattern.
-        assert!(
-            !matcher.is_allowed("http://[::1]/x"),
-            "bad pattern must not accidentally allow real IPv6 loopback"
-        );
-    }
-
-    /// Authority-delimiter smuggling. `Url` ends the authority at `?`, `#` or
-    /// `\` as well as `/`; the old hand-rolled parser stopped only at `/` and
-    /// then took the text after the last `@`, so each of these read as
-    /// `localhost` — surviving the drop AND switching the matcher-wide http
-    /// toggle on — while the matcher resolved the host to `evil.com`.
-    #[test]
-    fn a_pattern_that_smuggles_loopback_past_the_authority_is_not_loopback() {
-        for pattern in [
-            "http://evil.com?@localhost/*",
-            "http://evil.com#@localhost/*",
-            "http://evil.com\\@localhost/*",
-        ] {
-            let matcher = effective_url_matcher(&[pattern.to_string()], empty_override());
-            assert!(
-                !matcher.is_allowed("http://evil.com/anything"),
-                "{pattern} must not grant plain http to evil.com"
-            );
-            assert!(
-                !matcher.is_allowed("http://evil.com/@localhost/pwn"),
-                "{pattern} must not grant plain http to evil.com"
-            );
-        }
-    }
-
-    /// Scheme spelling and leading whitespace. `strip_prefix("http://")` is a
-    /// literal, non-trimming match, so both of these were misclassified as
-    /// "not http" and kept verbatim — and once any loopback pattern turned the
-    /// toggle on, the matcher honoured them.
-    #[test]
-    fn an_oddly_spelled_http_pattern_is_still_classified_as_http() {
-        for odd in ["HTTP://evil.com/*", " http://evil.com/*"] {
-            let declared = vec!["http://127.0.0.1:1/*".to_string(), odd.to_string()];
-            let matcher = effective_url_matcher(&declared, empty_override());
-            assert!(
-                !matcher.is_allowed("http://evil.com/anything"),
-                "{odd} must not survive the public-http drop"
-            );
-        }
-    }
-
-    /// `*.localhost` is not loopback: it resolves through the system resolver
-    /// like any other name, so a search-domain quirk could point
-    /// `evil.localhost` anywhere.
-    ///
-    /// Declared *alongside* a real loopback pattern on purpose. On its own the
-    /// wildcard is denied by the global https gate however it was classified,
-    /// so the test would pass even if the classifier waved it through. It is
-    /// the real loopback entry that switches the matcher-wide http toggle on,
-    /// and only with the toggle on does the wildcard's classification decide
-    /// anything.
-    #[test]
-    fn a_wildcard_localhost_pattern_is_not_treated_as_loopback() {
-        let declared = vec![
-            "http://127.0.0.1:8787/*".to_string(),
-            "http://*.localhost/*".to_string(),
-        ];
-        let matcher = effective_url_matcher(&declared, empty_override());
-
-        assert!(
-            matcher.is_allowed("http://127.0.0.1:8787/x"),
-            "the real loopback pattern must still work"
-        );
-        assert!(
-            !matcher.is_allowed("http://evil.localhost/x"),
-            "a wildcard under .localhost must not get the loopback exemption"
-        );
-    }
-
-    /// Any address in `127.0.0.0/8` is loopback, not just the canonical
-    /// spelling — and `Url` normalizes `127.1` and `0x7f000001` into it.
-    #[test]
-    fn other_ipv4_loopback_spellings_are_loopback() {
-        for pattern in ["http://127.0.0.2:8787/*", "http://127.1:8787/*"] {
-            let matcher = effective_url_matcher(&[pattern.to_string()], empty_override());
-            assert!(
-                matcher.patterns().iter().any(|p| p == pattern),
-                "{pattern} should have been kept as loopback"
-            );
-        }
     }
 }

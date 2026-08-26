@@ -142,8 +142,11 @@ version tables. Everything else is a sibling with its own
 `host_state.rs` is split the same way: the state and its builder there,
 the `Host` impls in `host_state_ports` (logging / i18n / secrets /
 broker), `host_state_net` (http / llm), and `host_state_oauth`.
-`net_permissions` resolves an extension's URL allow-list, and `limits`
-carries the per-store execution ceilings.
+`net_permissions` resolves an extension's URL allow-list — **intersecting**
+the declared patterns with the operator's, when the operator set one, so a
+self-signed pack cannot self-grant network reach past the host's ceiling —
+`http_scheme_policy` decides which `http://` patterns are honourable at all,
+and `limits` carries the per-store execution ceilings.
 
 **Every mutation of `loaded` goes through `ExtensionRuntime::mutate_loaded`.**
 It holds the write lock across the read-modify-write and stores the map

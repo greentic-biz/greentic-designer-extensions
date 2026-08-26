@@ -15,6 +15,7 @@ mod host_state_llm;
 mod host_state_net;
 mod host_state_oauth;
 mod host_state_ports;
+mod http_scheme_policy;
 mod limits;
 mod loaded;
 mod net_permissions;

@@ -8,9 +8,38 @@ use std::sync::atomic::Ordering;
 use crate::host_bindings::greentic::extension_host::{broker, i18n, logging, secrets};
 use crate::host_state::{HostState, MAX_BROKER_DEPTH};
 
+/// Longest guest-supplied log string the host will render, in bytes.
+///
+/// `log_kv` formats every field, joins them, then formats again — roughly 3x
+/// the input at peak, all of it guest-controlled and none of it previously
+/// bounded. A guest could spend its whole linear-memory budget on one log line
+/// and make the host allocate several times that.
+const MAX_LOG_BYTES: usize = 8 * 1024;
+
+/// Longest key/value list the host will render.
+const MAX_LOG_FIELDS: usize = 64;
+
+/// Truncate on a char boundary, marking that it happened.
+///
+/// Marked rather than silent: a log line that was cut is a different fact from
+/// a log line that was short, and telling them apart matters when the line is
+/// the only evidence of what an extension did.
+fn clamp(s: &str, max: usize) -> std::borrow::Cow<'_, str> {
+    if s.len() <= max {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    let mut end = max;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    std::borrow::Cow::Owned(format!("{}…[truncated]", &s[..end]))
+}
+
 impl logging::Host for HostState {
     fn log(&mut self, level: logging::Level, target: String, message: String) {
         let ext = &self.extension_id;
+        let target = clamp(&target, MAX_LOG_BYTES);
+        let message = clamp(&message, MAX_LOG_BYTES);
         // `message` is interpolated as a captured argument, never as the format
         // string, so guest-controlled text cannot inject tracing fields.
         match level {
@@ -29,7 +58,14 @@ impl logging::Host for HostState {
         message: String,
         fields: Vec<(String, String)>,
     ) {
-        let pairs: Vec<String> = fields.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        let shown = fields.len().min(MAX_LOG_FIELDS);
+        let mut pairs: Vec<String> = fields[..shown]
+            .iter()
+            .map(|(k, v)| format!("{}={}", clamp(k, MAX_LOG_BYTES), clamp(v, MAX_LOG_BYTES)))
+            .collect();
+        if fields.len() > shown {
+            pairs.push(format!("…+{} more", fields.len() - shown));
+        }
         let msg = if pairs.is_empty() {
             message
         } else {
