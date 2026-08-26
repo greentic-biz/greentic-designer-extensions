@@ -225,14 +225,12 @@ fn is_extension_dir(roots: &[&PathBuf], dir: &Path) -> bool {
 /// Does `name` spell one of the per-kind directories the layout defines?
 fn is_known_kind_dir(name: &str) -> bool {
     use greentic_extension_sdk_contract::ExtensionKind;
-    [
-        ExtensionKind::Design,
-        ExtensionKind::Deploy,
-        ExtensionKind::Bundle,
-        ExtensionKind::Provider,
-    ]
-    .iter()
-    .any(|k| k.dir_name() == name)
+    // `ALL`, not a hand-written literal: a literal here previously omitted
+    // `WasixMcpRouter`, so the watcher silently ignored `<root>/mcp/<name>/`
+    // and never picked up an installed or changed `mcp` extension. `ALL` is
+    // the same fix `gtdx uninstall` needed after it once hand-listed kinds
+    // and dropped `Provider` — see `ExtensionKind::ALL`'s doc comment.
+    ExtensionKind::ALL.iter().any(|k| k.dir_name() == name)
 }
 
 #[cfg(test)]
@@ -309,6 +307,24 @@ mod tests {
             find_extension_dir(&[&root], &genuine.join("describe.json")),
             Some(genuine)
         );
+    }
+
+    #[test]
+    fn is_known_kind_dir_accepts_every_extension_kind() {
+        // Widens on its own when the contract gains a kind — `ExtensionKind::ALL`
+        // is what `is_known_kind_dir` is built from, so this would have caught
+        // the watcher silently ignoring `mcp/` before the fix: a hand-listed
+        // literal array here would have passed alongside a hand-listed literal
+        // in the implementation.
+        use greentic_extension_sdk_contract::ExtensionKind;
+        for kind in ExtensionKind::ALL {
+            assert!(
+                is_known_kind_dir(kind.dir_name()),
+                "is_known_kind_dir must accept {:?}'s dir_name {:?}",
+                kind,
+                kind.dir_name()
+            );
+        }
     }
 
     #[test]
