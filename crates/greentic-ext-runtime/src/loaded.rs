@@ -66,13 +66,16 @@ impl LoadedExtension {
         engine: &wasmtime::Engine,
         source_dir: &Path,
         describe: DescribeJson,
+        ledger: &crate::runtime_verify::VerifiedLedger,
     ) -> anyhow::Result<Self> {
         // Every load path funnels through here, so the report fires once per
         // load — boot and hot-reload — and never per `list_tools()` call.
         crate::tool_metadata_report::report_tool_metadata_gaps(&describe);
         let id = ExtensionId::from_describe(&describe);
         let wasm_path = wasm_component_path(&describe, source_dir)?;
-        let component = Component::from_file(engine, &wasm_path)?;
+        // From bytes the ledger vouches for, not from a path re-read later.
+        let wasm = ledger.read_verified(&wasm_path)?;
+        let component = Component::from_binary(engine, &wasm)?;
         let kind = describe.kind;
         Ok(Self {
             id,
@@ -94,6 +97,7 @@ impl LoadedExtension {
         engine: &wasmtime::Engine,
         host_overrides: HostOverrides,
         ctx: &crate::host_ports::HostCallContext,
+        dispatch_timeout: Option<std::time::Duration>,
     ) -> anyhow::Result<(Store<HostState>, Instance)> {
         use crate::host_bindings::greentic::extension_host::{
             broker, http, i18n, llm, logging, secrets,
@@ -135,6 +139,7 @@ impl LoadedExtension {
         .translator(host_overrides.translator)
         .secrets_backend(host_overrides.secrets_backend)
         .http_client(host_overrides.http_client)
+        .http_timeout(crate::limits::http_timeout_for(dispatch_timeout))
         .llm_port(host_overrides.llm_port)
         .call_ctx(ctx.clone())
         .url_matcher(url_matcher)
@@ -144,6 +149,12 @@ impl LoadedExtension {
         .build();
 
         let mut store = Store::new(engine, state);
+        // Before `instantiate`, not after. A limiter that is not installed yet
+        // is never consulted, and a component's memories and tables are
+        // allocated at their declared *initial* size during instantiation — so
+        // applying this afterwards left the ceilings covering only
+        // `memory.grow`, which a guest never has to call.
+        crate::limits::apply(&mut store, dispatch_timeout);
         let instance = linker.instantiate(&mut store, &self.component)?;
         Ok((store, instance))
     }

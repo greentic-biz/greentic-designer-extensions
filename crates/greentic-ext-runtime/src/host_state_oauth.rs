@@ -61,6 +61,7 @@ impl crate::host_bindings::design_v04::greentic::oauth_broker::broker_v1::Host f
             &client,
             &req,
             cfg.shared_secret.as_deref(),
+            self.http_timeout,
         ) {
             Ok(resp) => {
                 serde_json::to_string(&resp).unwrap_or_else(|_| ERR_ENCODE_FAILED.to_string())

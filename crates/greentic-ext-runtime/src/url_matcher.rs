@@ -116,7 +116,15 @@ impl UrlMatcher {
         let Ok(parsed) = Url::parse(url) else {
             return false;
         };
-        if parsed.scheme() != "https" && !self.allow_http {
+        // `allow_http` opts in to *http*, not to "anything that is not https".
+        // Treating it as the latter let `file://` and `ftp://` reach pattern
+        // matching the moment any loopback-http pattern flipped the toggle.
+        // Unreachable through `fetch` today because reqwest refuses those
+        // schemes — but this is public API with a public accessor, and the
+        // module doc promises the opposite.
+        let scheme_allowed =
+            parsed.scheme() == "https" || (self.allow_http && parsed.scheme() == "http");
+        if !scheme_allowed {
             return false;
         }
         let Some(host) = parsed.host_str() else {
