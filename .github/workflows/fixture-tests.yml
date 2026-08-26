@@ -17,6 +17,11 @@ name: Fixture tests
 # Requires a `FIXTURE_REPO_TOKEN` secret: a PAT with `contents: read` on
 # `greentic-biz/greentic-adaptive-card-mcp` and
 # `greentic-biz/greentic-deployer-extensions`.
+#
+# Until that secret exists a scheduled run skips with a notice rather than
+# failing — see the `preflight` job for why the two triggers differ. **A green
+# run is therefore not by itself evidence the fixture tests ran**; check the
+# job summary, which says plainly when it skipped.
 
 on:
   workflow_dispatch:
@@ -32,19 +37,52 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # Whether the run can proceed at all, decided before any expensive step.
+  #
+  # The token is checked here rather than inline because `secrets` are not
+  # available in a job-level `if:`, and because the *response* to a missing
+  # token differs by trigger:
+  #
+  # - `workflow_dispatch` — somebody asked for this run. Fail loudly; quietly
+  #   doing nothing when a person pressed the button is worse than an error.
+  # - `schedule` — nobody asked. Skip with a notice. A nightly that is red
+  #   every night until a secret is provisioned trains people to ignore this
+  #   workflow, so when it eventually goes red for a real reason nobody looks.
+  #   That is the same failure this lane exists to fix, one level up.
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      have-token: ${{ steps.check.outputs.have-token }}
+    steps:
+      - id: check
+        env:
+          FIXTURE_REPO_TOKEN: ${{ secrets.FIXTURE_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${FIXTURE_REPO_TOKEN:-}" ]; then
+            echo "have-token=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "have-token=false" >> "$GITHUB_OUTPUT"
+          msg="FIXTURE_REPO_TOKEN is not set. This workflow builds extension packs from two private repos; it cannot run without a PAT that can read them."
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "::notice::${msg} Skipping the scheduled run."
+            echo "### Fixture tests skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`FIXTURE_REPO_TOKEN\` is not configured, so the packs cannot be built." >> "$GITHUB_STEP_SUMMARY"
+            echo "Real-WASM dispatch (\`invoke_tool\`, \`validate_content\`, \`list_targets\`, \`credential_schema\`) is **not** covered until it is." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "::error::${msg}"
+          exit 1
+
   fixture-tests:
+    needs: preflight
+    if: needs.preflight.outputs.have-token == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Fail early when the fixture token is missing
-        # Without this the failure surfaces as an opaque `actions/checkout`
-        # 404 three steps later, which reads like the repo was deleted.
-        run: |
-          if [ -z "${{ secrets.FIXTURE_REPO_TOKEN }}" ]; then
-            echo "::error::FIXTURE_REPO_TOKEN is not set. This workflow builds extension packs from two private repos; it cannot run without a PAT that can read them."
-            exit 1
-          fi
-
       - name: Checkout ext-runtime
         uses: actions/checkout@v4
         with:

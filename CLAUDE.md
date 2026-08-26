@@ -295,6 +295,13 @@ which builds the packs and calls `cargo test --tests -- --ignored`. It needs a
 `FIXTURE_REPO_TOKEN` secret with read access to
 `greentic-adaptive-card-mcp` and `greentic-deployer-extensions`.
 
+Without that secret a scheduled run **skips** with a notice, while a manual
+dispatch **fails** — somebody pressed the button, so quietly doing nothing
+would be the wrong answer. A green scheduled run is therefore not by itself
+evidence the fixture tests ran; the job summary says when it skipped. A nightly
+that is red every night until a secret is provisioned is how a workflow gets
+ignored, which is the same failure this lane exists to fix.
+
 **Never turn one of these back into a bare `return`.** They used to print
 "skipping" and return, which reports the test as *passed* — a run with no
 fixture was indistinguishable from one that exercised a real component, and
