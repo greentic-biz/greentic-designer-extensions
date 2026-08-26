@@ -279,6 +279,32 @@ whether the bypass is compiled at all, `ci/local_check.sh` runs the test
 suite in **both** feature shapes — an all-features-only run never
 exercises the production build's lack of a bypass.
 
+## Real-component test coverage
+
+Every fixture the normal suite builds is `(component)` — an empty shell. So
+`invoke_tool`, `validate_content`, `list_targets` and `credential_schema` are
+never exercised against a component that actually exports the interfaces they
+call. The tests for that path exist but are `#[ignore]`d, because the packs
+come from two private repos.
+
+They run in the `fixture-tests` workflow (nightly + `workflow_dispatch`),
+which builds the packs and calls `cargo test --tests -- --ignored`. It needs a
+`FIXTURE_REPO_TOKEN` secret with read access to
+`greentic-adaptive-card-mcp` and `greentic-deployer-extensions`.
+
+**Never turn one of these back into a bare `return`.** They used to print
+"skipping" and return, which reports the test as *passed* — a run with no
+fixture was indistinguishable from one that exercised a real component, and
+CI counted it green. `#[ignore]` is counted and named in the summary instead,
+and a missing or unset fixture path now fails loudly, because running an
+ignored test is always deliberate.
+
+Still uncovered: `ac_invoke_v2`'s two tests need a pack built against the v2
+contract, which ships unsigned and so also needs `--features
+dev-allow-unsigned`; the workflow skips them by name rather than pretending.
+`render_bundle`, `knowledge_*` and `evaluate_guardrail` have no
+behavioural coverage at all — their tests assert `NotFound` and nothing else.
+
 ## Execution limits
 
 Every dispatch store gets a memory/table ceiling and, by default, a
